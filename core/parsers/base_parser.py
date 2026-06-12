@@ -151,7 +151,7 @@ PO_CLIENT_MAP = {
 # Emails de responsables
 _EMAIL_LB = 'persona@tuempresa.com'
 _EMAIL_AC = 'persona@tuempresa.com'
-_EMAIL_SS = 'persona@tuempresa.com'  # En DocuControl email_SS apunta a persona
+_EMAIL_SS = 'persona@tuempresa.com'  # una comercial (ex-trabajadora) → sus proyectos pasaron a Luis Bravo
 _EMAIL_JV = 'persona@tuempresa.com'
 _EMAIL_CCH = 'persona@tuempresa.com'
 
@@ -269,8 +269,8 @@ RESPONSABLE_PEDIDO_MAP = {
     'P-26/013': _EMAIL_SS, 'P-26/014': _EMAIL_AC, 'P-26/015': _EMAIL_CCH, 'P-26/016': _EMAIL_AC,
     'P-26/017': _EMAIL_SS, 'P-26/018': _EMAIL_AC, 'P-26/019': _EMAIL_CCH, 'P-26/020': _EMAIL_AC,
     'P-26/022': _EMAIL_SS, 'P-26/022': _EMAIL_AC, 'P-26/023': _EMAIL_CCH, 'P-26/024': _EMAIL_AC,
-    'P-26/025': _EMAIL_SS, 'P-26/026': _EMAIL_AC, 'P-26/006': _EMAIL_CCH, 'P-26/028': _EMAIL_AC,
-    'P-26/029': _EMAIL_SS, 'P-26/007': _EMAIL_AC, 'P-26/005': _EMAIL_CCH, 'P-26/032': _EMAIL_AC,
+    'P-26/025': _EMAIL_SS, 'P-26/026': _EMAIL_AC, 'P-26/006': _EMAIL_LB, 'P-26/028': _EMAIL_AC,
+    'P-26/029': _EMAIL_AC, 'P-26/007': _EMAIL_AC, 'P-26/005': _EMAIL_AC, 'P-26/032': _EMAIL_AC,
     'P-26/033': _EMAIL_SS, 'P-26/034': _EMAIL_AC, 'P-26/035': _EMAIL_CCH, 'P-26/036': _EMAIL_AC,
 }
 
