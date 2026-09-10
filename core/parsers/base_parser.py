@@ -181,7 +181,10 @@ _EMAIL_SS = 'persona@tuempresa.com'  # una comercial (ex-trabajadora) → sus pr
 _EMAIL_JV = 'persona@tuempresa.com'
 _EMAIL_CCH = 'persona@tuempresa.com'
 
-# Nº Pedido → email responsable proyecto
+# Nº Pedido → email del responsable, para los pedidos que el ERP no resuelve.
+# La fuente principal es el comercial del ERP (ver `get_responsable_email`);
+# esto queda como respaldo para pedidos antiguos y para cuando el comercial es
+# alguien de quien no tenemos email.
 RESPONSABLE_PEDIDO_MAP = {
     'P-26/101': _EMAIL_LB,
     'P-26/102': _EMAIL_LB, 'P-26/103': _EMAIL_LB, 'P-26/104': _EMAIL_AC, 'P-26/105': _EMAIL_AC,
@@ -282,22 +285,13 @@ RESPONSABLE_PEDIDO_MAP = {
     'P-26/471': _EMAIL_AC, 'P-26/472': _EMAIL_AC, 'P-26/473': _EMAIL_AC, 'P-26/474': _EMAIL_LB,
     'P-26/475': _EMAIL_AC, 'P-26/476': _EMAIL_AC, 'P-26/477': _EMAIL_CCH, 'P-26/478': _EMAIL_AC,
     'P-26/479': _EMAIL_SS, 'P-26/480': _EMAIL_AC, 'P-26/481': _EMAIL_CCH, 'P-26/482': _EMAIL_AC,
-    'P-26/483': _EMAIL_SS, 'P-26/484': _EMAIL_AC, 'P-26/485': _EMAIL_CCH, 'P-25/075': _EMAIL_AC,
-    'P-25/076': _EMAIL_SS, 'P-25/077': _EMAIL_AC, 'P-25/078': _EMAIL_CCH, 'P-25/079': _EMAIL_AC,
-    'P-25/080': _EMAIL_SS, 'P-25/081': _EMAIL_AC, 'P-25/082': _EMAIL_CCH, 'P-25/083': _EMAIL_AC,
-    'P-25/084': _EMAIL_SS, 'P-25/085': _EMAIL_AC, 'P-25/086': _EMAIL_CCH, 'P-25/087': _EMAIL_AC,
-    'P-25/088': _EMAIL_SS, 'P-25/089': _EMAIL_AC, 'P-25/090': _EMAIL_CCH, 'P-25/091': _EMAIL_AC,
-    'P-25/092': _EMAIL_SS, 'P-25/093': _EMAIL_AC, 'P-25/094': _EMAIL_CCH, 'P-25/095': _EMAIL_AC,
-    'P-25/096': _EMAIL_SS, 'P-25/097': _EMAIL_AC, 'P-25/098': _EMAIL_CCH, 'P-25/099': _EMAIL_AC,
-    'P-26/001': _EMAIL_SS, 'P-26/002': _EMAIL_AC, 'P-26/023': _EMAIL_CCH, 'P-26/004': _EMAIL_AC,
-    'P-26/005': _EMAIL_SS, 'P-26/006': _EMAIL_AC, 'P-26/007': _EMAIL_CCH, 'P-26/008': _EMAIL_AC,
-    'P-26/009': _EMAIL_SS, 'P-26/010': _EMAIL_AC, 'P-26/011': _EMAIL_CCH, 'P-26/012': _EMAIL_AC,
-    'P-26/013': _EMAIL_SS, 'P-26/014': _EMAIL_AC, 'P-26/015': _EMAIL_CCH, 'P-26/016': _EMAIL_AC,
-    'P-26/017': _EMAIL_SS, 'P-26/018': _EMAIL_AC, 'P-26/019': _EMAIL_CCH, 'P-26/020': _EMAIL_AC,
-    'P-26/022': _EMAIL_SS, 'P-26/022': _EMAIL_AC, 'P-26/023': _EMAIL_CCH, 'P-26/024': _EMAIL_AC,
-    'P-26/025': _EMAIL_SS, 'P-26/026': _EMAIL_AC, 'P-26/006': _EMAIL_LB, 'P-26/028': _EMAIL_AC,
-    'P-26/029': _EMAIL_AC, 'P-26/007': _EMAIL_AC, 'P-26/005': _EMAIL_AC, 'P-26/032': _EMAIL_AC,
-    'P-26/033': _EMAIL_SS, 'P-26/034': _EMAIL_AC, 'P-26/035': _EMAIL_CCH, 'P-26/036': _EMAIL_AC,
+    'P-26/483': _EMAIL_SS, 'P-26/484': _EMAIL_AC, 'P-26/485': _EMAIL_CCH,
+    # El mapa se queda aquí a propósito. De P-25/075 en adelante lo que había
+    # era relleno: una serie mecánica que se repetía cada cuatro pedidos
+    # (AC, SS, AC, CCH) hasta P-25/099 —pedidos que ni siquiera existen, el
+    # último P-25 real es el /074— y otra igual (LB, AC, CCH, AC) para todo
+    # P-26/001..036. De ahí en adelante manda el comercial del ERP, que es
+    # dato de verdad; ver `get_responsable_email`.
 }
 
 # Email → iniciales para columna Responsable
@@ -306,6 +300,28 @@ EMAIL_TO_INITIALS = {
     'persona@tuempresa.com': 'AC',
     'persona@tuempresa.com': 'CCH',
     'persona@tuempresa.com': 'JV',
+    'persona@tuempresa.com': 'LM',
+    'persona@tuempresa.com': 'ECI',
+}
+
+# Iniciales del comercial en el ERP (users_data.initials) → email.
+#
+# OJO: NO son las iniciales que usa EIPSA para el equipo. En el ERP «JM» es
+# un comercial (usuario julian.martinez), no otro compañero; y «ECI» es
+# Ernesto Carrillo, que como responsable de documento aparece como «EC».
+# «SS» es una comercial, que ya no está: sus pedidos los lleva Luis Bravo.
+#
+# La tabla es explícita a propósito: una inicial que no esté aquí no manda
+# correo a nadie (se cae al mapa de abajo) en vez de acertar por parecido.
+# Sin email conocido, todas de pedidos antiguos salvo JM: CC, CF, GM, MS,
+# RM (Rubén Massó), RP (Raúl Payá), JM (un comercial).
+ERP_INITIALS_EMAIL = {
+    'AC': _EMAIL_AC,
+    'LB': _EMAIL_LB,
+    'CCH': _EMAIL_CCH,
+    'LM': 'persona@tuempresa.com',
+    'ECI': 'persona@tuempresa.com',
+    'SS': _EMAIL_SS,          # una comercial (ex) → Luis Bravo
 }
 
 # Doc type code → email CC responsable técnico
@@ -364,11 +380,33 @@ def identify_client(po: str) -> str:
     return PO_CLIENT_MAP.get(po[:5], "")
 
 
+def _comercial_email(numero_pedido: str) -> str | None:
+    """Email del comercial del pedido según el ERP ('' si no lo sabe)."""
+    pedido = str(numero_pedido or "").split("-S")[0].strip()
+    if not pedido:
+        return None
+    try:
+        from core.services import erp   # import perezoso: evita ciclos parsers↔services
+        iniciales = erp.comercial_por_pedido().get(pedido, "")
+    except Exception:  # noqa: BLE001 — sin ERP se sigue con el mapa
+        return None
+    return ERP_INITIALS_EMAIL.get(iniciales)
+
+
 def get_responsable_email(numero_pedido: str) -> str | None:
-    """Devuelve email del responsable del proyecto por Nº Pedido."""
-    for key, email in RESPONSABLE_PEDIDO_MAP.items():
+    """Email de quien recibe la devolución de ese pedido.
+
+    Manda el comercial que tiene el ERP, que es dato vivo: coincide con el mapa
+    en el 96% de los pedidos de 2021-2024 y cubre 3.143 pedidos, mientras que el
+    mapa se quedó en unos pocos cientos. El mapa se usa cuando el ERP no sabe de
+    ese pedido o cuando el comercial es alguien sin email conocido.
+    """
+    email = _comercial_email(numero_pedido)
+    if email:
+        return email
+    for key, mapped in RESPONSABLE_PEDIDO_MAP.items():
         if key in str(numero_pedido):
-            return email
+            return mapped
     return None
 
 
