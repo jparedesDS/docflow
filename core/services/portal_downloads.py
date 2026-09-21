@@ -335,6 +335,17 @@ def _remove_if_empty(folder: Path) -> None:
 
 # ── Descarga ──────────────────────────────────────────────────────────────────
 
+def _pedido_de(docs: list[dict]) -> str:
+    """El pedido de la devolución, tal como lo da el ERP.
+
+    A secas y sin suministro a propósito: el paquete y el correo van siempre a
+    «00 TRANS Y RES» del pedido base (el S00), aunque los documentos sean de
+    otro suministro. Solo los PDF se reparten por las carpetas dev. del
+    suministro al que pertenecen (lo hace `dev_folders.archive_return`).
+    """
+    return str((docs[0].get("Nº Pedido") if docs else "") or "").strip()
+
+
 def _docs_y_ficheros(info: dict, docs: list[dict], subject: str, raw: bytes,
                      *, session=None) -> tuple[list[dict], dict[str, dict]]:
     """Los documentos de la devolución y el mapa {fichero del zip → documento}.
@@ -417,7 +428,7 @@ def archive_pending(uid: str, folder: str = "INBOX", *, session=None) -> dict:
         raise FileNotFoundError(f"No se encuentra el paquete {zip_path} (¿unidad M: conectada?)")
 
     docs = pv.get("documents") or []
-    pedido = str(done.get("pedido") or (docs[0].get("Nº Pedido") if docs else "") or "").strip()
+    pedido = _pedido_de(docs) or str(done.get("pedido") or "").strip()
     if not pedido:
         raise LookupError("No sé a qué pedido pertenece esta devolución (no está en el ERP)")
     raw = imap_service.fetch_raw(uid, folder)
@@ -445,7 +456,7 @@ def download_for_email(uid: str, folder: str = "INBOX", *, session=None) -> dict
     if not ok:
         raise RuntimeError(why)
     docs = pv.get("documents") or []
-    pedido = str((docs[0].get("Nº Pedido") if docs else "") or "").strip()
+    pedido = _pedido_de(docs)
     if not pedido:
         raise LookupError("No sé a qué pedido pertenece esta devolución (no está en el ERP)")
 

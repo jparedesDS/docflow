@@ -58,8 +58,10 @@ _LETTER_STYLE_RE = re.compile(r"^rev\s*\d+\s*-\s*[A-Z]\b", re.I)
 # Tipo de documento (parsers) → palabras que debe contener la carpeta env./dev.
 TYPE_KEYWORDS = {
     "Planos": ["plano"],
-    "Cálculos": ["calcul", "cal y pla", "cál"],
-    "Cálculos y Planos": ["cal y pla", "calculos y planos", "cál y pla", "cálculos y planos"],
+    "Cálculos": ["calcul", "cal y pla", "pla y cal", "cál"],
+    # Cada pedido la abrevia a su manera: «CÁL Y PLA», «Pla y Cál»…
+    "Cálculos y Planos": ["cal y pla", "pla y cal", "calculos y planos", "planos y calculos",
+                          "cál y pla", "pla y cál", "cálculos y planos"],
     "Certificado": ["certific"],
     "Dossier": ["dossier"],
     "Listado": ["vddl", "listado", "list"],
@@ -114,6 +116,37 @@ def _title_words(title: str) -> set[str]:
 
 
 # ── Carpetas del pedido ───────────────────────────────────────────────────────
+
+# El suministro viene del ERP en «Supp.» y, si ahí faltara, en el código EIPSA
+# del documento, que empieza por pedido y suministro: 26-001-S10-ESP-0005
+_SUFIJO_SUELTO_RE = re.compile(r"^(S\d{2}[A-Z]?)$", re.I)
+_SUFIJO_DOC_RE = re.compile(r"^\s*\d{2}\s*-\s*\d{3}\s*-\s*(S\d{2}[A-Z]?)\b", re.I)
+
+
+def pedido_con_suministro(pedido: str, docs: list[dict]) -> str:
+    """El pedido con su suministro, si los documentos dicen cuál es.
+
+    Un pedido con varios suministros tiene una carpeta por cada uno
+    («P-26-001-S10 - TR-OMEGA…») y el ERP da el pedido a secas («P-26/001»),
+    así que sin esto la devolución cae en la primera carpeta por orden
+    alfabético —la de otro suministro— y los documentos acaban donde no son.
+    El suministro sí está en el código EIPSA del documento.
+
+    Solo se usa cuando TODOS los documentos que lo llevan coinciden: un
+    transmittal que mezclara dos suministros no cabe en una sola carpeta.
+    """
+    if re.search(r"-\s*S\d{2}", str(pedido or ""), re.I):     # ya lo trae escrito
+        return pedido
+    vistos = set()
+    for d in docs:
+        supp = _SUFIJO_SUELTO_RE.match(str(d.get("Supp.", "") or "").strip())
+        codigo = _SUFIJO_DOC_RE.match(str(d.get("Doc. EIPSA", "") or ""))
+        if supp or codigo:
+            vistos.add((supp or codigo).group(1).upper())
+    if len(vistos) != 1:
+        return pedido
+    return f"{pedido}-{vistos.pop()}"
+
 
 def tecnico_dir(pedido: str) -> Path | None:
     from core.config import PEDIDOS_BASE_PATH
@@ -606,6 +639,7 @@ def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: 
     created: [carpetas nuevas], plan: [...]} — con `dry_run` solo calcula.
     """
     res = {"archived": [], "skipped": [], "created": [], "plan": []}
+    pedido = pedido_con_suministro(pedido, docs)
     tecnico = tecnico_dir(pedido)
     if tecnico is None or not tecnico.is_dir():
         res["skipped"].append((zip_path.name, f"no se localiza 2-Tecnico del pedido {pedido}"))

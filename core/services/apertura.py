@@ -284,7 +284,7 @@ _PEDIDO_NREF_RE = re.compile(r"^P-(\d{2})/(\d{3})(?:-S\d{2})?$", re.IGNORECASE)
 
 # Tolerante: acepta P-26-023, P-26/023, P-26-023-S00, P-26/023-S00…
 _PEDIDO_FLEX_RE = re.compile(
-    r"^\s*P-?(\d{2})[\-/](\d{3})(?:\s*[\-/]?\s*(S\d{2}))?\s*$",
+    r"^\s*P-?(\d{2})[\-/](\d{3})(?:\s*[\-/]?\s*(S\d{2}[A-Z]?))?\s*$",
     re.IGNORECASE,
 )
 
@@ -339,6 +339,20 @@ def parse_folder_meta(folder_name: str) -> dict | None:
     }
 
 
+# Un suministro suelto dentro del nombre de la carpeta: S00, S09R…
+_SUFIJO_RE = re.compile(r"(?<![A-Z0-9])S\d{2}[A-Z]?(?![A-Z0-9])", re.I)
+
+
+def sufijos_de_carpeta(folder_name: str) -> set[str]:
+    """Suministros que cubre una carpeta de pedido: {'S08', 'S09R'}.
+
+    Un pedido con varios suministros puede tener una carpeta por cada uno
+    («P-26-001-S10 - …») o una que agrupa varios, escrita de mil maneras:
+    «P-26-001 - S00 - S01 - …», «P-26-001-S08-S09R - …».
+    """
+    return {s.upper() for s in _SUFIJO_RE.findall(str(folder_name or ""))}
+
+
 def find_existing_pedido_dir(
     pedido: str,
     año: int,
@@ -346,10 +360,12 @@ def find_existing_pedido_dir(
 ) -> Path | None:
     """Busca una carpeta de pedido existente bajo `Año YYYY\\YYYY Pedidos\\`.
 
-    Empareja por prefijo `P-XX-XXX` ignorando si la carpeta lleva `-S00` o no.
-    Si hay varias coincidencias devuelve la primera lexicográficamente.
+    Empareja por prefijo `P-XX-XXX`. Si el pedido trae suministro («P-26/001-S10»)
+    manda el suministro: un pedido puede tener una carpeta por cada uno y son
+    documentación distinta —los de S10 no van con los de S00—. Sin suministro,
+    o si ninguna carpeta lo lleva, se devuelve la primera lexicográficamente.
     """
-    folder_id, _ = parse_pedido(pedido)
+    folder_id, sufijo = parse_pedido(pedido)
     año_dir = Path(base_dir) / f"Año {año}" / f"{año} Pedidos"
     if not año_dir.exists():
         return None
@@ -365,6 +381,11 @@ def find_existing_pedido_dir(
     if not candidates:
         return None
     candidates.sort(key=lambda p: p.name)
+    if sufijo:
+        suyas = [p for p in candidates if sufijo.upper() in sufijos_de_carpeta(p.name)]
+        if suyas:
+            return suyas[0]
+        logger.info("Pedido %s: ninguna carpeta lleva el suministro %s", folder_id, sufijo)
     return candidates[0]
 
 
@@ -481,7 +502,9 @@ def find_documentacion_dir(
         if not m:
             return None
         año = 2000 + int(m.group(1))
-        pedido_dir = find_existing_pedido_dir(folder_id, año, base_dir=base)
+        # Se pasa el pedido tal cual, no solo `P-XX-XXX`: si trae suministro
+        # («P-26/001-S10») es el que decide entre las carpetas del pedido.
+        pedido_dir = find_existing_pedido_dir(pedido, año, base_dir=base)
 
     if pedido_dir is None:
         return None

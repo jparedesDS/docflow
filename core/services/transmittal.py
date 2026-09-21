@@ -314,6 +314,10 @@ def preview_email(uid: str, folder: str = "INBOX") -> dict:
 def _find_devoluciones_folder(pedido: str) -> Path | None:
     """Localiza (o crea) la carpeta `02 DEVOLUCIONES` del pedido.
 
+    Del pedido base: como el paquete de la devolución, el correo se archiva en
+    el `00 DOCUMENTACIÓN` del S00 aunque los documentos sean de otro
+    suministro. Lo que sí va al suministro son los PDF, en sus carpetas dev.
+
     Estructura objetivo, según el tipo de pedido:
       · Normal  `P-XX-XXX`  →  …\\YYYY Pedidos\\<P-...>\\2-Tecnico\\00 DOCUMENTACIÓN\\02 DEVOLUCIONES
       · Almacén `PA-XX-XXX` →  …\\YYYY Pedidos Almacen\\<PA-...>\\00 DOCUMENTACIÓN\\02 DEVOLUCIONES

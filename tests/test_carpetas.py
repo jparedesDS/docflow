@@ -57,6 +57,14 @@ ok(D._palabras_del_tipo("") == [] and D._palabras_del_tipo("Inventado") == [],
 ok(elegida("VDDL", "DOCUMENTS LIST") == "VDDL", f"VDDL: {elegida('VDDL', 'DOCUMENTS LIST')}")
 ok(elegida("VDDL", "Lista de documentos") == "VDDL", "VDDL con el título en español")
 
+# La misma carpeta, abreviada como la abrevia cada pedido
+for nombre in ("CÁL Y PLA", "Pla y Cál", "Cálculos y Planos"):
+    carpetas_ = carpetas(nombre, "Planos", "MANUAL")
+    elegida_ = D._by_type_and_title(carpetas_, "Cálculos y Planos",
+                                    "CÁLCULOS Y PLANOS - - 890-170-FE -05605")
+    ok(elegida_ and elegida_["name"] == nombre,
+       f"«{nombre}» es la carpeta de cálculos y planos: {elegida_ and elegida_['name']}")
+
 # Los de siempre, que no se rompen
 ok(elegida("Planos", "OVERALL DRAWING") == "Planos", f"planos: {elegida('Planos', 'OVERALL DRAWING')}")
 ok(elegida("Manual", "INSTALLATION AND MAINTENANCE") == "MANUAL", "manual")
@@ -81,6 +89,30 @@ for estado, espera in (
 ):
     ok(D._suffix(estado) == espera,
        f"«{estado}» debería ir a rev<N> {espera}, no {D._suffix(estado)}")
+
+# ── El suministro del pedido: P-26/001 tiene una carpeta por cada uno ───────
+from core.services import apertura  # noqa: E402
+
+DOCS_S10 = [{"Doc. EIPSA": "26-001-S10-ESP-0005"}, {"Doc. EIPSA": "26-001-S10-ESP-0006"}]
+ok(D.pedido_con_suministro("P-26/001", DOCS_S10) == "P-26/001-S10",
+   f"el suministro sale del código EIPSA: {D.pedido_con_suministro('P-26/001', DOCS_S10)}")
+ok(D.pedido_con_suministro("P-26/001", [{"Supp.": "S10", "Doc. EIPSA": ""}]) == "P-26/001-S10",
+   "y del «Supp.» del ERP cuando el código no lo lleva")
+ok(D.pedido_con_suministro("P-26/001-S10", [{"Doc. EIPSA": "26-001-S02-ESP-0001"}]) == "P-26/001-S10",
+   "si el pedido ya lo trae escrito, manda ese")
+ok(D.pedido_con_suministro("P-26/001", [{"Doc. EIPSA": "26-001-S02-ESP-0001"},
+                                        {"Doc. EIPSA": "26-001-S10-ESP-0005"}]) == "P-26/001",
+   "mezclados, no se elige: no caben en una sola carpeta")
+ok(D.pedido_con_suministro("P-26/412", [{"Doc. EIPSA": "23-037-PRC-0006"}]) == "P-26/412",
+   "un pedido sin suministro se queda como está")
+
+ok(apertura.sufijos_de_carpeta("P-26-001-S10 - TR-OMEGA - ACME") == {"S10"},
+   f"la carpeta de un suministro: {apertura.sufijos_de_carpeta('P-26-001-S10 - TR')}")
+ok(apertura.sufijos_de_carpeta("P-26-001 - S00 - S01 - TR-OMEGA") == {"S00", "S01"},
+   "una carpeta puede agrupar varios")
+ok(apertura.sufijos_de_carpeta("P-26-001-S08-S09R - TR-OMEGA") == {"S08", "S09R"},
+   "y llevarlos pegados, con letra")
+ok(apertura.parse_pedido("P-26/001-S09R") == ("P-26-001", "S09R"), "el sufijo con letra se lee")
 
 # ── Revisiones en letra: «rev C» sin número por ninguna parte ───────────────
 ok(D._partes_rev("rev2-50 AP") == (2, "50", "AP"), f"correlativo: {D._partes_rev('rev2-50 AP')}")
