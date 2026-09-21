@@ -1,142 +1,142 @@
-# DocFlow Lite
+# DocFlow
 
-Aplicación de escritorio para Document Control en proyectos de ingeniería. Versión standalone (sin servidor) del sistema **DocFlow**, optimizada para uso individual con persistencia local.
+**Edición Lite**: aplicación de escritorio para **Document Control** en proyectos de ingeniería: lleva la documentación de cada pedido de punta a punta — apertura, envíos al cliente, devoluciones de los portales, reclamaciones, portadas, informes de avance — leyendo los datos del ERP y dejando cada fichero en la carpeta de red que le toca.
+
+Versión standalone (sin servidor) del sistema **DocFlow**, pensada para el día a día de una sola persona.
 
 > Hecho con ❤️ por [jparedesDS](https://jparedesds.github.io/) · © 2026 · Todos los derechos reservados
 
+![Inicio](docs/img/inicio.png)
+
 ---
 
-## ✨ Características
+## ✨ Qué hace
 
-### 🏠 Dashboard
-Saludo personalizado, KPIs en vivo (docs totales, pendientes, críticos, reclamables, tareas, inbox), accesos rápidos a todas las secciones.
+### 🏠 Inicio
+Lo que hay que hacer hoy: críticos sin respuesta, devoluciones por contestar, documentos sin enviar, avales pasados de fecha y pedidos en taller con la fecha vencida. Cada aviso lleva a su sección.
 
-### 📋 Agenda
-Tareas, notas y reuniones en tres pestañas. Sincronización automática de tareas con los documentos pendientes asignados a ti.
-
-### ✦ Bandeja AI
-Lectura del buzón IMAP con filtros (todos / leídos / no leídos), preview del cuerpo del correo. Soporta clasificación con Claude (Anthropic) cuando hay API key configurada.
+### ▦ Pedidos
+La ficha de un pedido de un vistazo: avance de documentación, fabricación, equipos y qué requiere acción.
 
 ### ◫ Documentos
-Vista de monitoring con KPIs filtrables, 12 columnas con scroll horizontal, ordenación, paginación 30/p y detalle por documento. Replica funcional del Documents.js del DocFlow web.
+Todos los documentos de todos los pedidos, con KPIs filtrables, búsqueda, paginación y ficha de detalle — incluido **quién lo ha tocado** (auditoría del ERP).
 
-### ✉ Devoluciones
-Parser de correos para 6 plataformas (**TR, GAIA, ACONEX, SENDOC, PRODOC, DOCUMENT SPACE**). Edición manual de Estado por documento mediante menú emergente. Preview del email antes de enviar. Envío por SMTP con guardado opcional en carpeta de pedido.
+![Documentos](docs/img/documentos.png)
+
+### ↩ Devoluciones
+Los correos en los que el cliente devuelve documentación revisada. La app los interpreta, saca los documentos con su estado y manda el aviso al responsable.
+
+Portales que entiende: **eGesDoc (Técnicas Reunidas), AYESA, SACYR (Proarc), PRODOC (Wood), Document Space (Hyundai), GAIA, ACONEX y SENDOC**.
+
+Además, **descarga sola el paquete del portal** (cada 10 minutos) y lo reparte:
+
+- el zip y el correo van a `00 TRANS Y RES\NNN (fecha)` del pedido;
+- cada PDF devuelto, a su carpeta `dev. <Tipo>\rev<N> AP|COM|com|REJ`, respetando el estilo de numeración de ese pedido (correlativo, directo o por letras);
+- **nunca se pisa un documento archivado**: si el destino está ocupado, se crea la carpeta siguiente o el fichero se guarda al lado.
+
+![Devoluciones](docs/img/devoluciones.png)
+
+### 🖹 Portadas
+Rellena la plantilla de portada del cliente (Word o Excel) con los datos de cada documento. Los campos **se arrastran** a su hueco una sola vez por cliente y el emparejamiento queda guardado.
+
+### 📈 VPR
+El informe mensual de avance (*Vendor Progress Report*) con los datos del ERP: equipos agrupados por familia, documentos aprobados, subpedidos recibidos, fabricación e inspección. Lo medido se enseña calculado; lo que se promete al cliente —fechas, % planificado y los textos— llega escrito y se repasa antes de generar el Word.
+
+![VPR](docs/img/vpr.png)
 
 ### ⚠ Reclamaciones
-Sistema de escalation en 3 niveles (Recordatorio · Formal · Urgente). Selección por documento con checkbox toggleable (`☑/☐`). Persistencia de destinatarios por pedido. Envío masivo. Preview del email antes de enviar.
+Escalado en tres niveles (recordatorio · formal · urgente), con destinatarios guardados por pedido y envío masivo.
 
-### 📊 Centro de Reportes
-- **Excels**: Monitoring Report multi-hoja con STATUS GLOBAL + gráfico · Export simple
-- **Resúmenes por email**: Ejecutivo (con IA) · Personal por DC (con selector de usuario)
-- **Programados**: APScheduler en background con CRUD JSON local
+### ✚ Nuevo pedido
+Crea la estructura de carpetas del pedido, su Planning (`.xlsm` con macros, intacto) y el índice de documentos a partir del catálogo.
 
-### 🎨 Light / Dark mode
-Persistencia en `state/preferences.json`, toggle desde la sidebar, reinicio limpio.
+### ✒ DocuSign · ✦ Correo · ▣ Agenda
+Sobres de firma electrónica con su estado, lectura del buzón y tareas/notas/reuniones sincronizadas con los documentos pendientes.
+
+### Departamentos
+**Comercial** (ofertas), **Compras** (material pendiente de proveedor), **Producción** (taller y horas), **Calidad** (no conformidades y equipos de medida), **Administración** (facturas y avales) y **Almacén** (expediciones).
+
+### 📊 Informes
+Monitoring Report en Excel, informes web interactivos (semanal, mensual, ejecutivo y por pedido), resúmenes por correo y programación automática.
+
+### 🎨 Detalles
+Tema claro/oscuro persistente · paleta de comandos **Ctrl+K** · ayuda contextual con **F1** o el botón `?` de cada sección · avisos a Teams · subida a Nextcloud.
 
 ---
 
-## 🚀 Instalación rápida
+## 🚀 Instalación
 
 ### Requisitos
-- **Python 3.10+** (Windows / macOS / Linux)
-- Acceso IMAP/SMTP para Devoluciones y Reclamaciones
-- *(Opcional)* `ANTHROPIC_API_KEY` para Bandeja AI y resúmenes con IA
+- **Python 3.12+** (desarrollado sobre 3.14, Windows)
+- Acceso IMAP/SMTP para Devoluciones, Reclamaciones y Correo
+- *(Opcional)* PostgreSQL del ERP en modo **solo lectura** — sin él la app funciona con los Excel de `data/`
+- *(Opcional)* `ANTHROPIC_API_KEY` para los resúmenes con IA
+- *(Opcional)* Microsoft Word y Excel instalados: se usan para convertir portadas e informes a PDF
 
 ### Pasos
 
 ```bash
-git clone https://github.com/jparedesDS/docflow-lite.git
-cd docflow-lite
+git clone https://github.com/jparedesDS/docflow.git
+cd docflow
 
-# Crear entorno virtual
 python -m venv .venv
+.\.venv\Scripts\Activate.ps1        # Windows
+source .venv/bin/activate           # macOS/Linux
 
-# Activar (Windows PowerShell)
-.\.venv\Scripts\Activate.ps1
-# Activar (macOS/Linux)
-source .venv/bin/activate
-
-# Instalar dependencias
 pip install -r requirements.txt
 
-# Configurar credenciales
-cp .env.example .env
-# Editar .env y rellenar IMAP_PASS y SMTP_PASS
-
-# Copiar tus Excels al directorio data/
+cp .env.example .env                # y rellena IMAP_PASS / SMTP_PASS
 cp /ruta/a/data_erp.xlsx data/
 cp /ruta/a/consulta_erp.xlsx data/
 
-# Arrancar
 python app.py
 ```
 
+Las contraseñas de los portales y del ERP **no se guardan en texto plano**: van al llavero de Windows (Credential Manager) o al almacén cifrado local, y se piden desde *Ajustes ▸ Portales*.
+
 ---
 
-## ⌨️ Atajos de teclado
+## ⌨️ Atajos
 
-| Tecla | Sección |
-|:-----:|:--------|
-| `H` | Inicio |
-| `A` | Agenda |
-| `I` | Bandeja AI |
-| `O` | D**o**cumentos |
-| `D` | Devoluciones |
-| `R` | Reclamaciones |
-| `P` | Centro de Re**p**ortes |
-| `Esc` | Cerrar modal / volver |
-
-> Los atajos respetan el foco: no se disparan cuando estás escribiendo en un campo de texto.
+| Tecla | Qué hace |
+|:-----:|:---------|
+| `Ctrl+K` | Paleta de comandos: ir a cualquier sección o buscar un pedido |
+| `F1` | Ayuda de la sección en la que estás |
+| `Esc` | Cerrar el diálogo o volver |
 
 ---
 
 ## 📂 Estructura del proyecto
 
 ```
-docflow-lite/
-├── app.py                         # Entry point: lanza GUI + scheduler
-├── requirements.txt
-├── .env.example
+docflow/
+├── app.py                          # Arranque: login, ventana y scheduler
 ├── core/
-│   ├── config.py                  # IMAP/SMTP + paths + USERS
-│   ├── preferences.py             # Tema persistido
-│   ├── paths.py                   # Resolución de rutas (dev + .exe)
-│   ├── parsers/                   # 6 parsers de correo
-│   │   ├── tr_parser.py
-│   │   ├── gaia_parser.py
-│   │   ├── aconex_parser.py
-│   │   ├── sendoc_parser.py
-│   │   ├── prodoc_parser.py
-│   │   ├── docspace_parser.py
-│   │   └── base_parser.py
+│   ├── config.py · preferences.py · auth.py · session.py
+│   ├── parsers/                    # 8 parsers de correo (TR, AYESA, SACYR, PRODOC…)
 │   ├── services/
-│   │   ├── imap.py · smtp.py
-│   │   ├── monitoring.py          # Cruza data_erp + consulta_erp
-│   │   ├── transmittal.py         # Orquestador de devoluciones
-│   │   ├── claims.py              # Reclamaciones 3 niveles
-│   │   ├── inbox.py               # Lectura buzón
-│   │   ├── agenda.py              # Tareas/Notas/Reuniones
-│   │   ├── reports.py             # Excels (Monitoring + Export)
-│   │   ├── weekly_summary.py      # Emails ejecutivo + personal
-│   │   └── scheduled_reports.py   # APScheduler + CRUD JSON
-│   └── utils/json_store.py        # Locking cross-platform
+│   │   ├── erp_db.py · erp_tags.py · erp_common.py     # ERP PostgreSQL (solo lectura)
+│   │   ├── monitoring.py · audit.py                    # documentos y su trazabilidad
+│   │   ├── transmittal.py · portal_downloads.py        # devoluciones y descarga
+│   │   ├── egesdoc.py · ayesa.py · sacyr.py · prodoc.py · docspace.py
+│   │   ├── dev_folders.py                              # archivado en carpetas dev.
+│   │   ├── portadas.py · portadas_lote.py              # portadas del cliente
+│   │   ├── plantilla_docx.py · plantilla_xlsx.py · formulario_docx.py
+│   │   ├── vpr.py                                      # informe mensual de avance
+│   │   ├── apertura.py · claims.py · docusign.py
+│   │   ├── purchases.py · production.py · quality.py · administration.py · warehouse.py
+│   │   ├── reports.py · analytics.py · interactive_report.py · scheduled_reports.py
+│   │   └── imap.py · smtp.py · nextcloud.py · teams.py
+│   └── utils/                      # ficheros sin pisar nada, JSON con bloqueo, HTTP
 ├── gui/
-│   ├── app.py                     # Ventana principal + routing
-│   ├── theme.py                   # Paletas Light + Dark
-│   ├── widgets/
-│   │   ├── sidebar.py
-│   │   └── table.py               # DataTable con scroll horizontal
-│   └── views/
-│       ├── home.py
-│       ├── agenda.py
-│       ├── inbox.py
-│       ├── documentos.py
-│       ├── devoluciones.py
-│       ├── reclamaciones.py
-│       └── reportes.py
-├── data/                          # data_erp.xlsx, consulta_erp.xlsx
-└── state/                         # JSONs runtime (agenda, claims_log, prefs…)
+│   ├── app.py                      # ventana, menú por departamentos y routing
+│   ├── theme.py · help.py          # sistema de diseño y ayuda F1
+│   ├── widgets/                    # sidebar, tablas, botones, toasts
+│   └── views/                      # una por sección (21)
+├── tests/                          # pruebas que se lanzan a mano, sin pytest
+├── docs/img/                       # capturas del README
+├── data/                           # data_erp.xlsx, consulta_erp.xlsx
+└── state/                          # JSON de runtime (preferencias, registros, logs)
 ```
 
 ---
@@ -144,7 +144,7 @@ docflow-lite/
 ## 🔧 Variables de entorno (`.env`)
 
 ```bash
-# IMAP/SMTP (obligatorias para Devoluciones, Reclamaciones e Inbox)
+# IMAP/SMTP — obligatorias para Devoluciones, Reclamaciones y Correo
 IMAP_HOST=imap.tuservidor.com
 IMAP_PORT=993
 IMAP_USER=tu-email@dominio.com
@@ -155,14 +155,27 @@ SMTP_PORT=465
 SMTP_USER=tu-email@dominio.com
 SMTP_PASS=tu-password
 
-# Claude API (opcional — activa Bandeja AI y párrafo IA del ejecutivo)
-ANTHROPIC_API_KEY=sk-ant-...
+# Rutas locales (opcional — por defecto ./data/)
+# DATA_ERP_PATH=...
+# CONSULTA_ERP_PATH=...
 
-# Destinatarios por defecto del resumen ejecutivo (opcional)
-WEEKLY_EXECUTIVE_RECIPIENTS=director@empresa.com,jefe@empresa.com
+# Carpeta base de pedidos en red (opcional): sin ella no se archiva en el pedido
+# PEDIDOS_BASE_PATH=M:\base de datos de pedidos
 
-# Carpeta de pedidos en red (opcional — guarda .eml en 02 DEVOLUCIONES / 03 RECLAMACIONES)
-PEDIDOS_BASE_PATH=M:\base de datos de pedidos
+# Claude API (opcional — resúmenes con IA)
+# ANTHROPIC_API_KEY=sk-ant-...
+```
+
+---
+
+## 🧪 Pruebas
+
+No hay pytest: son guiones que se ejecutan a mano y terminan diciendo cuántos fallos hay.
+
+```bash
+.venv\Scripts\python.exe tests\test_carpetas.py      # dónde cae cada documento devuelto
+.venv\Scripts\python.exe tests\test_vpr.py           # el informe de avance
+.venv\Scripts\python.exe tests\test_portadas.py      # plantillas Word y Excel
 ```
 
 ---
@@ -170,20 +183,31 @@ PEDIDOS_BASE_PATH=M:\base de datos de pedidos
 ## 🧰 Stack técnico
 
 - **GUI**: CustomTkinter 5 (Tkinter modernizado, sin Chromium ni .NET)
-- **Datos**: pandas + openpyxl
-- **Email**: imaplib + smtplib + tnefparse + striprtf
-- **HTML parsing**: lxml + BeautifulSoup
+- **Datos**: PostgreSQL del ERP en solo lectura (psycopg2) + pandas · openpyxl · calamine
+- **Correo**: imaplib + smtplib + tnefparse + striprtf
+- **Portales**: requests + truststore (certificados del sistema)
+- **Word/Excel**: edición del `.docx`/`.xlsx` como ZIP para no perder logos ni macros, y COM para el PDF
 - **Scheduler**: APScheduler (BackgroundScheduler)
+- **Credenciales**: keyring (Credential Manager) + almacén cifrado local
 - **AI** *(opcional)*: anthropic (Claude)
 - **Empaquetado**: PyInstaller (`build.spec`)
 
 ---
 
+## 📚 Más información
+
+- [Arquitectura](docs/ARQUITECTURA.md) — de dónde sale cada dato, cómo se reparten las capas y las reglas que no se saltan (no sobrescribir un documento, editar las plantillas como ZIP, el ERP en solo lectura).
+- [Historia](CHANGELOG.md) — qué ha ido entrando y cuándo.
+
+---
+
 ## 📜 Licencia
 
-© 2026 [jparedesDS](https://jparedesds.github.io/). **Todos los derechos reservados.**
+© 2026 [jparedesDS](https://jparedesds.github.io/). **Todos los derechos reservados.** Ver [LICENSE](LICENSE).
 
 Este software es de uso personal. No se concede permiso para copiar, modificar, redistribuir ni explotar comercialmente sin autorización expresa del autor.
+
+> Las capturas de pantalla usan datos de ejemplo: ni los pedidos, ni los clientes, ni los proveedores que aparecen son reales.
 
 ---
 
