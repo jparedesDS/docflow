@@ -442,6 +442,7 @@ def kpi_tile(parent, label: str, color: str, variant: str = "dashboard",
 # Lo que sube o baja por cada muesca de la rueda: tres filas. El manejador de
 # CustomTkinter mueve 20 px —media fila— y se hace eterno.
 RUEDA_PX = 3 * theme.HEIGHT_ROW
+MARGEN_SCROLL = 4          # píxeles de sobra que no cuentan como «hay scroll»
 
 
 def rueda_por_puntero(scrollable, paso: int = RUEDA_PX):
@@ -475,8 +476,17 @@ def rueda_por_puntero(scrollable, paso: int = RUEDA_PX):
             w = getattr(w, "master", None)
         return False
 
+    def hay_que_mover() -> bool:
+        """¿Sobra contenido de verdad, o son cuatro píxeles del borde?
+
+        Un par de píxeles de más no es un menú con scroll: si se tomaran por
+        tal, la rueda se quedaría el evento y la página de detrás no se movería.
+        """
+        caja = canvas.bbox("all")
+        return bool(caja) and (caja[3] - caja[1]) - canvas.winfo_height() > MARGEN_SCROLL
+
     def mover(event):
-        if not encima(event) or canvas.yview() == (0.0, 1.0):
+        if not encima(event) or not hay_que_mover():
             return None                  # ni es para nosotros ni hay qué mover
         muescas = int(-event.delta / 120) or (-1 if event.delta > 0 else 1)
         canvas.yview_scroll(muescas * paso, "units")     # el canvas va en píxeles
