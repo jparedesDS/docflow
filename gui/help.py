@@ -133,6 +133,26 @@ HELP: dict[str, dict] = {
             "Una portada ya existente no se pisa nunca: la nueva se guarda al lado",
         ],
     },
+    "vpr": {
+        "titulo": "VPR",
+        "que": "El informe mensual de avance del pedido (Vendor Progress Report) relleno con lo "
+               "que dice el ERP, sobre la plantilla del propio cliente.",
+        "pasos": [
+            "Elige el pedido: la pantalla mide su avance — equipos agrupados por familia, "
+            "documentos aprobados, subpedidos recibidos, fabricación e inspección.",
+            "«Plantilla…» (solo la primera vez de cada cliente): el Word que manda el cliente. "
+            "Queda guardado y el mes siguiente sale solo.",
+            "Repasa lo editable: nº de informe, fechas, % planificado y los cuatro apartados en "
+            "texto, que llegan escritos con lo que dice el ERP.",
+            "«Generar VPR»: el informe se guarda en 2-Tecnico del pedido con el nº que le hayas "
+            "puesto, y se abre la carpeta.",
+        ],
+        "atajos": [
+            "El % real lo mide el ERP y no se toca; el planificado sale de las fechas y se corrige",
+            "Si alguna fecha prevista cae después de la entrega del pedido, avisa antes de generar",
+            "Un informe ya existente no se pisa nunca: el nuevo se guarda al lado",
+        ],
+    },
     "devoluciones": {
         "titulo": "Devoluciones",
         "que": "Correos en los que el cliente devuelve documentación revisada (TR, GAIA, ACONEX, SENDOC, AYESA, SACYR…).",
@@ -147,6 +167,9 @@ HELP: dict[str, dict] = {
             "La columna «Descarga» marca «✓ guardada» cuando la devolución ya está en su carpeta; en la preview el botón "
             "pasa a «📂 Abrir carpetas» (abre 00 TRANS Y RES \\ NNN y las dev. donde quedaron los PDF) para comprobarla "
             "antes de enviar la notificación (que indica dónde está guardada).",
+            "En un pedido con varios suministros (S00, S02R, S10…): el paquete y el correo van siempre al "
+            "pedido base (00 TRANS Y RES del S00) y los PDF a las carpetas dev. del suministro al que "
+            "pertenecen, que sale del «Supp.» del ERP o del código EIPSA del documento (26-001-S10-ESP-0005).",
             "Si la descarga dejó los documentos sin colocar en sus carpetas dev., el botón pasa a "
             "«🗂 Archivar en 2-Tecnico»: reparte el zip que ya está guardado sin volver a pedírselo al portal "
             "(nunca pisa nada de lo ya archivado) y apunta las carpetas para que la notificación las enlace.",

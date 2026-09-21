@@ -30,6 +30,7 @@ class DocFlowLiteApp(ctk.CTk):
             {"key": "documentos",    "label": "Documentos",    "icon": "◫"},
             {"key": "devoluciones",  "label": "Devoluciones",  "icon": "↩"},
             {"key": "portadas",      "label": "Portadas",      "icon": "🖹"},
+            {"key": "vpr",           "label": "VPR",           "icon": "📈"},
             {"key": "reclamaciones", "label": "Reclamaciones", "icon": "⚠"},
             {"key": "docusign",      "label": "DocuSign",      "icon": "✒"},
         ]},
@@ -420,6 +421,9 @@ class DocFlowLiteApp(ctk.CTk):
         elif key == "portadas":
             from gui.views.portadas import PortadasView
             view = PortadasView(self.content)
+        elif key == "vpr":
+            from gui.views.vpr import VprView
+            view = VprView(self.content)
         elif key == "apertura":
             from gui.views.apertura import AperturaView
             view = AperturaView(self.content)
