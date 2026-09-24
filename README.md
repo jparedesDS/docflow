@@ -200,7 +200,6 @@ argumento inválido se cae ahí y no delante del usuario.
 - **Scheduler**: APScheduler (BackgroundScheduler)
 - **Credenciales**: keyring (Credential Manager) + almacén cifrado local
 - **AI** *(opcional)*: anthropic (Claude)
-- **Empaquetado**: PyInstaller (`build.spec`)
 
 ---
 
