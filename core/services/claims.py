@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from core import organizacion
 from core.config import PEDIDOS_BASE_PATH, SMTP_USER, USERS
 from core.paths import state_dir
 from core.parsers.base_parser import (
@@ -44,7 +45,9 @@ ESCALATION_LEVELS = {
     3: {"name": "urgent",   "label": "Urgent Escalation Notice",  "accent": "#DC2626"},
 }
 
-DIRECTION_CC = ["persona@tuempresa.com"]
+# A quién se avisa cuando la reclamación sube al nivel urgente
+# (Ajustes ▸ Organización, no en el código: el repositorio es público).
+DIRECTION_CC = organizacion.correo_direccion
 
 NAVY = "#1B3A5C"
 

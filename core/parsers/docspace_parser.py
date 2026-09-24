@@ -7,15 +7,23 @@ from core.parsers.base_parser import (
     identify_client, get_responsable_initials,
 )
 
+from core import organizacion
+
 logger = logging.getLogger(__name__)
 
 SENDER_MATCH = "hec.co.kr"
 TRANSMITTAL_REGEX = r'\[([A-Z0-9&]+(?:-[A-Z0-9]+)*)\]'
 
-# project_key → (Nº Pedido, Supp., Material)
-DOCSPACE_PROJECT_MAP = {
-    "PRY&001": ("P-26/002", "S00", "REF016"),
-}
+# Clave de proyecto -> pedido, suministro y familia. Se rellena en
+# Ajustes > Organizacion como «P-26/002 | S00 | REF016».
+DOCSPACE_PROJECT_MAP = organizacion.docspace
+
+
+def datos_de_proyecto(clave: str) -> tuple[str, str, str]:
+    """(pedido, suministro, familia) de una clave de Document Space."""
+    partes = [p.strip() for p in str(DOCSPACE_PROJECT_MAP.get(clave, "")).split("|")]
+    partes += [""] * (3 - len(partes))
+    return partes[0], partes[1] or "S00", partes[2]
 
 
 def can_parse(sender: str) -> bool:
@@ -166,7 +174,7 @@ def parse(html_body: str, subject: str, received_time: str) -> pd.DataFrame:
     # Transmittal code y project key
     transmittal_code = extract_transmittal_code(subject)
     project_key = _get_project_key(transmittal_code)
-    n_pedido, supp, material = DOCSPACE_PROJECT_MAP.get(project_key, ("", "S00", ""))
+    n_pedido, supp, material = datos_de_proyecto(project_key)
 
     # PO para identify_client: usar project_key completo (primeros 5 chars → JUS&I)
     po_for_client = project_key

@@ -35,7 +35,7 @@ class SendExecutiveDialog(ctk.CTkToplevel):
             text_color=theme.TEXT_MUTED, anchor="w",
         ).pack(anchor="w", padx=22, pady=(18, 4))
         self.ent_to = ctk.CTkEntry(
-            self, placeholder_text="persona@tuempresa.com, persona@tuempresa.com",
+            self, placeholder_text="alguien@tuempresa.com, otro@tuempresa.com",
             height=34, corner_radius=8,
             fg_color=theme.BG_INPUT, border_color=theme.BORDER,
             text_color=theme.TEXT_MAIN, font=theme.FONT_BODY,

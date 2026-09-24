@@ -17,6 +17,7 @@ from core.config import OFERTAS_ACCOUNTS, SECRET_ENV_MAP
 from core.services import docusign as ds
 from gui import theme
 from gui.widgets import ui
+from gui.views.ajustes_organizacion import OrganizacionMixin
 from gui.widgets.scrollframe import ScrollFrame
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ def _entry(parent, value="", placeholder="", width=None, show=None):
     return e
 
 
-class AjustesView(ctk.CTkFrame):
+class AjustesView(OrganizacionMixin, ctk.CTkFrame):
     def __init__(self, master, on_restart=None, **kwargs):
         super().__init__(master, fg_color=theme.BG_PAGE, **kwargs)
         self._on_restart = on_restart
@@ -72,6 +73,7 @@ class AjustesView(ctk.CTkFrame):
             "DocuSign": lazy(self._build_docusign),
             "IA": lazy(self._build_ia),
             "Portales": lazy(self._build_portales),
+            "Organización": lazy(self._build_organizacion),
             "Usuarios": lazy(self._build_usuarios),
         })
 
@@ -409,13 +411,13 @@ class AjustesView(ctk.CTkFrame):
         ui.section_header(s, "IMAP (lectura)").pack(fill="x", pady=(theme.SPACE_2, theme.SPACE_2))
         self.imap_host = self._setting_row(s, "Host", "imap_host", "imap.tuservidor.com")
         self.imap_port = self._setting_row(s, "Puerto", "imap_port", "993", width=80)
-        self.imap_user = self._setting_row(s, "Usuario", "imap_user", "buzon@tuempresa.com")
+        self.imap_user = self._setting_row(s, "Usuario", "imap_user", "tu-buzon@tuempresa.com")
         self.imap_pass, self.imap_pass_state = self._secret_row(s, "Contraseña", "imap_pass", "IMAP_PASS")
 
         ui.section_header(s, "SMTP (envío)").pack(fill="x", pady=(theme.SPACE_3, theme.SPACE_2))
         self.smtp_host = self._setting_row(s, "Host", "smtp_host", "smtp.tuservidor.com")
         self.smtp_port = self._setting_row(s, "Puerto", "smtp_port", "465", width=80)
-        self.smtp_user = self._setting_row(s, "Usuario", "smtp_user", "buzon@tuempresa.com")
+        self.smtp_user = self._setting_row(s, "Usuario", "smtp_user", "tu-buzon@tuempresa.com")
         self.smtp_pass, self.smtp_pass_state = self._secret_row(s, "Contraseña", "smtp_pass", "SMTP_PASS")
 
         btns = ctk.CTkFrame(s, fg_color="transparent")
@@ -502,7 +504,7 @@ class AjustesView(ctk.CTkFrame):
         row.pack(fill="x", padx=theme.SPACE_3, pady=theme.SPACE_3)
         self.trk_label = _entry(row, placeholder="Nombre (ej: Ana Calvo)", width=160)
         self.trk_label.pack(side="left", padx=(0, theme.SPACE_2))
-        self.trk_user = _entry(row, placeholder="persona@tuempresa.com", width=200)
+        self.trk_user = _entry(row, placeholder="correo@tuempresa.com", width=200)
         self.trk_user.pack(side="left", padx=(0, theme.SPACE_2))
         self.trk_pass = _entry(row, placeholder="contraseña", show="•")
         self.trk_pass.pack(side="left", fill="x", expand=True, padx=(0, theme.SPACE_2))

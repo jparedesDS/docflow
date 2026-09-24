@@ -96,6 +96,21 @@ python app.py
 
 Las contraseñas de los portales y del ERP **no se guardan en texto plano**: van al llavero de Windows (Credential Manager) o al almacén cifrado local, y se piden desde *Ajustes ▸ Portales*.
 
+### Primera puesta en marcha
+
+El código no trae datos de ninguna empresa: ni servidores, ni buzones, ni equipo, ni clientes. Al arrancar por primera vez hay que rellenar, desde la propia app:
+
+| Dónde | Qué |
+|---|---|
+| *Ajustes ▸ Correo* | servidor y buzón de IMAP/SMTP |
+| *Ajustes ▸ Organización ▸ Equipo* | quién es quién: iniciales, nombre y correo |
+| *Ajustes ▸ Organización ▸ Clientes y pedidos* | qué cliente hay detrás de cada PO y, si hace falta, quién lleva cada pedido |
+| *Ajustes ▸ Organización ▸ Portales* | la clave que manda cada portal y a qué pedido tuyo corresponde |
+| *Ajustes ▸ Organización ▸ Correo* | destinatarios fijos de las reclamaciones y el técnico en copia por tipo |
+| *Ajustes ▸ Portales* | usuario y contraseña de eGesDoc y SACYR |
+
+Todo eso se guarda en `state/organizacion.json` y `state/preferences.json`, que **no salen de tu máquina** (están en `.gitignore`). Sin nada de eso la app arranca igual: lo que sabe el ERP sigue saliendo del ERP.
+
 ---
 
 ## ⌨️ Atajos
@@ -115,6 +130,7 @@ docflow/
 ├── app.py                          # Arranque: login, ventana y scheduler
 ├── core/
 │   ├── config.py · preferences.py · auth.py · session.py
+│   ├── organizacion.py             # equipo, clientes y pedidos: fuera del código
 │   ├── parsers/                    # 8 parsers de correo (TR, AYESA, SACYR, PRODOC…)
 │   ├── services/
 │   │   ├── erp_db.py · erp_tags.py · erp_common.py     # ERP PostgreSQL (solo lectura)

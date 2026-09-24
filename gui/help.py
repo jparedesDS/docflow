@@ -286,6 +286,10 @@ HELP: dict[str, dict] = {
             "Cada pestaña tiene su botón «Guardar»; los cambios de conexión se aplican al reiniciar.",
             "Las contraseñas se guardan cifradas (nunca en texto plano).",
             "«Fuentes de datos»: de dónde se leen los Excel y el botón para regenerar documentos y pedidos desde el ERP.",
+            "«Organización»: los datos de tu empresa, que no están en el código porque el repositorio es "
+            "público: el equipo (iniciales, nombre y correo), qué cliente hay detrás de cada PO, quién "
+            "lleva cada pedido, lo que manda cada portal y a quién se escribe. Se guarda en tu máquina "
+            "(state/organizacion.json).",
             "«Portales»: usuario y contraseña de eGesDoc (Técnicas Reunidas) y la descarga automática de "
             "devoluciones (eGesDoc y AYESA)."
         ],

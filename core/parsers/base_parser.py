@@ -2,39 +2,25 @@ import re
 import pandas as pd
 from datetime import datetime
 
+from core import organizacion
 from core.utils.excel import read_excel_fast
 
 # ═══════════════════════════════════════════════════════
 #  MAPPINGS COMPARTIDOS (migrados de DocuControl)
 # ═══════════════════════════════════════════════════════
 
-# PO → Nº Pedido (PRODOC/ACONEX)
-PRODOC_PO_MAP = {
-    "7000100030": "P-26/008", "7000100060": "P-26/010",
-    "7000100040": "P-26/009", "7000100050": "P-26/011",
-    "1000100004": "P-26/303", "7000100005": "P-26/012",
-    "7000100080": "P-26/013", "7000100013": "P-26/014",
-    "7000100070": "P-26/015", "7000100014": "P-26/016",
-    "7000100015": "P-26/017",
-}
+# Lo que dice cada portal -> nuestro N Pedido. Las tres tablas son la MISMA:
+# las claves no se pisan entre portales y asi se rellena una sola en Ajustes.
+PRODOC_PO_MAP = organizacion.portales
+# Flujo de SENDOC -> N Pedido
+SENDOC_PO_MAP = organizacion.portales
+# Paquete de ACONEX -> N Pedido
+ACONEX_PO_MAP = organizacion.portales
 
-# PO → Nº Pedido (SENDOC)
-SENDOC_PO_MAP = {
-    "P1Q0000001-PF-V": "P-26/018-S00",
-}
-
-# Package → Nº Pedido (ACONEX)
-ACONEX_PO_MAP = {
-    "2201AA00A0-1100-3000": "P-26/019",
-}
-
-# AYESA: referencia del asunto ("Documentos de <ref>") → Nº PO del ERP.
-# El portal AYESA usa su propia numeración (proyecto 2206 / ref 3000000001-...),
-# que NO está en data_erp; este mapa enlaza esa referencia con el PO real, y de
-# ahí se resuelve el Nº Pedido vía ERP. Añadir una entrada por pedido AYESA nuevo.
-AYESA_REF_PO_MAP = {
-    "3000000001-1100-3000": "7000100020",  # P-26/023 · ORIFICIOS Y REF033 DE RESTRICCIÓN
-}
+# AYESA: referencia del asunto ("Documentos de <ref>") -> N PO del ERP.
+# El portal usa su propia numeracion, que NO esta en data_erp; este mapa enlaza
+# esa referencia con el PO real, y de ahi se resuelve el pedido via ERP.
+AYESA_REF_PO_MAP = organizacion.refs
 
 # AYESA: código de tipo (en el código de doc de cliente, p.ej. ...-DL-001) →
 # valor de "Tipo Doc." del ERP, para emparejar el documento del email con el
@@ -51,30 +37,17 @@ AYESA_DOC_TYPE_TO_ERP = {
     "PRC0": "Packing",
 }
 
-# Project key → Nº Pedido (DOCUMENT SPACE / HEC)
-DOCSPACE_PO_MAP = {
-    "PRY&001": "P-26/002",
-}
+# Project key de Document Space (HEC) -> N Pedido
+DOCSPACE_PO_MAP = organizacion.portales
 DOCSPACE_SUPP_MAP = {
     "PRY&001": "S00",
 }
-DOCSPACE_MATERIAL_MAP = {
-    "PRY&001": "REF016",
-}
-
-# PO → Material
-PRODOC_MATERIAL_MAP = {
-    "7000100030": "REF016", "7000100060": "REF034",
-    "7000100040": "REF034", "7000100050": "REF033",
-}
-
-SENDOC_MATERIAL_MAP = {
-    "P1Q0000001-PF-V": "REF034",
-}
-
-GAIA_MATERIAL_MAP = {
-    "100000C": "REF016", "7000100060": "REF034",
-}
+# Lo que dice el portal -> familia de producto. Una sola tabla para los cuatro:
+# las claves no se pisan y asi se rellena una vez en Ajustes > Organizacion.
+DOCSPACE_MATERIAL_MAP = organizacion.materiales
+PRODOC_MATERIAL_MAP = organizacion.materiales
+SENDOC_MATERIAL_MAP = organizacion.materiales
+GAIA_MATERIAL_MAP = organizacion.materiales
 
 # Doc type code → Nombre español
 DOC_TYPE_MAP = {
@@ -127,219 +100,34 @@ GAIA_STATUS_MAP = {
     "Code 5": "Rechazado",
 }
 
-# PO (primeros 5 chars) → Cliente
-PO_CLIENT_MAP = {
-    '10004': 'TECHNIP/CLIENTE285',
-    '10121': 'OMEGA', '10150': 'CLIENTE166',
-    '10160': 'CLIENTE67', '10230': 'SIGMA',
-    '10318': 'RAS CLIENTE291', '10330': 'NEW PTA COMPLEX',
-    '10370': 'DELTA 3', '10380': 'OMEGA',
-    '10400': 'OMEGA CLIENTE72', '10430': 'DELTA 4',
-    '23222': 'CQP', '23262': 'Certificado',
-    '33138': 'OMEGA', '70150': 'CLIENTE265',
-    '70215': 'CFE CLIENTE190', '70225': 'CLIENTE41 CLIENTE315',
-    '70230': 'CLIENTE41 CLIENTE126 CLIENTE210', '70240': 'CLIENTE41 SAN LUIS',
-    '80057': 'BU CLIENTE131', '80091': 'CLIENTE287 CLIENTE93',
-    '19085': 'ATLAS/CLIENTE287', '30011': 'REFINERIA DEL NORTE',
-    '75001': 'OMEGA', '60001': 'ATLAS WOOD',
-    '70112': 'ATLAS SAN CLIENTE243', '70801': 'ATLAS',
-    '15282': 'CLIENTE24', 'T.206': 'ATLAS CLIENTE221',
-    'BP-T2': 'CLIENTE53', 'EP24I': 'KAPPA/KAPPA',
-    '49000': 'CLIENTE163/ACME', 'PO 15': 'CLIENTE24',
-    'Q3710': 'CLIENTE154 INDUSTRIAL', 'RFQ 1': 'BU CLIENTE131',
-    '70292': 'CLIENTE175', 'APEIS': 'CLIENTE171',
-    '30012': 'REFINERIA DEL NORTE',
-    'EC24T': 'KAPPA/KAPPA', '10735': 'CLIENTE280',
-    '70700': 'ATLAS/WOOD', 'JUS&I': 'ACME/HYUNDAI',
-    '70113': 'ATLAS', '10620': 'DELTABOP/TR',
-    'ADI-2': 'TECHNIP/CLIENTE285', '10431': 'DELTAEPC4/TR',
-    'PO P7': 'TECHNIP/ATLAS', '12574': 'CLIENTE13',
-    '23000': 'TECHNIP/CLIENTE121',
-    '45077': 'ACME PORTAL', '45000': 'AYESA/ATLAS',
-    '30015': 'REFINERIA DEL NORTE', '19162': 'CLIENTE320/ACME',
-    '48550': 'CLIENTE320/ACME', '20175': 'TECHNIP/ATLAS',
-    'QR-DD': 'CLIENTE24/WOOD', 'RFPP-': 'CLIENTE140/ATLAS',
-    '10120': 'TR/OMEGA', 'CLIENTE273': 'CLIENTE273/CLIENTE89',
-    '41650': 'CLIENTE273/CLIENTE89', 'P-P0C': 'SACYR/ATLAS',
-    'SEG/B': 'CLIENTE269/ACME', 'SEG /': 'CLIENTE269/ACME',
-    '10002': 'ACME/NORTE', '45124': 'OMEGA/CLIENTE324',
-    'O-23/': 'CLIENTE268/CLIENTE324', 'O-24/': 'SENER/CLIENTE125',
-    'GAT22': 'SENER/CLIENTE125', '45126': 'OMEGA/CLIENTE324',
-    'POPRI': 'ATLAS', '06000': 'ATLAS', '5040-': 'CLIENTE187',
-    'PO 45': 'ACME', 'E2404': 'CLIENTE262', '5061-': 'CLIENTE187',
-    '60002': 'ATLAS', 'TR-19': 'ATLAS', '19128': 'ATLAS',
-    'D2632': 'ATLAS', '44000': 'CLIENTE217',
-    'PE-47': 'CLIENTE295', '45131': 'CLIENTE325/CLIENTE121', 'EC25T': 'KAPPA/KAPPA',
-    '45032': 'CLIENTE323', '46000': 'CLIENTE163', '30013': 'BP/TECHNIP',
-    '19116': 'BP OIL',
-    '2201B': 'ACONEX',
-}
+# PO (primeros 5 digitos) -> cliente o proyecto
+PO_CLIENT_MAP = organizacion.clientes
 
-# Emails de responsables
-_EMAIL_LB = 'persona@tuempresa.com'
-_EMAIL_AC = 'persona@tuempresa.com'
-_EMAIL_SS = 'persona@tuempresa.com'  # una comercial (ex-trabajadora) → sus proyectos pasaron a Luis Bravo
-_EMAIL_JV = 'persona@tuempresa.com'
-_EMAIL_CCH = 'persona@tuempresa.com'
-
-# Nº Pedido → email del responsable, para los pedidos que el ERP no resuelve.
+# N Pedido -> email del responsable, para los pedidos que el ERP no resuelve.
 # La fuente principal es el comercial del ERP (ver `get_responsable_email`);
 # esto queda como respaldo para pedidos antiguos y para cuando el comercial es
 # alguien de quien no tenemos email.
-RESPONSABLE_PEDIDO_MAP = {
-    'P-26/101': _EMAIL_LB,
-    'P-26/102': _EMAIL_LB, 'P-26/103': _EMAIL_LB, 'P-26/104': _EMAIL_AC, 'P-26/105': _EMAIL_AC,
-    'P-26/106': _EMAIL_AC, 'P-26/107': _EMAIL_LB, 'P-26/108': _EMAIL_LB, 'P-26/109': _EMAIL_AC,
-    'P-26/110': _EMAIL_LB, 'P-26/111': _EMAIL_AC, 'P-26/112': _EMAIL_LB, 'P-26/113': _EMAIL_AC,
-    'P-26/114': _EMAIL_LB, 'P-26/115': _EMAIL_AC, 'P-26/116': _EMAIL_LB, 'P-26/117': _EMAIL_LB,
-    'P-26/118': _EMAIL_AC, 'P-26/119': _EMAIL_AC, 'P-26/120': _EMAIL_AC, 'P-26/121': _EMAIL_LB,
-    'P-26/122': _EMAIL_AC, 'P-26/123': _EMAIL_AC, 'P-26/124': _EMAIL_AC, 'P-26/125': _EMAIL_AC,
-    'P-26/126': _EMAIL_LB, 'P-26/127': _EMAIL_LB, 'P-26/128': _EMAIL_LB, 'P-26/129': _EMAIL_AC,
-    'P-26/130': _EMAIL_LB, 'P-26/131': _EMAIL_LB, 'P-26/132': _EMAIL_AC, 'P-26/133': _EMAIL_AC,
-    'P-26/134': _EMAIL_LB, 'P-26/135': _EMAIL_LB, 'P-26/136': _EMAIL_AC, 'P-26/137': _EMAIL_AC,
-    'P-26/138': _EMAIL_LB, 'P-26/139': _EMAIL_AC, 'P-26/140': _EMAIL_AC, 'P-26/141': _EMAIL_LB,
-    'P-26/142': _EMAIL_LB, 'P-26/143': _EMAIL_AC, 'P-26/144': _EMAIL_AC, 'P-26/145': _EMAIL_AC,
-    'P-26/146': _EMAIL_AC, 'P-26/147': _EMAIL_AC, 'P-26/148': _EMAIL_SS, 'P-26/149': _EMAIL_LB,
-    'P-26/150': _EMAIL_LB, 'P-26/151': _EMAIL_LB, 'P-26/152': _EMAIL_AC, 'P-26/153': _EMAIL_AC,
-    'P-26/154': _EMAIL_SS, 'P-26/155': _EMAIL_SS, 'P-26/156': _EMAIL_AC, 'P-26/157': _EMAIL_AC,
-    'P-26/158': _EMAIL_AC, 'P-26/159': _EMAIL_AC, 'P-26/160': _EMAIL_AC, 'P-26/161': _EMAIL_AC,
-    'P-26/162': _EMAIL_LB, 'P-26/163': _EMAIL_SS, 'P-26/164': _EMAIL_SS, 'P-26/165': _EMAIL_LB,
-    'P-26/166': _EMAIL_AC, 'P-26/167': _EMAIL_AC, 'P-26/168': _EMAIL_AC, 'P-26/169': _EMAIL_AC,
-    'P-26/170': _EMAIL_AC, 'P-26/171': _EMAIL_SS, 'P-26/172': _EMAIL_AC, 'P-26/173': _EMAIL_LB,
-    'P-26/174': _EMAIL_AC, 'P-26/175': _EMAIL_LB, 'P-26/176': _EMAIL_SS, 'P-26/177': _EMAIL_LB,
-    'P-26/178': _EMAIL_AC, 'P-26/179': _EMAIL_AC, 'P-26/180': _EMAIL_AC, 'P-26/181': _EMAIL_SS,
-    'P-26/182': _EMAIL_AC, 'P-26/183': _EMAIL_LB, 'P-26/184': _EMAIL_AC, 'P-26/185': _EMAIL_LB,
-    'P-26/186': _EMAIL_LB, 'P-26/187': _EMAIL_LB, 'P-26/188': _EMAIL_LB, 'P-26/189': _EMAIL_LB,
-    'P-26/190': _EMAIL_LB, 'P-26/191': _EMAIL_LB, 'P-26/192': _EMAIL_LB, 'P-26/193': _EMAIL_LB,
-    'P-26/194': _EMAIL_LB, 'P-26/195': _EMAIL_LB, 'P-26/196': _EMAIL_LB, 'P-26/197': _EMAIL_LB,
-    'P-26/198': _EMAIL_LB, 'P-26/199': _EMAIL_LB, 'P-26/200': _EMAIL_LB, 'P-26/201': _EMAIL_LB,
-    'P-26/202': _EMAIL_LB, 'P-26/203': _EMAIL_LB, 'P-26/204': _EMAIL_LB, 'P-26/205': _EMAIL_LB,
-    'P-26/206': _EMAIL_LB,
-    'P-26/207': _EMAIL_LB, 'P-26/208': _EMAIL_LB, 'P-26/209': _EMAIL_LB, 'P-26/210': _EMAIL_AC,
-    'P-26/211': _EMAIL_AC, 'P-26/212': _EMAIL_AC, 'P-26/213': _EMAIL_LB, 'P-26/214': _EMAIL_AC,
-    'P-26/215': _EMAIL_AC, 'P-26/216': _EMAIL_AC, 'P-26/217': _EMAIL_SS, 'P-26/218': _EMAIL_AC,
-    'P-26/219': _EMAIL_LB, 'P-26/220': _EMAIL_SS, 'P-26/221': _EMAIL_AC, 'P-26/222': _EMAIL_AC,
-    'P-26/223': _EMAIL_SS, 'P-26/224': _EMAIL_AC, 'P-26/225': _EMAIL_LB, 'P-26/226': _EMAIL_AC,
-    'P-26/227': _EMAIL_LB, 'P-26/228': _EMAIL_LB, 'P-26/229': _EMAIL_AC, 'P-26/230': _EMAIL_LB,
-    'P-26/231': _EMAIL_LB, 'P-26/232': _EMAIL_SS, 'P-26/414': _EMAIL_LB, 'P-26/234': _EMAIL_LB,
-    'P-26/235': _EMAIL_LB, 'P-26/236': _EMAIL_LB, 'P-26/237': _EMAIL_AC, 'P-26/238': _EMAIL_AC,
-    'P-26/239': _EMAIL_AC, 'P-26/240': _EMAIL_SS, 'P-26/241': _EMAIL_AC, 'P-26/242': _EMAIL_AC,
-    'P-26/412': _EMAIL_LB, 'P-26/244': _EMAIL_LB, 'P-26/245': _EMAIL_LB, 'P-26/246': _EMAIL_AC,
-    'P-26/247': _EMAIL_AC, 'P-26/248': _EMAIL_LB, 'P-26/249': _EMAIL_LB, 'P-26/250': _EMAIL_LB,
-    'P-26/251': _EMAIL_AC, 'P-26/252': _EMAIL_SS, 'P-26/253': _EMAIL_AC, 'P-26/254': _EMAIL_SS,
-    'P-26/255': _EMAIL_LB, 'P-26/256': _EMAIL_LB, 'P-26/257': _EMAIL_AC, 'P-26/258': _EMAIL_AC,
-    'P-26/259': _EMAIL_AC, 'P-26/260': _EMAIL_AC, 'P-26/261': _EMAIL_AC, 'P-26/262': _EMAIL_SS,
-    'P-26/263': _EMAIL_LB, 'P-26/264': _EMAIL_AC, 'P-26/265': _EMAIL_LB, 'P-26/266': _EMAIL_AC,
-    'P-26/267': _EMAIL_LB, 'P-26/268': _EMAIL_AC, 'P-26/269': _EMAIL_AC, 'P-26/270': _EMAIL_AC,
-    'P-26/271': _EMAIL_AC, 'P-26/272': _EMAIL_AC, 'P-26/273': _EMAIL_AC, 'P-26/274': _EMAIL_AC,
-    'P-26/275': _EMAIL_AC, 'P-26/276': _EMAIL_AC, 'P-26/277': _EMAIL_AC, 'P-26/278': _EMAIL_LB,
-    'P-26/279': _EMAIL_AC, 'P-26/280': _EMAIL_SS, 'P-26/281': _EMAIL_LB, 'P-26/282': _EMAIL_LB,
-    'P-26/283': _EMAIL_AC, 'P-26/284': _EMAIL_AC, 'P-26/285': _EMAIL_LB, 'P-26/286': _EMAIL_AC,
-    'P-26/287': _EMAIL_AC, 'P-26/288': _EMAIL_AC, 'P-26/289': _EMAIL_AC, 'P-26/290': _EMAIL_AC,
-    'P-26/291': _EMAIL_AC, 'P-26/292': _EMAIL_AC, 'P-26/011': _EMAIL_AC, 'P-26/294': _EMAIL_AC,
-    'P-26/295': _EMAIL_SS, 'P-26/296': _EMAIL_AC, 'P-26/297': _EMAIL_AC, 'P-26/298': _EMAIL_LB,
-    'P-26/299': _EMAIL_AC, 'P-26/300': _EMAIL_LB, 'P-26/301': _EMAIL_AC, 'P-26/302': _EMAIL_AC,
-    'P-26/303': _EMAIL_AC, 'P-26/304': _EMAIL_LB, 'P-26/305': _EMAIL_LB, 'P-26/306': _EMAIL_AC,
-    'P-26/307': _EMAIL_AC, 'P-26/308': _EMAIL_AC, 'P-26/309': _EMAIL_LB, 'P-26/310': _EMAIL_AC,
-    'P-26/311': _EMAIL_SS,
-    'P-26/312': _EMAIL_LB, 'P-26/313': _EMAIL_LB, 'P-26/314': _EMAIL_LB,
-    'P-26/315': _EMAIL_AC, 'P-26/316': _EMAIL_AC, 'P-26/012': _EMAIL_AC, 'P-26/318': _EMAIL_AC,
-    'P-26/319': _EMAIL_AC, 'P-26/320': _EMAIL_AC, 'P-26/321': _EMAIL_AC, 'P-26/322': _EMAIL_AC,
-    'P-26/323': _EMAIL_SS, 'P-26/324': _EMAIL_AC, 'P-26/325': _EMAIL_AC, 'P-26/326': _EMAIL_SS,
-    'P-26/327': _EMAIL_AC, 'P-26/328': _EMAIL_AC, 'P-26/329': _EMAIL_AC, 'P-26/330': _EMAIL_AC,
-    'P-26/331': _EMAIL_AC, 'P-26/332': _EMAIL_AC, 'P-26/333': _EMAIL_AC, 'P-26/013': _EMAIL_AC,
-    'P-26/335': _EMAIL_AC, 'P-26/336': _EMAIL_AC, 'P-26/337': _EMAIL_AC, 'P-26/338': _EMAIL_AC,
-    'P-26/339': _EMAIL_AC, 'P-26/340': _EMAIL_AC, 'P-26/341': _EMAIL_AC, 'P-26/342': _EMAIL_AC,
-    'P-26/343': _EMAIL_AC, 'P-26/344': _EMAIL_AC, 'P-26/345': _EMAIL_AC, 'P-26/346': _EMAIL_AC,
-    'P-26/347': _EMAIL_AC, 'P-26/348': _EMAIL_AC, 'P-26/349': _EMAIL_AC, 'P-26/350': _EMAIL_AC,
-    'P-26/351': _EMAIL_AC, 'P-26/352': _EMAIL_AC, 'P-26/353': _EMAIL_AC, 'P-26/354': _EMAIL_AC,
-    'P-26/014': _EMAIL_AC, 'P-26/356': _EMAIL_AC, 'P-26/357': _EMAIL_AC, 'P-26/358': _EMAIL_AC,
-    'P-26/359': _EMAIL_AC, 'P-26/360': _EMAIL_AC, 'P-26/015': _EMAIL_AC, 'P-26/362': _EMAIL_AC,
-    'P-26/363': _EMAIL_AC, 'P-26/364': _EMAIL_AC, 'P-26/010': _EMAIL_AC, 'P-26/366': _EMAIL_AC,
-    'P-26/367': _EMAIL_AC, 'P-26/368': _EMAIL_AC, 'P-26/016': _EMAIL_AC, 'P-26/370': _EMAIL_AC,
-    'P-26/017': _EMAIL_AC, 'P-26/372': _EMAIL_AC, 'P-26/373': _EMAIL_AC, 'P-26/374': _EMAIL_AC,
-    'P-26/375': _EMAIL_AC, 'P-26/376': _EMAIL_AC, 'P-26/001': _EMAIL_LB, 'P-26/378': _EMAIL_AC,
-    'P-26/379': _EMAIL_AC, 'P-26/380': _EMAIL_LB, 'P-26/002': _EMAIL_LB, 'P-26/382': _EMAIL_AC,
-    'P-26/383': _EMAIL_AC, 'P-26/009': _EMAIL_AC, 'P-26/385': _EMAIL_AC, 'P-26/386': _EMAIL_AC,
-    'P-26/387': _EMAIL_AC, 'P-26/388': _EMAIL_AC, 'P-26/389': _EMAIL_AC, 'P-26/390': _EMAIL_SS,
-    'P-26/391': _EMAIL_SS, 'P-26/392': _EMAIL_AC, 'P-26/393': _EMAIL_AC, 'P-26/394': _EMAIL_AC,
-    'P-26/395': _EMAIL_AC, 'P-26/396': _EMAIL_LB, 'P-26/397': _EMAIL_CCH, 'P-26/024': _EMAIL_AC,
-    'P-26/399': _EMAIL_AC, 'P-26/400': _EMAIL_AC, 'P-26/401': _EMAIL_AC, 'P-26/008': _EMAIL_AC,
-    'P-26/403': _EMAIL_SS, 'P-26/404': _EMAIL_LB, 'P-26/026': _EMAIL_LB, 'P-26/406': _EMAIL_AC,
-    'P-26/407': _EMAIL_CCH, 'P-26/408': _EMAIL_AC, 'P-26/409': _EMAIL_CCH, 'P-26/410': _EMAIL_CCH,
-    'P-26/411': _EMAIL_SS,
-    'P-26/412': _EMAIL_AC, 'P-26/413': _EMAIL_AC, 'P-26/414': _EMAIL_SS,
-    'P-26/415': _EMAIL_AC, 'P-26/416': _EMAIL_SS, 'P-26/417': _EMAIL_CCH, 'P-26/418': _EMAIL_SS,
-    'P-26/419': _EMAIL_AC, 'P-26/018': _EMAIL_AC, 'P-26/421': _EMAIL_AC, 'P-26/422': _EMAIL_AC,
-    'P-26/423': _EMAIL_AC, 'P-26/424': _EMAIL_AC, 'P-26/425': _EMAIL_AC, 'P-26/426': _EMAIL_SS,
-    'P-26/427': _EMAIL_AC, 'P-26/415': _EMAIL_AC, 'P-26/429': _EMAIL_AC, 'P-26/430': _EMAIL_CCH,
-    'P-26/431': _EMAIL_AC, 'P-26/432': _EMAIL_AC, 'P-26/433': _EMAIL_AC, 'P-26/413': _EMAIL_SS,
-    'P-26/435': _EMAIL_SS, 'P-26/436': _EMAIL_AC, 'P-26/437': _EMAIL_LB, 'P-26/438': _EMAIL_LB,
-    'P-26/439': _EMAIL_LB, 'P-26/440': _EMAIL_AC, 'P-26/441': _EMAIL_SS, 'P-26/442': _EMAIL_SS,
-    'P-26/443': _EMAIL_AC, 'P-26/444': _EMAIL_AC, 'P-26/445': _EMAIL_CCH, 'P-26/446': _EMAIL_CCH,
-    'P-26/447': _EMAIL_LB, 'P-26/019': _EMAIL_AC, 'P-26/449': _EMAIL_AC, 'P-26/450': _EMAIL_AC,
-    'P-26/451': _EMAIL_SS, 'P-26/452': _EMAIL_AC, 'P-26/453': _EMAIL_AC, 'P-26/454': _EMAIL_SS,
-    'P-26/455': _EMAIL_SS, 'P-26/456': _EMAIL_LB, 'P-26/457': _EMAIL_LB, 'P-26/458': _EMAIL_AC,
-    'P-26/459': _EMAIL_CCH, 'P-26/460': _EMAIL_CCH, 'P-26/461': _EMAIL_LB, 'P-26/462': _EMAIL_AC,
-    'P-26/463': _EMAIL_SS, 'P-26/464': _EMAIL_AC, 'P-26/465': _EMAIL_LB, 'P-26/466': _EMAIL_AC,
-    'P-26/467': _EMAIL_AC, 'P-26/468': _EMAIL_AC, 'P-26/469': _EMAIL_AC, 'P-26/470': _EMAIL_LB,
-    'P-26/471': _EMAIL_AC, 'P-26/472': _EMAIL_AC, 'P-26/473': _EMAIL_AC, 'P-26/474': _EMAIL_LB,
-    'P-26/475': _EMAIL_AC, 'P-26/476': _EMAIL_AC, 'P-26/477': _EMAIL_CCH, 'P-26/478': _EMAIL_AC,
-    'P-26/479': _EMAIL_SS, 'P-26/480': _EMAIL_AC, 'P-26/481': _EMAIL_CCH, 'P-26/482': _EMAIL_AC,
-    'P-26/483': _EMAIL_SS, 'P-26/484': _EMAIL_AC, 'P-26/485': _EMAIL_CCH,
-    # El mapa se queda aquí a propósito. De P-25/075 en adelante lo que había
-    # era relleno: una serie mecánica que se repetía cada cuatro pedidos
-    # (AC, SS, AC, CCH) hasta P-25/099 —pedidos que ni siquiera existen, el
-    # último P-25 real es el /074— y otra igual (LB, AC, CCH, AC) para todo
-    # P-26/001..036. De ahí en adelante manda el comercial del ERP, que es
-    # dato de verdad; ver `get_responsable_email`.
-}
+RESPONSABLE_PEDIDO_MAP = organizacion.pedidos
+# Email -> iniciales para la columna Responsable
+EMAIL_TO_INITIALS = organizacion.iniciales
 
-# Email → iniciales para columna Responsable
-EMAIL_TO_INITIALS = {
-    'persona@tuempresa.com': 'LB',
-    'persona@tuempresa.com': 'AC',
-    'persona@tuempresa.com': 'CCH',
-    'persona@tuempresa.com': 'JV',
-    'persona@tuempresa.com': 'LM',
-    'persona@tuempresa.com': 'ECI',
-}
-
-# Iniciales del comercial en el ERP (users_data.initials) → email.
+# Reasignaciones que el ERP no puede saber (alguien que se fue y cuyos pedidos
+# lleva otro). Esta SI manda sobre lo que diga el ERP.
+ERP_INITIALS_OVERRIDE = organizacion.reasignados
+# Iniciales del comercial EN EL ERP -> email, por si el ERP no contesta.
 #
-# El email lo da el propio ERP (users_data.registration), así que un comercial
-# nuevo funciona sin tocar nada. OJO: NO son las iniciales que usa EIPSA para el
-# equipo. En el ERP «JM» es un comercial (usuario julian.martinez), no Jesús
-# Martínez; y «ECI» es Ernesto Carrillo, que como responsable de documento
-# aparece como «EC». Por eso nunca se traducen por parecido.
-#
-# Quien está de baja en el ERP no recibe correo. Aquí van solo las reasignaciones
-# que el ERP no puede saber:
-ERP_INITIALS_OVERRIDE = {
-    'SS': _EMAIL_SS,   # una comercial se fue; sus pedidos los lleva Luis Bravo
-}
+# El email lo da el propio ERP (users_data.registration), asi que un comercial
+# nuevo funciona sin tocar nada; esto es solo el respaldo, y las reasignaciones
+# que el ERP no puede saber (alguien que se fue y cuyos pedidos lleva otro).
+# OJO: NO son las iniciales que usa EIPSA para el equipo.
+ERP_INITIALS_EMAIL = organizacion.comerciales
 
-# Respaldo si el ERP no está disponible (la app funciona sin él).
-ERP_INITIALS_EMAIL = {
-    'AC': _EMAIL_AC,
-    'LB': _EMAIL_LB,
-    'CCH': _EMAIL_CCH,
-    'LM': 'persona@tuempresa.com',
-    'ECI': 'persona@tuempresa.com',
-    'JM': 'persona@tuempresa.com',   # un comercial, NO otro compañero
-    **ERP_INITIALS_OVERRIDE,
-}
+# Codigo de tipo de documento -> email del tecnico que va en CC
+DOC_TYPE_EMAIL_MAP = organizacion.tipos_correo
 
-# Doc type code → email CC responsable técnico
-DOC_TYPE_EMAIL_MAP = {
-    'CER': _EMAIL_JV, 'LIS': _EMAIL_JV, 'PRC': _EMAIL_JV,
-    'MAN': _EMAIL_JV, 'CAT': _EMAIL_JV, 'DOS': _EMAIL_JV,
-    'SPL': _EMAIL_JV, 'DD': _EMAIL_JV, 'SP': _EMAIL_JV,
-}
-
-# Destinatarios fijos
-DEFAULT_TO = ["persona@tuempresa.com"]
-DEFAULT_CC = ["persona@tuempresa.com", "persona@tuempresa.com"]
+# Destinatarios fijos de las reclamaciones (Ajustes > Organizacion)
+DEFAULT_TO = organizacion.correo_para
+DEFAULT_CC = organizacion.correo_cc
 
 
 # ═══════════════════════════════════════════════════════

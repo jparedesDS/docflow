@@ -14,6 +14,7 @@ import os
 from dotenv import load_dotenv
 
 from core import credentials
+from core import organizacion
 from core import preferences as _pref
 from core.paths import app_root, data_dir, state_dir
 
@@ -44,15 +45,18 @@ CONSULTA_ERP_PATH = os.getenv("CONSULTA_ERP_PATH") or str(data_dir() / "consulta
 # Los tags/equipos se leen del ERP (core.services.erp_tags), ya no de un Excel.
 
 # ── IMAP ──────────────────────────────────────────────────────────────────────
-IMAP_HOST = _cfg("imap_host", "IMAP_HOST", "imap.tuservidor.com")
+# Sin valores por defecto a propósito: el servidor y el buzón son de cada
+# instalación y se ponen en Ajustes ▸ Correo (o en el .env). El repositorio
+# es público y aquí no pinta nada el correo de nadie.
+IMAP_HOST = _cfg("imap_host", "IMAP_HOST", "")
 IMAP_PORT = int(_cfg("imap_port", "IMAP_PORT", "993"))
-IMAP_USER = _cfg("imap_user", "IMAP_USER", "buzon@tuempresa.com")
+IMAP_USER = _cfg("imap_user", "IMAP_USER", "")
 IMAP_PASS = credentials.get("imap_pass", env_fallback="IMAP_PASS")
 
 # ── SMTP ──────────────────────────────────────────────────────────────────────
-SMTP_HOST = _cfg("smtp_host", "SMTP_HOST", "smtp.tuservidor.com")
+SMTP_HOST = _cfg("smtp_host", "SMTP_HOST", "")
 SMTP_PORT = int(_cfg("smtp_port", "SMTP_PORT", "465"))
-SMTP_USER = _cfg("smtp_user", "SMTP_USER", "buzon@tuempresa.com")
+SMTP_USER = _cfg("smtp_user", "SMTP_USER", "")
 SMTP_PASS = credentials.get("smtp_pass", env_fallback="SMTP_PASS")
 
 # ── Anthropic (Claude) — para Bandeja AI y otros asistentes ───────────────────
@@ -61,11 +65,11 @@ ANTHROPIC_API_KEY = credentials.get("anthropic_api_key", env_fallback="ANTHROPIC
 # ── Buzones de Ofertas (unifica 3 bandejas comerciales) ───────────────────────
 # Usuarios: preferences/.env. Contraseñas: almacén de secretos (keyring/cifrado).
 OFERTAS_ACCOUNTS = [
-    {"label": "Comercial",       "user": _cfg("ofertas_comercial_user", "OFERTAS_COMERCIAL_USER", "persona@tuempresa.com"),
+    {"label": "Comercial",       "user": _cfg("ofertas_comercial_user", "OFERTAS_COMERCIAL_USER", ""),
      "password": credentials.get("ofertas_comercial_pass", env_fallback="OFERTAS_COMERCIAL_PASS")},
-    {"label": "Dpto. Comercial", "user": _cfg("ofertas_dpto_user", "OFERTAS_DPTO_USER", "persona@tuempresa.com"),
+    {"label": "Dpto. Comercial", "user": _cfg("ofertas_dpto_user", "OFERTAS_DPTO_USER", ""),
      "password": credentials.get("ofertas_dpto_pass", env_fallback="OFERTAS_DPTO_PASS")},
-    {"label": "Info",            "user": _cfg("ofertas_info_user", "OFERTAS_INFO_USER", "persona@tuempresa.com"),
+    {"label": "Info",            "user": _cfg("ofertas_info_user", "OFERTAS_INFO_USER", ""),
      "password": credentials.get("ofertas_info_pass", env_fallback="OFERTAS_INFO_PASS")},
 ]
 
@@ -96,29 +100,12 @@ SECRET_ENV_MAP = {
     "docusign_account_id": "DOCUSIGN_ACCOUNT_ID",
 }
 
-# ── Equipo EIPSA ──────────────────────────────────────────────────────────────
-USERS = {
-    "JP":  {"nombre": "el administrador",      "emails": ["buzon@tuempresa.com", "persona@tuempresa.com"]},
-    "AC":  {"nombre": "Ana Calvo",         "emails": ["persona@tuempresa.com"]},
-    "JM":  {"nombre": "Jesus Martinez",    "emails": ["persona@tuempresa.com"]},
-    "EC":  {"nombre": "Ernesto Carrillo",  "emails": ["persona@tuempresa.com"]},
-    "LB":  {"nombre": "Luis Bravo",        "emails": ["persona@tuempresa.com"]},
-    "SS":  {"nombre": "Santos Sanchez",    "emails": ["persona@tuempresa.com"]},
-    "JV":  {"nombre": "Jorge Valtierra",   "emails": ["persona@tuempresa.com"]},
-    "CCH": {"nombre": "Carlos Crespo",     "emails": ["persona@tuempresa.com"]},
-    "LM":  {"nombre": "Laura Minguez",     "emails": ["persona@tuempresa.com"]},
-    "DM":  {"nombre": "Daniel Marquez",    "emails": ["persona@tuempresa.com"]},
-    "MS":  {"nombre": "Miguel Sahuquillo", "emails": ["persona@tuempresa.com"]},
-    "ES":  {"nombre": "Enrique Serrano",   "emails": ["persona@tuempresa.com"]},
-    "JZ":  {"nombre": "Javier Zofio",      "emails": ["persona@tuempresa.com"]},
-    "JS":  {"nombre": "Jose A. Sanz",      "emails": ["persona@tuempresa.com"]},
-    "JUZ": {"nombre": "Julio Zofio",       "emails": ["persona@tuempresa.com"]},
-    "CZ":  {"nombre": "Carolina Zofio",    "emails": ["persona@tuempresa.com"]},
-    "ALM": {"nombre": "Almacen",           "emails": ["persona@tuempresa.com"]},
-    "MG":  {"nombre": "Mario Gil",         "emails": ["persona@tuempresa.com"]},
-    "JUM": {"nombre": "Julian Martinez",   "emails": ["persona@tuempresa.com"]},
-    "RM":  {"nombre": "Rosa Martin",       "emails": ["persona@tuempresa.com"]},
-}
+# ── Equipo ────────────────────────────────────────────────────────────────────
+# Quién es quién: iniciales → {nombre, emails}. No vive en el código —el
+# repositorio es público—, sino en state/organizacion.json, que se rellena desde
+# Ajustes ▸ Organización. Es el MISMO diccionario que `organizacion.equipo`: al
+# guardar se modifica en el sitio, así que quien importe USERS ve los cambios.
+USERS = organizacion.equipo
 
 
 def startup_warnings():

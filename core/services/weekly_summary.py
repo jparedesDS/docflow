@@ -663,13 +663,17 @@ def _team_avg_pct(docs: list) -> float:
 
 
 # Buzones compartidos: se evitan como destinatario de mensajes personales (un
-# DM de Teams debe ir a la cuenta personal, no al buzón de documentación).
-_SHARED_MAILBOXES = {"buzon@tuempresa.com"}
+# DM de Teams debe ir a la cuenta personal, no al buzón de documentación). El
+# buzón que lee la app es, por definición, compartido.
+def _shared_mailboxes() -> set[str]:
+    from core.config import IMAP_USER
+    return {c.lower().strip() for c in (IMAP_USER,) if c}
 
 
 def _user_email(initials: str) -> str | None:
     emails = USERS.get(initials, {}).get("emails") or []
-    personal = [e for e in emails if e.lower().strip() not in _SHARED_MAILBOXES]
+    compartidos = _shared_mailboxes()
+    personal = [e for e in emails if e.lower().strip() not in compartidos]
     if personal:
         return personal[0]
     return emails[0] if emails else None

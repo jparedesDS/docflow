@@ -5,9 +5,14 @@ los commits; aquí queda lo que cambió la forma de trabajar.
 
 ## Septiembre 2026
 
+- **Ni un dato de la empresa en el código**: equipo, clientes, libro de pedidos,
+  servidores y buzones salen del repositorio (que es público) a
+  `state/organizacion.json`, y se rellenan desde **Ajustes ▸ Organización**.
+  Una instalación nueva arranca en blanco y funciona igual.
 - **Devoluciones sin paquete**: los transmittals «for information» de Wood no
   traen enlace de descarga, pero la devolución existe: ahora se le abre su
-  carpeta `dev. <Tipo>ev<N> AP` y el correo queda dentro, como el resto.
+  carpeta `dev. <Tipo>
+ev<N> AP` y el correo queda dentro, como el resto.
 - **Documentos cerrados de un pedido**: botón «⤓ Comentados del cliente» en
   Pedidos (y `tools/finales_egesdoc.py` para la línea de comandos) que baja de
   eGesDoc el PDF comentado de todos los documentos en Final de un PO —los 345

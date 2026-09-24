@@ -7,8 +7,8 @@ desde `public.orders` ⨝ `public.offers` ⨝ `users_data.initials`. **Nunca esc
 en el ERP.**
 
 Conexión (sin credenciales en el código):
-  · host      → preferencia ``erp_db_host`` (default ``127.0.0.1``; el host del
-                database.ini antiguo, 127.0.0.1, está muerto).
+  · host      → preferencia ``erp_db_host`` (default ``127.0.0.1``: el ERP corre
+                en la misma máquina; el host que traía su database.ini está muerto).
   · database/user → preferencias ``erp_db_name`` / ``erp_db_user`` o el
                 ``database.ini`` del ERP.
   · password  → almacén de secretos (``erp_db_pass``) → ``database.ini``.

@@ -52,6 +52,12 @@ vuelo, ya no hay nada que pintar y el resultado se descarta en silencio.
   (`plantilla_docx.py`, `plantilla_xlsx.py`, `formulario_docx.py`).
 - **Las contraseñas no viven en el código ni en las preferencias.** Van al
   llavero de Windows o al almacén cifrado local.
+- **Los datos de la empresa tampoco viven en el código.** El repositorio es
+  público: el equipo, los clientes, el libro de pedidos y lo que manda cada
+  portal están en `state/organizacion.json` (ignorado por git) y se editan en
+  *Ajustes ▸ Organización*. `core/organizacion.py` los carga al arrancar y los
+  **modifica en el sitio** al guardar, porque media app importa esas tablas por
+  referencia (`from core.config import USERS`).
 - **El correo del cliente se lee sin marcarlo.** Los buzones ajenos se abren en
   modo examen y se descarga el cuerpo sin tocar el estado de leído.
 
@@ -71,7 +77,8 @@ vuelo, ya no hay nada que pintar y el resultado se descarta en silencio.
 Hay devoluciones que llegan **sin paquete**: Wood avisa de documentos
 «2I - FOR INFORMATION ONLY» y el correo no trae enlace de descarga. No hay PDF
 que repartir, pero la devolución existe igual, así que se le abre su carpeta
-`dev. <Tipo>ev<N> AP` y dentro queda el correo (`archive_email_only`). Es lo
+`dev. <Tipo>
+ev<N> AP` y dentro queda el correo (`archive_email_only`). Es lo
 que se hacía a mano, y sin ello el rastro se quedaba solo en «00 TRANS Y RES».
 
 ## Las carpetas de revisión

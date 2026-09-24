@@ -2,8 +2,10 @@
 
 Diseño:
 - Hash con PBKDF2-SHA256 (stdlib, sin dependencias C).
-- Seed automático: al primer arranque crea un user por cada entrada de USERS
-  (config.py) con password por defecto "Aa123456" y must_change_password=True.
+- Seed automático: al primer arranque crea la cuenta del administrador con la
+  contraseña por defecto y must_change_password=True, así que la primera
+  entrada obliga a cambiarla. Los datos de la persona (nombre y correo) salen
+  de Ajustes ▸ Organización, no del código.
 - Sesión NO persistente: el caller mantiene `current_user` en memoria; al
   cerrar la app se pierde y hay que volver a hacer login.
 - Todos los usuarios del config son Document Controllers válidos.
@@ -101,7 +103,7 @@ def _seed_if_empty() -> None:
     data = _load()
 
     if not data["users"]:
-        info = USERS.get("JP", {"nombre": "el administrador", "emails": ["buzon@tuempresa.com"]})
+        info = USERS.get("JP") or {"nombre": "JP", "emails": []}
         data["users"] = [_build_seed_user("JP", info, is_admin=True,
                                           permisos=_all_perms("gestionar"))]
         _save(data)
@@ -110,7 +112,7 @@ def _seed_if_empty() -> None:
 
     changed = False
     if not any(u.get("initials", "").upper() == "JP" for u in data["users"]):
-        info = USERS.get("JP", {"nombre": "el administrador", "emails": ["buzon@tuempresa.com"]})
+        info = USERS.get("JP") or {"nombre": "JP", "emails": []}
         data["users"].append(_build_seed_user("JP", info, is_admin=True,
                                               permisos=_all_perms("gestionar")))
         changed = True
