@@ -279,7 +279,10 @@ class PillTable(ctk.CTkFrame):
                 self.after_cancel(self._recorte_pendiente)
             except Exception:  # noqa: BLE001
                 pass
-        self._recorte_pendiente = self.after(80, self._recortar_todo)
+        try:
+            self._recorte_pendiente = self.after(80, self._recortar_todo)
+        except tk.TclError:          # la ventana se está cerrando
+            self._recorte_pendiente = None
 
     # ── Interacción ─────────────────────────────────────────────────────────
 

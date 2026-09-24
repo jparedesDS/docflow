@@ -485,18 +485,16 @@ class PreviewWindow(ctk.CTkToplevel):
     def _set_estado(self, row_id: str, nuevo_estado: str) -> None:
         if not self.docs_table or not self._estado_col_id:
             return
-        tree = self.docs_table.tree
         col_idx = int(self._estado_col_id.lstrip("#")) - 1
-        values = list(tree.item(row_id, "values"))
+        values = list(self.docs_table.row_values(row_id))
         if col_idx >= len(values):
             return
         values[col_idx] = nuevo_estado
-        tree.item(row_id, values=values)
 
         # Marcar como editado y aplicar tag de color por nuevo estado
         new_tag = _status_tag(nuevo_estado)
         tags = ("status_edited", new_tag) if new_tag else ("status_edited",)
-        tree.item(row_id, tags=tags)
+        self.docs_table.set_values(row_id, values, tags=tags)
 
         self._status_overrides[row_id] = nuevo_estado
         self._refresh_overrides_status()
@@ -512,15 +510,13 @@ class PreviewWindow(ctk.CTkToplevel):
             return
         if not self.docs_table or not self._estado_col_id:
             return
-        tree = self.docs_table.tree
         col_idx = int(self._estado_col_id.lstrip("#")) - 1
-        values = list(tree.item(row_id, "values"))
-        if col_idx < len(values):
-            values[col_idx] = str(original_estado)
-            tree.item(row_id, values=values)
+        values = list(self.docs_table.row_values(row_id))
         # Quitar tag de editado, restaurar tag por estado original
         orig_tag = _status_tag(original_estado)
-        tree.item(row_id, tags=(orig_tag,) if orig_tag else ())
+        if col_idx < len(values):
+            values[col_idx] = str(original_estado)
+        self.docs_table.set_values(row_id, values, tags=(orig_tag,) if orig_tag else ())
         del self._status_overrides[row_id]
         self._refresh_overrides_status()
 

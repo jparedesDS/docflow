@@ -318,6 +318,20 @@ class DataTable(ctk.CTkFrame):
         self._valores[new_iid] = tuple(values)
         return new_iid
 
+    def set_values(self, iid: str, values, tags: tuple | None = None) -> None:
+        """Cambia los valores de una fila ya pintada.
+
+        Las vistas que marcan una casilla o corrigen un estado tienen que pasar
+        por aquí: si escriben directamente en el árbol, lo que dejan es el texto
+        recortado y el siguiente ajuste de anchos lo sobrescribe con el valor
+        original, borrando el cambio.
+        """
+        self._valores[iid] = tuple(values)
+        self.tree.item(iid, values=list(values))
+        if tags is not None:
+            self.tree.item(iid, tags=tags)
+        self._recortar_fila(iid, *self._medidas())
+
     def set_columns_width(self, widths: dict[str, int]) -> None:
         for col, w in widths.items():
             if col in self._columns:
@@ -412,26 +426,38 @@ class DataTable(ctk.CTkFrame):
         quedaba en «eGesdoc - New transmittal registered (10001-TRXXX-V-1». El
         valor completo se conserva en `_valores` para copiar y para medir.
         """
+        anchos, fuente = self._medidas()
+        if fuente is None:
+            return
+        for iid in self.tree.get_children():
+            self._recortar_fila(iid, anchos, fuente)
+
+    def _medidas(self):
+        """Ancho útil de cada columna y con qué fuente se mide."""
         import tkinter.font as tkfont
 
         try:
             fuente = tkfont.Font(font=theme.FONT_BODY)
-        except Exception:  # noqa: BLE001 — sin medidor, se deja como está
-            return
+        except Exception:  # noqa: BLE001 — sin medidor, no se recorta
+            return {}, None
         anchos = {}
         for col in self._columns:
             try:
                 anchos[col] = int(self.tree.column(col, "width")) - 16
             except Exception:  # noqa: BLE001
                 anchos[col] = 0
-        for iid in self.tree.get_children():
-            completos = self._valores.get(iid)
-            if not completos:
-                continue
-            recortados = [self._recortar(str(v), anchos.get(c, 0), fuente)
-                          for c, v in zip(self._columns, completos)]
-            if list(self.tree.item(iid, "values")) != recortados:
-                self.tree.item(iid, values=recortados)
+        return anchos, fuente
+
+    def _recortar_fila(self, iid: str, anchos: dict, fuente) -> None:
+        completos = self._valores.get(iid)
+        # Si la fila no trae un valor por columna, no se toca: reescribirla
+        # con zip() dejaría fuera los que sobran.
+        if fuente is None or not completos or len(completos) != len(self._columns):
+            return
+        recortados = [self._recortar(str(v), anchos.get(c, 0), fuente)
+                      for c, v in zip(self._columns, completos)]
+        if list(self.tree.item(iid, "values")) != recortados:
+            self.tree.item(iid, values=recortados)
 
     def _pedir_recorte(self, _e=None) -> None:
         """Agrupa los recortes: redimensionar dispara decenas de eventos."""
@@ -440,7 +466,10 @@ class DataTable(ctk.CTkFrame):
                 self.after_cancel(self._recorte_pendiente)
             except Exception:  # noqa: BLE001
                 pass
-        self._recorte_pendiente = self.after(80, self._recorte_diferido)
+        try:
+            self._recorte_pendiente = self.after(80, self._recorte_diferido)
+        except tk.TclError:          # la ventana se está cerrando
+            self._recorte_pendiente = None
 
     def _recorte_diferido(self) -> None:
         self._recorte_pendiente = None

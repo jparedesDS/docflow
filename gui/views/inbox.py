@@ -342,9 +342,9 @@ class InboxView(ctk.CTkFrame):
                 break
         # Refrescar fila en la tabla
         try:
-            values = list(self.table.tree.item(uid, "values"))
+            values = list(self.table.row_values(uid))
             values[0] = "" if is_read else "●"
-            self.table.tree.item(uid, values=values, tags=("read" if is_read else "unread",))
+            self.table.set_values(uid, values, tags=("read" if is_read else "unread",))
         except Exception:
             pass
         unread = sum(1 for e in self._emails if not e.get("is_read"))

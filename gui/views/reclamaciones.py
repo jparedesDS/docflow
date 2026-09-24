@@ -719,9 +719,9 @@ class ReclamacionPreview(ctk.CTkToplevel):
         row_id = tree.identify_row(event.y)
         if region != "cell" or col != "#1" or not row_id:
             return None
-        values = list(tree.item(row_id, "values"))
+        values = list(self.docs_table.row_values(row_id))
         values[0] = "☐" if values[0] == "☑" else "☑"
-        tree.item(row_id, values=values)
+        self.docs_table.set_values(row_id, values)
         self._update_doc_counter()
         return "break"
 
@@ -731,9 +731,9 @@ class ReclamacionPreview(ctk.CTkToplevel):
         tree = self.docs_table.tree
         char = "☑" if included else "☐"
         for iid in tree.get_children():
-            values = list(tree.item(iid, "values"))
+            values = list(self.docs_table.row_values(iid))
             values[0] = char
-            tree.item(iid, values=values)
+            self.docs_table.set_values(iid, values)
         self._update_doc_counter()
 
     def _get_included_codes(self) -> list[str]:
@@ -741,7 +741,7 @@ class ReclamacionPreview(ctk.CTkToplevel):
             return []
         out = []
         for iid in self.docs_table.tree.get_children():
-            values = self.docs_table.tree.item(iid, "values")
+            values = self.docs_table.row_values(iid)
             # values[1] = "EIPSA Doc." (el código real; el iid es sintético "dN")
             if values and values[0] == "☑":
                 out.append(values[1])
