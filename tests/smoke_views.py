@@ -73,6 +73,13 @@ VISTAS = [
     ("ajustes", "gui.views.ajustes", "AjustesView", {"on_restart": noop}),
 ]
 
+# Diálogos que viven aparte de su vista y que nadie construiría en el recorrido
+# normal: se levantan con lo mínimo para que un fallo de construcción salte aquí.
+DIALOGOS = [
+    ("devolución manual", "gui.views.devoluciones", "ManualDevolucionWindow", (root,)),
+    ("preview devolución", "gui.views.devoluciones", "PreviewWindow", (root, "1")),
+]
+
 bien, fallos = [], []
 for clave, modulo, clase, kwargs in VISTAS:
     t0 = time.perf_counter()
@@ -86,7 +93,18 @@ for clave, modulo, clase, kwargs in VISTAS:
     except Exception:  # noqa: BLE001
         fallos.append((clave, traceback.format_exc().strip().splitlines()[-1]))
 
-print(f"Vistas levantadas: {len(bien)}/{len(VISTAS)}")
+for clave, modulo, clase, args in DIALOGOS:
+    t0 = time.perf_counter()
+    try:
+        dialogo = getattr(__import__(modulo, fromlist=[clase]), clase)(*args)
+        root.update_idletasks()
+        root.update()
+        dialogo.destroy()
+        bien.append((clave, (time.perf_counter() - t0) * 1000))
+    except Exception:  # noqa: BLE001
+        fallos.append((clave, traceback.format_exc().strip().splitlines()[-1]))
+
+print(f"Vistas levantadas: {len(bien)}/{len(VISTAS) + len(DIALOGOS)}")
 for clave, ms in bien:
     print(f"  {clave:15} {ms:6.0f} ms")
 for clave, error in fallos:
