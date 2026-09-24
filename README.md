@@ -125,14 +125,16 @@ docflow/
 │   │   ├── vpr.py                                      # informe mensual de avance
 │   │   ├── apertura.py · claims.py · docusign.py
 │   │   ├── purchases.py · production.py · quality.py · administration.py · warehouse.py
-│   │   ├── reports.py · analytics.py · interactive_report.py · scheduled_reports.py
+│   │   ├── reports.py · analytics.py · scheduled_reports.py
+│   │   ├── interactive_report/     # informe semanal, ejecutivo y de pedido
 │   │   └── imap.py · smtp.py · nextcloud.py · teams.py
 │   └── utils/                      # ficheros sin pisar nada, JSON con bloqueo, HTTP
 ├── gui/
 │   ├── app.py                      # ventana, menú por departamentos y routing
 │   ├── theme.py · help.py          # sistema de diseño y ayuda F1
 │   ├── widgets/                    # sidebar, tablas, botones, toasts
-│   └── views/                      # una por sección (21)
+│   └── views/                      # una por sección (21); las tres más grandes
+│                                   # —pedidos, devoluciones y reportes— son paquetes
 ├── tests/                          # pruebas que se lanzan a mano, sin pytest
 ├── tools/capturas.py               # las capturas del README, con datos de mentira
 ├── docs/img/                       # capturas del README

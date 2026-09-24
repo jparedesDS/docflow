@@ -31,8 +31,12 @@ core/utils/*.py     ficheros (sin pisar nada), JSON con bloqueo, HTTP con reinte
 ```
 
 Las vistas **nunca** consultan la base de datos ni tocan la red directamente:
-lanzan un hilo que llama a un servicio y pintan el resultado con `after`. Así la
+lanzan un hilo que llama a un servicio y pintan el resultado al volver. Así la
 ventana no se queda colgada cuando la unidad de red tarda.
+
+Esa vuelta se hace siempre con `ui.en_ui(self, …)`, nunca con `after(0, …)` a
+pelo: si el usuario cerró la app o el diálogo mientras la consulta estaba en
+vuelo, ya no hay nada que pintar y el resultado se descarta en silencio.
 
 ## Reglas que no se saltan
 
