@@ -321,11 +321,11 @@ class DocumentosView(ctk.CTkFrame):
         def worker():
             try:
                 docs = monitoring_service.get_monitoring_data()
-                self.after(0, lambda: self._on_loaded(docs))
+                ui.en_ui(self, lambda: self._on_loaded(docs))
             except Exception as exc:
                 logger.exception("Error cargando monitoring")
                 err = str(exc)
-                self.after(0, lambda: self._show_error(err))
+                ui.en_ui(self, lambda: self._show_error(err))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -348,11 +348,11 @@ class DocumentosView(ctk.CTkFrame):
             monitoring_service.invalidate_cache()
             try:
                 docs = monitoring_service.get_monitoring_data()
-                self.after(0, lambda: self._on_refreshed(docs))
+                ui.en_ui(self, lambda: self._on_refreshed(docs))
             except Exception as exc:
                 logger.exception("Error cargando monitoring")
                 err = str(exc)
-                self.after(0, lambda: (self.btn_refresh.configure(state="normal"), self._show_error(err)))
+                ui.en_ui(self, lambda: (self.btn_refresh.configure(state="normal"), self._show_error(err)))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -713,7 +713,7 @@ class DocumentosView(ctk.CTkFrame):
                 logger.debug("Trazabilidad no disponible: %s", exc)
                 return
             if entradas:
-                self.after(0, lambda: pintar(entradas))
+                ui.en_ui(self, lambda: pintar(entradas))
 
         threading.Thread(target=worker, daemon=True).start()
 

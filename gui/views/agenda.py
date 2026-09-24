@@ -340,11 +340,11 @@ class AgendaView(ctk.CTkFrame):
                     and (d.get("Estado", "") or "").strip().lower() in agenda_service.ESTADOS_PENDIENTES
                 ]
                 res = agenda_service.sync_tareas(DEFAULT_OWNER, pending)
-                self.after(0, lambda: self._sync_done(res))
+                ui.en_ui(self, lambda: self._sync_done(res))
             except Exception as exc:
                 logger.exception("Error en sync_tareas")
                 err = str(exc)
-                self.after(0, lambda: messagebox.showerror("Error sync", err))
+                ui.en_ui(self, lambda: messagebox.showerror("Error sync", err))
 
         threading.Thread(target=worker, daemon=True).start()
 

@@ -172,11 +172,11 @@ class InformesView(ctk.CTkFrame):
         def worker():
             try:
                 data = fetch()
-                self.after(0, lambda: render(data))
+                ui.en_ui(self, lambda: render(data))
             except Exception as exc:
                 logger.exception("Error analítica (%s)", tab)
                 msg = str(exc)
-                self.after(0, lambda: status.configure(text=f"✗  {msg}", text_color=theme.RED))
+                ui.en_ui(self, lambda: status.configure(text=f"✗  {msg}", text_color=theme.RED))
 
         threading.Thread(target=worker, daemon=True).start()
 

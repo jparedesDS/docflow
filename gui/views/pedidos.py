@@ -238,11 +238,11 @@ class PedidosView(ctk.CTkFrame):
         def worker():
             try:
                 data = erp_service.project_list()
-                self.after(0, lambda: self._on_projects(data))
+                ui.en_ui(self, lambda: self._on_projects(data))
             except Exception as exc:
                 logger.exception("Error proyectos")
                 msg = str(exc)
-                self.after(0, lambda: self._placeholder(f"✗  {msg}"))
+                ui.en_ui(self, lambda: self._placeholder(f"✗  {msg}"))
         threading.Thread(target=worker, daemon=True).start()
 
     def _on_projects(self, data: list[dict]) -> None:
@@ -313,11 +313,11 @@ class PedidosView(ctk.CTkFrame):
             try:
                 dash = erp_service.project_dashboard(pedido)
                 bundle = erp_tags.fetch_pedido_bundle(pedido)   # equipos + OTs + cabecera (ERP)
-                self.after(0, lambda: self._render_detail(pedido, dash, bundle))
+                ui.en_ui(self, lambda: self._render_detail(pedido, dash, bundle))
             except Exception as exc:
                 logger.exception("Error ficha pedido")
                 msg = str(exc)
-                self.after(0, lambda: self._placeholder(f"✗  {msg}"))
+                ui.en_ui(self, lambda: self._placeholder(f"✗  {msg}"))
         threading.Thread(target=worker, daemon=True).start()
 
     def _show_loading(self, pedido: str) -> None:
@@ -715,11 +715,11 @@ class PedidosView(ctk.CTkFrame):
             try:
                 from core.services import interactive_report as ir
                 path, _ = ir.generate_pedido(pedido)
-                self.after(0, lambda: self._pedido_report_done(path, btn))
+                ui.en_ui(self, lambda: self._pedido_report_done(path, btn))
             except Exception as exc:
                 logger.exception("Error generando informe del pedido")
                 msg = str(exc)
-                self.after(0, lambda: self._pedido_report_fail(msg, btn))
+                ui.en_ui(self, lambda: self._pedido_report_fail(msg, btn))
 
         threading.Thread(target=worker, daemon=True).start()
 

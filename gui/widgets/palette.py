@@ -223,8 +223,8 @@ class CommandPalette(ctk.CTkToplevel):
         self.destroy()
         # Después de cerrar (y soltar el grab) para que la navegación pinte bien
         if it["kind"] == "section":
-            app.after(0, lambda: app.navigate(it["key"]))
+            ui.en_ui(app, lambda: app.navigate(it["key"]))
         elif it["kind"] == "pedido":
-            app.after(0, lambda: app.open_pedido(it["pedido"]))
+            ui.en_ui(app, lambda: app.open_pedido(it["pedido"]))
         else:
-            app.after(0, lambda: app.open_documento(it["doc"]))
+            ui.en_ui(app, lambda: app.open_documento(it["doc"]))

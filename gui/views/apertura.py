@@ -722,16 +722,16 @@ class AperturaView(ctk.CTkFrame):
                 except Exception as exc:
                     logger.exception("Fallo guardando Communication Matrix")
                     cm_error = str(exc)
-            self.after(
-                0,
+            ui.en_ui(
+                self,
                 lambda r=result, s=cm_saved, ce=cm_error:
                     self._on_create_done(r, None, s, ce),
             )
         except Exception as exc:
             logger.exception("Error creando pedido")
             err = exc  # bind antes de salir del except (Python borra `exc`)
-            self.after(
-                0,
+            ui.en_ui(
+                self,
                 lambda e=err: self._on_create_done(None, e, None, None),
             )
 

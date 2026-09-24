@@ -6,9 +6,33 @@ en pedidos/informes/ofertas/docusign; ahora un cambio de estilo se propaga a
 todas las vistas desde aquí.
 """
 
+import tkinter as tk
+
 import customtkinter as ctk
 
 from gui import theme
+
+
+# ── Vuelta al hilo de la interfaz ─────────────────────────────────────────────
+
+def en_ui(widget, funcion, *args) -> None:
+    """Ejecuta `funcion` en el hilo de la interfaz, desde un hilo de carga.
+
+    Tkinter solo se toca desde su propio hilo, así que lo que trae un hilo de
+    fondo se pinta con `after(0, …)`. Si mientras tanto se cerró la ventana o el
+    diálogo —cerrar la app con una consulta en vuelo, cerrar el preview antes de
+    que cargue— ya no hay nada que pintar: se descarta en silencio en vez de
+    dejar una traza de Tcl en el log.
+
+    Los errores de la propia `funcion` no se tocan: esos son fallos de verdad y
+    tienen que verse.
+    """
+    try:
+        if not widget.winfo_exists():
+            return
+        widget.after(0, lambda: funcion(*args) if widget.winfo_exists() else None)
+    except (tk.TclError, RuntimeError):
+        pass
 
 
 # ── Colores por tier ──────────────────────────────────────────────────────────

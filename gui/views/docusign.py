@@ -262,11 +262,11 @@ class DocusignView(ctk.CTkFrame):
                 # Una sola llamada de red: todos los estados del periodo.
                 envelopes = svc.list_envelopes(days=effective)
                 kpis = ds.kpis_from_envelopes(envelopes)
-                self.after(0, lambda: self._on_fetched(envelopes, kpis))
+                ui.en_ui(self, lambda: self._on_fetched(envelopes, kpis))
             except Exception as exc:
                 logger.exception("Error DocuSign fetch")
                 msg = str(exc)
-                self.after(0, lambda: self._on_error(msg))
+                ui.en_ui(self, lambda: self._on_error(msg))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -388,11 +388,11 @@ class DocusignView(ctk.CTkFrame):
         def worker():
             try:
                 full = ds.get_service().get_envelope(self._selected_id)
-                self.after(0, lambda: self._render_detail(env, full))
+                ui.en_ui(self, lambda: self._render_detail(env, full))
             except Exception as exc:
                 # Si el detalle falla, mostramos al menos lo que ya tenemos del listado
                 logger.warning("Detalle DocuSign no disponible: %s", exc)
-                self.after(0, lambda: self._render_detail(env, env))
+                ui.en_ui(self, lambda: self._render_detail(env, env))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -505,11 +505,11 @@ class DocusignView(ctk.CTkFrame):
                 with open(path, "wb") as f:
                     f.write(data)
                 import os as _os
-                self.after(0, lambda: ui.toast(
+                ui.en_ui(self, lambda: ui.toast(
                     self, "PDF descargado", _os.path.basename(path), kind="success"))
             except Exception as exc:
                 msg = str(exc)
-                self.after(0, lambda: messagebox.showerror(
+                ui.en_ui(self, lambda: messagebox.showerror(
                     "Error", f"No se pudo descargar:\n{msg}", parent=self))
 
         threading.Thread(target=worker, daemon=True).start()

@@ -110,11 +110,11 @@ class AlmacenView(ctk.CTkFrame):
         def worker():
             try:
                 snap = warehouse.snapshot()
-                self.after(0, lambda: self._render(snap))
+                ui.en_ui(self, lambda: self._render(snap))
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Almacén: error consultando el ERP")
                 msg = str(exc)
-                self.after(0, lambda: self._render_error(msg))
+                ui.en_ui(self, lambda: self._render_error(msg))
 
         threading.Thread(target=worker, daemon=True).start()
 

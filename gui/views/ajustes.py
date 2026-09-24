@@ -135,7 +135,7 @@ class AjustesView(ctk.CTkFrame):
                                         text_color=theme.GREEN if ok else theme.TEXT_MUTED)
                     except Exception:
                         pass
-                self.after(0, apply)
+                ui.en_ui(self, apply)
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -235,10 +235,10 @@ class AjustesView(ctk.CTkFrame):
             from core.services import erp_db
             try:
                 res = erp_db.refresh_all(make_backup=True)
-                self.after(0, lambda: self._erp_done(res, None))
+                ui.en_ui(self, lambda: self._erp_done(res, None))
             except Exception as exc:  # noqa: BLE001
                 msg = str(exc).splitlines()[0] if str(exc) else repr(exc)
-                self.after(0, lambda: self._erp_done(None, msg))
+                ui.en_ui(self, lambda: self._erp_done(None, msg))
 
         threading.Thread(target=_work, daemon=True).start()
 
@@ -445,10 +445,10 @@ class AjustesView(ctk.CTkFrame):
             try:
                 import imaplib
                 c = imaplib.IMAP4_SSL(host, port); c.login(user, pw); c.logout()
-                self.after(0, lambda: ui.toast(self, "IMAP OK", f"Conexión correcta con {user}", kind="success"))
+                ui.en_ui(self, lambda: ui.toast(self, "IMAP OK", f"Conexión correcta con {user}", kind="success"))
             except Exception as exc:
                 msg = str(exc)
-                self.after(0, lambda: ui.toast(self, "IMAP error", msg, kind="error"))
+                ui.en_ui(self, lambda: ui.toast(self, "IMAP error", msg, kind="error"))
         threading.Thread(target=work, daemon=True).start()
 
     def _test_smtp(self) -> None:
@@ -460,10 +460,10 @@ class AjustesView(ctk.CTkFrame):
             try:
                 import smtplib
                 s = smtplib.SMTP_SSL(host, port, timeout=10); s.login(user, pw); s.quit()
-                self.after(0, lambda: ui.toast(self, "SMTP OK", f"Conexión correcta con {user}", kind="success"))
+                ui.en_ui(self, lambda: ui.toast(self, "SMTP OK", f"Conexión correcta con {user}", kind="success"))
             except Exception as exc:
                 msg = str(exc)
-                self.after(0, lambda: ui.toast(self, "SMTP error", msg, kind="error"))
+                ui.en_ui(self, lambda: ui.toast(self, "SMTP error", msg, kind="error"))
         threading.Thread(target=work, daemon=True).start()
 
     def _build_ofertas(self, parent) -> None:
@@ -693,17 +693,17 @@ class AjustesView(ctk.CTkFrame):
             from core.services import portal_downloads
             try:
                 results = portal_downloads.auto_download(days=30, force=True)
-                self.after(0, lambda: done(results))
+                ui.en_ui(self, lambda: done(results))
             except Exception as exc:  # noqa: BLE001
                 msg = str(exc)
-                self.after(0, lambda: done([], msg))
+                ui.en_ui(self, lambda: done([], msg))
         threading.Thread(target=work, daemon=True).start()
 
     def _test_egesdoc(self) -> None:
         def work():
             from core.services import egesdoc
             ok, msg = egesdoc.test_login()
-            self.after(0, lambda: ui.toast(self, "eGesDoc" if ok else "eGesDoc · error", msg,
+            ui.en_ui(self, lambda: ui.toast(self, "eGesDoc" if ok else "eGesDoc · error", msg,
                                            kind="success" if ok else "error"))
         threading.Thread(target=work, daemon=True).start()
 

@@ -204,7 +204,7 @@ class ReportesView(ctk.CTkFrame):
             except Exception:
                 logger.exception("No se pudieron listar pedidos")
                 rows = []
-            self.after(0, lambda: self._ir_set_pedidos(rows))
+            ui.en_ui(self, lambda: self._ir_set_pedidos(rows))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -266,11 +266,11 @@ class ReportesView(ctk.CTkFrame):
                 else:
                     period, ref = target[1]
                     path, _ = self._ir.generate(period, ref)
-                self.after(0, lambda: self._ir_generated(path))
+                ui.en_ui(self, lambda: self._ir_generated(path))
             except Exception as exc:
                 logger.exception("Error generando informe interactivo")
                 msg = str(exc)
-                self.after(0, lambda: self._ir_status.configure(text=f"✗  {msg}", text_color=theme.RED))
+                ui.en_ui(self, lambda: self._ir_status.configure(text=f"✗  {msg}", text_color=theme.RED))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -313,11 +313,11 @@ class ReportesView(ctk.CTkFrame):
                 else:
                     period, ref = target[1]
                     self._ir.send_email(period=period, to=to, ref_date=ref)
-                self.after(0, lambda: self._ir_sent(to))
+                ui.en_ui(self, lambda: self._ir_sent(to))
             except Exception as exc:
                 logger.exception("Error enviando informe interactivo")
                 msg = str(exc)
-                self.after(0, lambda: self._ir_status.configure(text=f"✗  {msg}", text_color=theme.RED))
+                ui.en_ui(self, lambda: self._ir_status.configure(text=f"✗  {msg}", text_color=theme.RED))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -350,11 +350,11 @@ class ReportesView(ctk.CTkFrame):
                 else:
                     period, ref = target[1]
                     res = self._ir.post_period_to_teams(period, ref)
-                self.after(0, lambda: self._ir_teams_done(res))
+                ui.en_ui(self, lambda: self._ir_teams_done(res))
             except Exception as exc:
                 logger.exception("Error publicando en Teams")
                 msg = str(exc)
-                self.after(0, lambda: self._ir_status.configure(text=f"✗  {msg}", text_color=theme.RED))
+                ui.en_ui(self, lambda: self._ir_status.configure(text=f"✗  {msg}", text_color=theme.RED))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -468,11 +468,11 @@ class ReportesView(ctk.CTkFrame):
                     raise ValueError(f"Reporte desconocido: {rid}")
                 with open(path, "wb") as f:
                     f.write(data)
-                self.after(0, lambda: self._on_excel_done(rid, path, title))
+                ui.en_ui(self, lambda: self._on_excel_done(rid, path, title))
             except Exception as exc:
                 logger.exception("Error generando %s", rid)
                 err = str(exc)
-                self.after(0, lambda: self._on_excel_error(rid, err))
+                ui.en_ui(self, lambda: self._on_excel_error(rid, err))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -594,11 +594,11 @@ class ReportesView(ctk.CTkFrame):
                     html = weekly_service.get_executive_preview()
                 else:
                     html = weekly_service.get_personal_preview(initials)
-                self.after(0, lambda: self._show_preview_html(html, kind, initials))
+                ui.en_ui(self, lambda: self._show_preview_html(html, kind, initials))
             except Exception as exc:
                 logger.exception("Error preview")
                 err = str(exc)
-                self.after(0, lambda: self._show_preview_error(err))
+                ui.en_ui(self, lambda: self._show_preview_error(err))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -643,11 +643,11 @@ class ReportesView(ctk.CTkFrame):
         def worker():
             try:
                 res = weekly_service.post_personal_to_teams(initials)
-                self.after(0, lambda: self._teams_personal_done(res, initials))
+                ui.en_ui(self, lambda: self._teams_personal_done(res, initials))
             except Exception as exc:
                 logger.exception("Error Teams personal")
                 err = str(exc)
-                self.after(0, lambda: self.lbl_status.configure(text=f"✗  {err}", text_color=theme.RED))
+                ui.en_ui(self, lambda: self.lbl_status.configure(text=f"✗  {err}", text_color=theme.RED))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -802,10 +802,10 @@ class ReportesView(ctk.CTkFrame):
         def worker():
             try:
                 res = sched_service.execute_schedule(schedule_id)
-                self.after(0, lambda: self._on_run_done(schedule_id, res))
+                ui.en_ui(self, lambda: self._on_run_done(schedule_id, res))
             except Exception as exc:
                 err = str(exc)
-                self.after(0, lambda: self._on_run_error(schedule_id, err))
+                ui.en_ui(self, lambda: self._on_run_error(schedule_id, err))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -886,11 +886,11 @@ class SendExecutiveDialog(ctk.CTkToplevel):
         def worker():
             try:
                 res = weekly_service.send_executive_email(to=to or None, cc=cc or None)
-                self.after(0, lambda: self._done(res))
+                ui.en_ui(self, lambda: self._done(res))
             except Exception as exc:
                 logger.exception("Error envío ejecutivo")
                 err = str(exc)
-                self.after(0, lambda: self._error(err))
+                ui.en_ui(self, lambda: self._error(err))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -1018,11 +1018,11 @@ class SendPersonalDialog(ctk.CTkToplevel):
         def worker():
             try:
                 res = weekly_service.send_personal_emails(to_cc=cc or None, user_filter=user_filter)
-                self.after(0, lambda: self._done(res))
+                ui.en_ui(self, lambda: self._done(res))
             except Exception as exc:
                 logger.exception("Error envío personal")
                 err = str(exc)
-                self.after(0, lambda: self._error(err))
+                ui.en_ui(self, lambda: self._error(err))
 
         threading.Thread(target=worker, daemon=True).start()
 

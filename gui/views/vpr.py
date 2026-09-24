@@ -81,7 +81,7 @@ class VprView(ctk.CTkFrame):
             docs = monitoring_service.get_monitoring_data()
             pedidos = sorted({str(d.get("Nº Pedido", "")).strip()
                               for d in docs if str(d.get("Nº Pedido", "")).strip()}, reverse=True)
-            self.after(0, lambda: self._pinta_pedidos(pedidos))
+            ui.en_ui(self, lambda: self._pinta_pedidos(pedidos))
         threading.Thread(target=trabajo, daemon=True).start()
 
     def _pinta_pedidos(self, pedidos: list[str]) -> None:
@@ -102,11 +102,11 @@ class VprView(ctk.CTkFrame):
                 cliente = next((str(d.get("Cliente", "")).strip() for d in docs
                                 if str(d.get("Nº Pedido", "")).strip() == pedido), "")
                 datos = vpr_service.datos(pedido)
-                self.after(0, lambda: self._pinta(datos, cliente))
+                ui.en_ui(self, lambda: self._pinta(datos, cliente))
             except Exception as exc:  # noqa: BLE001 — el ERP puede no estar
                 logger.exception("VPR: datos de %s", pedido)
                 aviso = str(exc)
-                self.after(0, lambda: self.lbl_estado.configure(text=f"✗  {aviso}"))
+                ui.en_ui(self, lambda: self.lbl_estado.configure(text=f"✗  {aviso}"))
         threading.Thread(target=trabajo, daemon=True).start()
 
     def _pinta(self, datos: dict, cliente: str) -> None:
@@ -360,11 +360,11 @@ class VprView(ctk.CTkFrame):
         def trabajo():
             try:
                 final = vpr_service.generar(plantilla, destino, datos, ajustes)
-                self.after(0, lambda: self._fin(final, ""))
+                ui.en_ui(self, lambda: self._fin(final, ""))
             except Exception as exc:  # noqa: BLE001 — se enseña tal cual
                 logger.exception("VPR: generar %s", pedido)
                 fallo = str(exc)
-                self.after(0, lambda: self._fin(None, fallo))
+                ui.en_ui(self, lambda: self._fin(None, fallo))
         threading.Thread(target=trabajo, daemon=True).start()
 
     def _fin(self, destino, error: str) -> None:

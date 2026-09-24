@@ -6,6 +6,7 @@ import customtkinter as ctk
 
 from core.config import APP_NAME, startup_warnings
 from gui import theme
+from gui.widgets import ui
 from gui.widgets.sidebar import Sidebar
 
 logger = logging.getLogger(__name__)
@@ -250,7 +251,7 @@ class DocFlowLiteApp(ctk.CTk):
                 kpis = monitoring.compute_kpis(monitoring.get_monitoring_data())
             except Exception as exc:  # noqa: BLE001
                 logger.debug("autorefresh: %s", exc)
-            self.after(0, lambda: self._autorefresh_done(kpis))
+            ui.en_ui(self, lambda: self._autorefresh_done(kpis))
 
         threading.Thread(target=work, daemon=True).start()
 

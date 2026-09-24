@@ -404,7 +404,7 @@ class HomeView(ctk.CTkFrame):
             except Exception as exc:
                 logger.warning("KPI administración falló (probablemente ERP cerrado): %s", exc)
 
-            self.after(0, lambda: self._update_kpis(results))
+            ui.en_ui(self, lambda: self._update_kpis(results))
 
         threading.Thread(target=worker, daemon=True).start()
 

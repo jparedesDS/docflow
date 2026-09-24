@@ -113,11 +113,11 @@ class ProduccionView(ctk.CTkFrame):
         def worker():
             try:
                 data = (production.workshop(), production.workshop_stats(), production.hours())
-                self.after(0, lambda: self._render(*data))
+                ui.en_ui(self, lambda: self._render(*data))
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Producción: error consultando el ERP")
                 msg = str(exc)
-                self.after(0, lambda: self._error(msg))
+                ui.en_ui(self, lambda: self._error(msg))
 
         threading.Thread(target=worker, daemon=True).start()
 

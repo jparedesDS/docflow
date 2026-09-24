@@ -243,15 +243,15 @@ class OfertasView(ctk.CTkFrame):
                 offers = of.fetch_inbox_offers(self._days, force=force)
             except Exception as exc:
                 logger.exception("Error Ofertas fetch")
-                self.after(0, lambda e=str(exc): self._on_error(e))
+                ui.en_ui(self, lambda e=str(exc): self._on_error(e))
                 return
-            self.after(0, lambda: self._on_offers(offers))
+            ui.en_ui(self, lambda: self._on_offers(offers))
             # FASE 2 (lenta): escanear Enviados → marcar respuestas
             try:
                 of.enrich_replies(offers, self._days)
             except Exception as exc:
                 logger.debug("Ofertas: enrich respuestas falló: %s", exc)
-            self.after(0, lambda: self._on_replies(offers))
+            ui.en_ui(self, lambda: self._on_replies(offers))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -483,10 +483,10 @@ class OfertasView(ctk.CTkFrame):
         def worker():
             try:
                 detail = of.get_detail(o["account"], o["uid"])
-                self.after(0, lambda: self._render_detail(o, detail))
+                ui.en_ui(self, lambda: self._render_detail(o, detail))
             except Exception as exc:
                 logger.warning("Detalle oferta no disponible: %s", exc)
-                self.after(0, lambda: self._render_detail(o, None))
+                ui.en_ui(self, lambda: self._render_detail(o, None))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -679,7 +679,7 @@ class OfertasView(ctk.CTkFrame):
                                          o.get("answered_msgid", ""))
             except Exception as exc:
                 body = f"(No se pudo cargar la respuesta: {exc})"
-            self.after(0, lambda: self._show_reply(btn, holder, body))
+            ui.en_ui(self, lambda: self._show_reply(btn, holder, body))
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -759,7 +759,7 @@ class OfertasView(ctk.CTkFrame):
         def worker():
             of.mark_read(o["account"], o["uid"])
             o["is_read"] = True
-            self.after(0, self._after_mark_read)
+            ui.en_ui(self, self._after_mark_read)
 
         threading.Thread(target=worker, daemon=True).start()
 

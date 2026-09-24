@@ -112,11 +112,11 @@ class CalidadView(ctk.CTkFrame):
             try:
                 data = (quality.nonconformities(), quality.nc_stats(),
                         quality.equipment(), quality.equipment_stats())
-                self.after(0, lambda: self._render(*data))
+                ui.en_ui(self, lambda: self._render(*data))
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Calidad: error consultando el ERP")
                 msg = str(exc)
-                self.after(0, lambda: self._error(msg))
+                ui.en_ui(self, lambda: self._error(msg))
 
         threading.Thread(target=worker, daemon=True).start()
 

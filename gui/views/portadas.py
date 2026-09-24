@@ -91,7 +91,7 @@ class PortadasView(ctk.CTkFrame):
             docs = monitoring_service.get_monitoring_data()
             pedidos = sorted({str(d.get("Nº Pedido", "")).strip()
                               for d in docs if str(d.get("Nº Pedido", "")).strip()}, reverse=True)
-            self.after(0, lambda: self._pinta_pedidos(pedidos))
+            ui.en_ui(self, lambda: self._pinta_pedidos(pedidos))
         threading.Thread(target=trabajo, daemon=True).start()
 
     def _pinta_pedidos(self, pedidos: list[str]) -> None:
@@ -107,7 +107,7 @@ class PortadasView(ctk.CTkFrame):
         def trabajo():
             todos = monitoring_service.get_monitoring_data()
             docs = [d for d in todos if str(d.get("Nº Pedido", "")).strip() == pedido]
-            self.after(0, lambda: self._pinta_docs(docs))
+            ui.en_ui(self, lambda: self._pinta_docs(docs))
         threading.Thread(target=trabajo, daemon=True).start()
 
     def _pinta_docs(self, docs: list[dict]) -> None:
@@ -241,14 +241,14 @@ class PortadasView(ctk.CTkFrame):
             try:
                 res = portadas_lote.generar_lote(
                     elegidos, self._perfil["plantillas"], self._perfil.get("mapa") or {},
-                    progreso=lambda i, n, c: self.after(
-                        0, lambda: self.btn_generar.configure(text=f"Generando… {i}/{n}")))
+                    progreso=lambda i, n, c: ui.en_ui(
+                        self, lambda: self.btn_generar.configure(text=f"Generando… {i}/{n}")))
             except Exception as exc:  # noqa: BLE001 — el aviso va a la interfaz
                 logger.exception("Generar portadas")
                 aviso = str(exc)      # `exc` no vive fuera del except: se copia
-                self.after(0, lambda: self._fin_generar([], aviso))
+                ui.en_ui(self, lambda: self._fin_generar([], aviso))
                 return
-            self.after(0, lambda: self._fin_generar(res, ""))
+            ui.en_ui(self, lambda: self._fin_generar(res, ""))
         threading.Thread(target=trabajo, daemon=True).start()
 
     def _fin_generar(self, resultados: list[dict], error: str) -> None:

@@ -90,11 +90,11 @@ class ComprasView(ctk.CTkFrame):
         def worker():
             try:
                 rows, st = purchases.pending(), purchases.stats()
-                self.after(0, lambda: self._render(rows, st))
+                ui.en_ui(self, lambda: self._render(rows, st))
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Compras: error consultando el ERP")
                 msg = str(exc)
-                self.after(0, lambda: self._error(msg))
+                ui.en_ui(self, lambda: self._error(msg))
 
         threading.Thread(target=worker, daemon=True).start()
 

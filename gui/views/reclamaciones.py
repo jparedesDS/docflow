@@ -157,11 +157,11 @@ class ReclamacionesView(ctk.CTkFrame):
         def worker():
             try:
                 rows = claims_service.get_claimable_pedidos(min_days=min_days)
-                self.after(0, lambda: self._on_loaded(rows))
+                ui.en_ui(self, lambda: self._on_loaded(rows))
             except Exception as exc:
                 logger.exception("Error cargando reclamaciones")
                 err = str(exc)
-                self.after(0, lambda: self._show_error(err))
+                ui.en_ui(self, lambda: self._show_error(err))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -355,11 +355,11 @@ class ReclamacionesView(ctk.CTkFrame):
         def worker():
             try:
                 res = claims_service.send_bulk(pedidos, min_days=min_days)
-                self.after(0, lambda: self._bulk_done(res))
+                ui.en_ui(self, lambda: self._bulk_done(res))
             except Exception as exc:
                 logger.exception("Error en send_bulk")
                 err = str(exc)
-                self.after(0, lambda: self._bulk_error(err))
+                ui.en_ui(self, lambda: self._bulk_error(err))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -634,11 +634,11 @@ class ReclamacionPreview(ctk.CTkToplevel):
         def worker():
             try:
                 pv = claims_service.get_pedido_preview(pedido, min_days=min_days)
-                self.after(0, lambda: self._render_preview(pv))
+                ui.en_ui(self, lambda: self._render_preview(pv))
             except Exception as exc:
                 logger.exception("Error en preview reclamación")
                 err = str(exc)
-                self.after(0, lambda: self._render_error(err))
+                ui.en_ui(self, lambda: self._render_error(err))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -783,15 +783,15 @@ class ReclamacionPreview(ctk.CTkToplevel):
                     pedido, level=level, include_eipsa_codes=included,
                     min_days=min_days,
                 )
-                self.after(0, lambda: _open_html_preview(res["html"], "reclamacion"))
-                self.after(0, lambda: self.lbl_status.configure(
+                ui.en_ui(self, lambda: _open_html_preview(res["html"], "reclamacion"))
+                ui.en_ui(self, lambda: self.lbl_status.configure(
                     text=f"✓  Preview L{res['level']} abierto en navegador ({res['docs_count']} docs)",
                     text_color=theme.GREEN,
                 ))
             except Exception as exc:
                 logger.exception("Error generando preview email")
                 err = str(exc)
-                self.after(0, lambda: self.lbl_status.configure(
+                ui.en_ui(self, lambda: self.lbl_status.configure(
                     text=f"✗  {err}", text_color=theme.RED,
                 ))
 
@@ -844,11 +844,11 @@ class ReclamacionPreview(ctk.CTkToplevel):
                     include_eipsa_codes=included,
                     min_days=min_days,
                 )
-                self.after(0, lambda: self._send_done(res))
+                ui.en_ui(self, lambda: self._send_done(res))
             except Exception as exc:
                 logger.exception("Error enviando reclamación")
                 err = str(exc)
-                self.after(0, lambda: self._send_error(err))
+                ui.en_ui(self, lambda: self._send_error(err))
 
         threading.Thread(target=worker, daemon=True).start()
 

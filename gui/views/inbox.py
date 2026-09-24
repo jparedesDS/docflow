@@ -136,11 +136,11 @@ class InboxView(ctk.CTkFrame):
         def worker():
             try:
                 emails = inbox_service.list_emails(filter=filt, limit=200)
-                self.after(0, lambda: self._on_loaded(emails))
+                ui.en_ui(self, lambda: self._on_loaded(emails))
             except Exception as exc:
                 logger.exception("Error cargando bandeja")
                 err = str(exc)
-                self.after(0, lambda: self._show_error(err))
+                ui.en_ui(self, lambda: self._show_error(err))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -214,11 +214,11 @@ class InboxView(ctk.CTkFrame):
         def worker():
             try:
                 d = inbox_service.get_email_detail(uid)
-                self.after(0, lambda: self._render_detail(d))
+                ui.en_ui(self, lambda: self._render_detail(d))
             except Exception as exc:
                 logger.exception("Error cargando detalle email")
                 err = str(exc)
-                self.after(0, lambda: self._render_detail_error(err))
+                ui.en_ui(self, lambda: self._render_detail_error(err))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -325,7 +325,7 @@ class InboxView(ctk.CTkFrame):
                 # Capturar el texto ANTES de la lambda: `exc` se borra al salir
                 # del except y la lambda corre después (after) → NameError.
                 msg = str(exc)
-                self.after(0, lambda: messagebox.showerror("Error", msg))
+                ui.en_ui(self, lambda: messagebox.showerror("Error", msg))
 
         threading.Thread(target=worker, daemon=True).start()
         # Re-render del detalle si es el mismo email

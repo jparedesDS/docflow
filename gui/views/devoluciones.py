@@ -142,11 +142,11 @@ class DevolucionesView(ctk.CTkFrame):
                     data = transmittal.fetch_unread_emails()
                 else:
                     data = transmittal.fetch_all_emails()
-                self.after(0, lambda: self._populate(data))
+                ui.en_ui(self, lambda: self._populate(data))
             except Exception as exc:
                 logger.exception("Error cargando emails")
                 err = str(exc)
-                self.after(0, lambda: self._show_error(err))
+                ui.en_ui(self, lambda: self._show_error(err))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -409,11 +409,11 @@ class PreviewWindow(ctk.CTkToplevel):
         def worker():
             try:
                 data = transmittal.preview_email(uid)
-                self.after(0, lambda: self._render_preview(data))
+                ui.en_ui(self, lambda: self._render_preview(data))
             except Exception as exc:
                 logger.exception("Error en preview")
                 err = str(exc)
-                self.after(0, lambda: self._render_error(err))
+                ui.en_ui(self, lambda: self._render_error(err))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -547,15 +547,15 @@ class PreviewWindow(ctk.CTkToplevel):
             from core.services import portal_downloads
             try:
                 res = portal_downloads.download_for_email(uid)
-                self.after(0, lambda: self._transmittal_done(res))
+                ui.en_ui(self, lambda: self._transmittal_done(res))
             except portal_downloads.NothingToDownload as exc:
                 # No es un fallo: este correo no traía paquete, solo se archiva él.
                 msg, carpeta = str(exc), exc.folder
-                self.after(0, lambda: self._transmittal_empty(msg, carpeta))
+                ui.en_ui(self, lambda: self._transmittal_empty(msg, carpeta))
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Descarga de transmittal")
                 msg = str(exc)
-                self.after(0, lambda: self._transmittal_failed(msg))
+                ui.en_ui(self, lambda: self._transmittal_failed(msg))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -569,11 +569,11 @@ class PreviewWindow(ctk.CTkToplevel):
             from core.services import portal_downloads
             try:
                 res = portal_downloads.archive_pending(uid)
-                self.after(0, lambda: self._transmittal_done(res))
+                ui.en_ui(self, lambda: self._transmittal_done(res))
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Archivo en dev. de una devolución ya descargada")
                 msg = str(exc)
-                self.after(0, lambda: self._transmittal_failed(msg, archivando=True))
+                ui.en_ui(self, lambda: self._transmittal_failed(msg, archivando=True))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -772,15 +772,15 @@ class PreviewWindow(ctk.CTkToplevel):
         def worker():
             try:
                 res = transmittal.generate_notification_html(uid, status_overrides=overrides)
-                self.after(0, lambda: _open_html_preview(res["html"], "devolucion"))
+                ui.en_ui(self, lambda: _open_html_preview(res["html"], "devolucion"))
                 extra = f" ({len(overrides)} override(s) aplicado(s))" if overrides else ""
-                self.after(0, lambda: self.lbl_status.configure(
+                ui.en_ui(self, lambda: self.lbl_status.configure(
                     text=f"✓  Preview abierto en navegador{extra}", text_color=theme.GREEN,
                 ))
             except Exception as exc:
                 logger.exception("Error generando preview email")
                 err = str(exc)
-                self.after(0, lambda: self.lbl_status.configure(
+                ui.en_ui(self, lambda: self.lbl_status.configure(
                     text=f"✗  {err}", text_color=theme.RED,
                 ))
 
@@ -826,11 +826,11 @@ class PreviewWindow(ctk.CTkToplevel):
                 res = transmittal.process_and_notify(
                     uid, to=to, cc=cc, status_overrides=overrides,
                 )
-                self.after(0, lambda: self._send_done(res))
+                ui.en_ui(self, lambda: self._send_done(res))
             except Exception as exc:
                 logger.exception("Error enviando notificación")
                 err = str(exc)
-                self.after(0, lambda: self._send_error(err))
+                ui.en_ui(self, lambda: self._send_error(err))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -1184,15 +1184,15 @@ class ManualDevolucionWindow(ctk.CTkToplevel):
         def worker():
             try:
                 res = transmittal.generate_manual_notification_html(info, docs)
-                self.after(0, lambda: _open_html_preview(res["html"], "devolucion_manual"))
-                self.after(0, lambda: self.lbl_status.configure(
+                ui.en_ui(self, lambda: _open_html_preview(res["html"], "devolucion_manual"))
+                ui.en_ui(self, lambda: self.lbl_status.configure(
                     text=f"✓  Preview abierto en navegador ({res['documents_count']} docs)",
                     text_color=theme.GREEN,
                 ))
             except Exception as exc:
                 logger.exception("Error generando preview manual")
                 err = str(exc)
-                self.after(0, lambda: self.lbl_status.configure(
+                ui.en_ui(self, lambda: self.lbl_status.configure(
                     text=f"✗  {err}", text_color=theme.RED,
                 ))
 
@@ -1238,11 +1238,11 @@ class ManualDevolucionWindow(ctk.CTkToplevel):
         def worker():
             try:
                 res = transmittal.send_manual_notification(info, docs, to, cc)
-                self.after(0, lambda: self._send_done(res))
+                ui.en_ui(self, lambda: self._send_done(res))
             except Exception as exc:
                 logger.exception("Error enviando devolución manual")
                 err = str(exc)
-                self.after(0, lambda: self._send_error(err))
+                ui.en_ui(self, lambda: self._send_error(err))
 
         threading.Thread(target=worker, daemon=True).start()
 
