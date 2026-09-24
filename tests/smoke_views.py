@@ -78,6 +78,9 @@ VISTAS = [
 DIALOGOS = [
     ("devolución manual", "gui.views.devoluciones", "ManualDevolucionWindow", (root,)),
     ("preview devolución", "gui.views.devoluciones", "PreviewWindow", (root, "1")),
+    # buscar=False: se monta la ventana, pero no se llama a eGesDoc
+    ("comentados del PO", "gui.views.pedidos", "FinalesWindow",
+     (root, "P-26/001", "1000100010", False)),
 ]
 
 bien, fallos = [], []

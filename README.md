@@ -18,6 +18,8 @@ Lo que hay que hacer hoy: críticos sin respuesta, devoluciones por contestar, d
 ### ▦ Pedidos
 La ficha de un pedido de un vistazo: avance de documentación, fabricación, equipos y qué requiere acción.
 
+Desde ahí, **⤓ Comentados del cliente** baja del portal el PDF comentado de todos los documentos ya cerrados (*DOC. STATUS: Final*) — un pedido grande son cientos de clics. Se puede parar y seguir otro día: lo que ya está en la carpeta no se vuelve a pedir. De momento solo **eGesDoc (Técnicas Reunidas)**; en el resto el botón sale apagado explicando por qué.
+
 ### ◫ Documentos
 Todos los documentos de todos los pedidos, con KPIs filtrables, búsqueda, paginación y ficha de detalle — incluido **quién lo ha tocado** (auditoría del ERP).
 
@@ -136,7 +138,10 @@ docflow/
 │   └── views/                      # una por sección (21); las tres más grandes
 │                                   # —pedidos, devoluciones y reportes— son paquetes
 ├── tests/                          # pruebas que se lanzan a mano, sin pytest
-├── tools/capturas.py               # las capturas del README, con datos de mentira
+├── tools/
+│   ├── capturas.py                 # las capturas del README, con datos de mentira
+│   └── finales_egesdoc.py          # baja de eGesDoc el PDF comentado de cada documento
+│                                   # cerrado de un pedido (Final), uno detrás de otro
 ├── docs/img/                       # capturas del README
 ├── data/                           # data_erp.xlsx, consulta_erp.xlsx
 └── state/                          # JSON de runtime (preferencias, registros, logs)

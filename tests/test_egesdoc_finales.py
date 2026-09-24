@@ -8,6 +8,8 @@ que contesta el de verdad. Lo que se comprueba aquí es lo que costó descubrir 
 que sin `naReturned` la tabla vuelve vacía sin decir nada, que el fichero hay
 que renombrarlo porque el portal lo bautiza con su id interno, y que una
 segunda pasada no vuelve a pedir lo que ya está bajado.
+
+Al final, el botón de Pedidos: a quién se le enciende y qué explica cuando no.
 """
 import sys
 import tempfile
@@ -18,9 +20,11 @@ BASE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE))
 sys.path.insert(0, str(BASE / "tools"))
 
+import customtkinter as ctk  # noqa: E402
 import finales_egesdoc as finales_cli  # noqa: E402  (el guion de tools/)
 
 from core.services import egesdoc  # noqa: E402
+from gui.views.pedidos import finales  # noqa: E402
 
 fallos = 0
 
@@ -201,6 +205,34 @@ finally:
      egesdoc.download_commented_file, egesdoc.login, egesdoc.time.sleep) = GUARDADO
 
 
+# ── La carpeta que se recuerda ───────────────────────────────────────────────
+class Prefs:
+    """Preferencias de mentira, para no tocar las del usuario."""
+
+    def __init__(self):
+        self.datos = {}
+
+    def get(self, clave, defecto=None):
+        return self.datos.get(clave, defecto)
+
+    def set_value(self, clave, valor):
+        self.datos[clave] = valor
+
+
+prefs_reales = finales.preferences
+try:
+    finales.preferences = Prefs()
+    elegida = Path(tempfile.mkdtemp()) / "comentados del pedido"
+    finales.recordar_carpeta("1000100010", elegida)
+    comprobar(finales.carpeta_por_defecto("1000100010") == elegida,
+              "al volver al mismo PO se propone la carpeta que se eligió")
+    otra = finales.carpeta_por_defecto("1000100030")
+    comprobar(otra == elegida.parent / "eGesDoc 1000100030",
+              f"y otro PO se propone al lado de la última: {otra.name}")
+finally:
+    finales.preferences = prefs_reales
+
+
 # ── La línea de comandos ─────────────────────────────────────────────────────
 opts = finales_cli.opciones(["1000100010"])
 comprobar(opts["po"] == "1000100010" and opts["limite"] == 0, "el PO solo")
@@ -212,6 +244,39 @@ comprobar(str(opts["destino"]) == r"M:\pedidos\comentados",
 opts = finales_cli.opciones(["1000100010", "--listar"])
 comprobar(opts["listar"] and not opts["limite"], "«--listar» solo mira")
 
+
+# ── El botón de Pedidos ──────────────────────────────────────────────────────
+comprobar(finales.po_del_pedido([{"Nº PO": "1000100010-03"}]) == "1000100010",
+          "el PO se queda en los diez dígitos, sin el sufijo del suministro")
+comprobar(finales.po_del_pedido([{"Nº PO": ""}, {"Nº PO": "1000100010"}]) == "1000100010",
+          "si el primer documento no trae PO, se mira el siguiente")
+comprobar(finales.po_del_pedido([]) == "", "un pedido sin documentos no inventa un PO")
+
+
+def ficha(cliente, po="1000100010"):
+    return {"consulta": {"Cliente": cliente}, "documents": [{"Nº PO": po}]}
+
+
+root = ctk.CTk()
+root.withdraw()
+
+b = finales.boton(root, "P-26/001", ficha("TÉCNICAS REUNIDAS"))
+# Sin credenciales de eGesDoc el botón también sale apagado, y eso está bien:
+# la prueba mira lo que corresponda al equipo donde se lanza.
+comprobar(str(b.cget("state")) == ("normal" if egesdoc.is_configured() else "disabled"),
+          "en un pedido de TR el botón está vivo (si hay usuario y contraseña)")
+
+b = finales.boton(root, "P-26/001", ficha("ATLAS"))
+comprobar(str(b.cget("state")) == "disabled", "en un pedido de otro cliente, apagado")
+
+b = finales.boton(root, "P-26/001", ficha("TÉCNICAS REUNIDAS", po=""))
+comprobar(str(b.cget("state")) == "disabled", "y sin PO del cliente, también apagado")
+
+root.update_idletasks()
+try:
+    root.destroy()
+except Exception:  # noqa: BLE001
+    pass
 
 print(f"FALLOS: {fallos}")
 sys.exit(1 if fallos else 0)

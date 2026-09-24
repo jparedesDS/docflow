@@ -22,6 +22,9 @@ from gui.views.pedidos.comun import (
 from gui.views.pedidos.ficha import (
     FichaMixin,
 )
+from gui.views.pedidos.finales import (
+    boton as boton_finales,
+)
 from gui.views.pedidos.tags import (
     TagsMixin,
 )
@@ -232,6 +235,9 @@ class PedidosView(FichaMixin, TagsMixin, ctk.CTkFrame):
         btn.configure(command=lambda p=pedido, b=btn: self._generate_pedido_report(p, b))
         btn.pack(side="right")
         ui.tooltip(btn, "Informe web completo: ficha, KPIs, predicción y toda la documentación.")
+        # Bajar del portal el comentado de cada documento cerrado. Solo eGesDoc
+        # (TR) de momento: en el resto sale apagado, explicando por qué.
+        boton_finales(bar, pedido, dash).pack(side="right", padx=(0, theme.SPACE_2))
 
         self._body = ctk.CTkFrame(scroll, fg_color="transparent")
         self._body.pack(fill="both", expand=True)
