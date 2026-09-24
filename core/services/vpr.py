@@ -380,7 +380,7 @@ def _texto_inspeccion(d: dict) -> list[str]:
 # vez con `estructura()` y ya no cambian mientras el cliente no cambie el Word.
 
 FORMATO_SACYR = {
-    "nombre": "SACYR / Atlas — PRY001",
+    "nombre": "SACYR — Vendor Progress Report",
     "señas": "VENDOR PROGRESS REPORT",     # texto que debe llevar la plantilla
     "cabeceras": [1, 15, 31, 50, 73],      # el cuadro que se repite en cada hoja
     "informe": 3,                          # tabla de cabecera del informe

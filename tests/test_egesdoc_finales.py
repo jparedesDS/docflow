@@ -156,7 +156,7 @@ s = Sesion({"DownloadCommentedDocumentAjax": Respuesta(json={"result": True}),
                          "Content-Type": "application/octet-stream"},
                 contenido=b"%PDF-1.7\nfalso")})
 ruta = egesdoc.download_commented_file(s, 9, tmp, "P-26/004-PRO-001")
-comprobar(ruta is not None and ruta.name == "P-26_062-PRO-001.pdf",
+comprobar(ruta is not None and ruta.name == "P-26_004-PRO-001.pdf",
           f"la barra del código se sustituye, no se corta: {ruta and ruta.name}")
 
 # ── El bucle: reintentos, errores que dejan de serlo y la sesión perdida ─────
@@ -266,7 +266,7 @@ b = finales.boton(root, "P-26/001", ficha("TÉCNICAS REUNIDAS"))
 comprobar(str(b.cget("state")) == ("normal" if egesdoc.is_configured() else "disabled"),
           "en un pedido de TR el botón está vivo (si hay usuario y contraseña)")
 
-b = finales.boton(root, "P-26/001", ficha("ATLAS"))
+b = finales.boton(root, "P-26/025", ficha("ATLAS"))
 comprobar(str(b.cget("state")) == "disabled", "en un pedido de otro cliente, apagado")
 
 b = finales.boton(root, "P-26/001", ficha("TÉCNICAS REUNIDAS", po=""))

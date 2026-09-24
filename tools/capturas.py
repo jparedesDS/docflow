@@ -18,7 +18,7 @@ DESTINO = BASE / "docs" / "img"
 DESTINO.mkdir(parents=True, exist_ok=True)
 
 HOY = date(2026, 9, 21)
-CLIENTES = [("P-26/001", "NORDIC ENERGY", "Caudal"),
+CLIENTES = [("P-26/025", "NORDIC ENERGY", "Caudal"),
             ("P-26/002", "ACME REFINING", "Temperatura"),
             ("P-26/023", "DELTA CHEMICALS", "Nivel")]
 TIPOS = ["Cálculos", "Planos", "PPI", "Procedimientos", "Manual", "Certificados", "Dossier"]
@@ -49,8 +49,8 @@ def documentos() -> list[dict]:
 
 
 DATOS_VPR = {
-    "pedido": "P-26/001",
-    "cabecera": {"pedido": "P-26/001-S00", "po": "C.100000/01",
+    "pedido": "P-26/025",
+    "cabecera": {"pedido": "P-26/025-S00", "po": "C.100000/01",
                  "fecha_pedido": "17-06-2026", "entrega": "30-10-2026", "items": 120,
                  "taller": 40, "montaje": 25, "entregas": 34, "obs_taller": "",
                  "obs_envios": "TRANSPORTES DEMO", "envio_parcial": "08-09-2026"},

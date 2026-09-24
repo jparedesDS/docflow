@@ -25,6 +25,15 @@ def ok(cond, msg):
         print("  FALLO:", msg)
 
 
+# Los tags del pedido se leen del ERP; aquí se ponen a mano para que la prueba
+# no dependa de él (antes, el primer bloque solo pasaba si el pedido existía de
+# verdad en el ERP de quien la lanzara).
+TAGS = sorted([(tag, P._sin_separadores(tag)) for tag in ("OHFE 0014", "OUFO 0018", "TKFE 2017N")],
+              key=lambda x: len(x[1]), reverse=True)
+P._TAGS_CACHE["P-26/023-S00"] = TAGS
+P._TAGS_CACHE["P-26/004-S00"] = TAGS
+
+
 # ── Campos de un documento ───────────────────────────────────────────────────
 doc = {"Nº Pedido": "P-26/023-S00", "Cliente": "ATLAS", "Material": "Caudal",
        "Nº PO": "7000100020", "Nº Doc. Cliente": "V-3005785-1100-300-TKFE2017N-CAL-001",
@@ -45,11 +54,7 @@ ok(cero["Rev. 2 cifras"] == "00", f"la 0 a dos cifras: {cero['Rev. 2 cifras']!r}
 ok(cero["Fichero"].endswith("-R00.PDF"), f"fichero de la rev 0: {cero['Fichero']}")
 
 # ── El TAG del documento ─────────────────────────────────────────────────────
-# Los tags del pedido se leen del ERP; aquí se ponen a mano para no depender de
-# él. El ERP los escribe con espacio y los clientes de mil maneras.
-P._TAGS_CACHE["P-26/004-S00"] = sorted(
-    [(tag, P._sin_separadores(tag)) for tag in ("OHFE 0014", "OUFO 0018", "TKFE 2017N")],
-    key=lambda x: len(x[1]), reverse=True)
+# El ERP escribe los tags con espacio y los clientes de mil maneras.
 
 
 def tag_de(numero, titulo="", tipo="Cálculos"):
