@@ -15,7 +15,7 @@ from pathlib import Path
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
 
-from core.config import USERS
+from core.config import APP_NAME, USERS
 from core.services import monitoring as monitoring_service
 from core.services import reports as reports_service
 from core.services import scheduled_reports as sched_service
@@ -671,7 +671,7 @@ class ReportesView(ctk.CTkFrame):
         ctk.CTkLabel(
             info,
             text=("ℹ  Los reportes programados se ejecutan en segundo plano mientras "
-                  "DocFlow Lite está abierto. Si cierras la app, los envíos se pausan."),
+                  f"{APP_NAME} está abierto. Si cierras la app, los envíos se pausan."),
             font=theme.FONT_BODY, text_color=theme.TEXT_SUB,
             anchor="w", justify="left", wraplength=700,
         ).pack(fill="x", padx=14, pady=10)

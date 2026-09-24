@@ -4,7 +4,7 @@ import logging
 
 import customtkinter as ctk
 
-from core.config import startup_warnings
+from core.config import APP_NAME, startup_warnings
 from gui import theme
 from gui.widgets.sidebar import Sidebar
 
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class DocFlowLiteApp(ctk.CTk):
-    TITLE = "DocFlow Lite"
+    TITLE = APP_NAME
     WIDTH = 1280
     HEIGHT = 820
 
@@ -587,7 +587,7 @@ class DocFlowLiteApp(ctk.CTk):
             logger.exception("Failed to spawn restarted process")
             messagebox.showerror(
                 "Error de reinicio",
-                f"No se pudo relanzar DocFlow Lite:\n{exc}\n\n"
+                f"No se pudo relanzar {APP_NAME}:\n{exc}\n\n"
                 "Ciérralo manualmente y vuelve a abrirlo.",
             )
             return

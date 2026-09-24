@@ -9,6 +9,7 @@ import logging
 
 import customtkinter as ctk
 
+from core.config import APP_NAME
 from gui import theme
 
 logger = logging.getLogger(__name__)
@@ -109,7 +110,7 @@ class NotificationManager:
     def _native(self, title, message) -> None:
         try:
             from winotify import Notification
-            Notification(app_id="DocFlow Lite", title=title,
+            Notification(app_id=APP_NAME, title=title,
                          msg=message or "").show()
         except Exception:
             pass  # winotify no instalado → solo toast in-app

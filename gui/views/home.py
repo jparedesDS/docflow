@@ -7,6 +7,7 @@ from datetime import datetime
 
 import customtkinter as ctk
 
+from core.config import APP_FIRMA
 from gui import theme
 from gui.widgets import ui
 from gui.widgets.scrollframe import ScrollFrame
@@ -130,7 +131,7 @@ class HomeView(ctk.CTkFrame):
         row.pack(anchor="center")
 
         ctk.CTkLabel(
-            row, text="DocFlow Lite v0.1  ·  hecho por  ",
+            row, text=f"{APP_FIRMA}  ·  hecho por  ",
             font=theme.FONT_TINY, text_color=theme.TEXT_MUTED,
         ).pack(side="left")
 

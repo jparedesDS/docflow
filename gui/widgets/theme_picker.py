@@ -10,6 +10,7 @@ from typing import Callable
 
 import customtkinter as ctk
 
+from core.config import APP_NAME
 from core.preferences import get_theme
 from gui import theme
 
@@ -107,7 +108,7 @@ class ThemePickerDialog(ctk.CTkToplevel):
             text_color=theme.TEXT_MAIN, anchor="w",
         ).pack(anchor="w")
         ctk.CTkLabel(
-            header, text="Elige un tema. DocFlow Lite se reiniciará para aplicarlo.",
+            header, text=f"Elige un tema. {APP_NAME} se reiniciará para aplicarlo.",
             font=theme.FONT_SUBTITLE, text_color=theme.TEXT_SUB, anchor="w",
         ).pack(anchor="w", pady=(theme.SPACE_1, 0))
 
@@ -180,7 +181,7 @@ class ThemePickerDialog(ctk.CTkToplevel):
         top.pack(fill="x", padx=8, pady=(8, 4))
         top.pack_propagate(False)
         ctk.CTkLabel(
-            top, text="  ●  DocFlow Lite",
+            top, text=f"  ●  {APP_NAME}",
             font=(t["font"], 10, "bold"),
             text_color=t["text"], anchor="w",
         ).pack(side="left", padx=4)

@@ -14,6 +14,8 @@ from typing import Optional
 
 import customtkinter as ctk
 
+from core.config import APP_FIRMA, APP_NAME
+
 from core import auth
 from gui import theme
 
@@ -34,7 +36,7 @@ class LoginWindow(ctk.CTk):
         ctk.set_default_color_theme("dark-blue" if mode == "dark" else "blue")
 
         super().__init__(fg_color=theme.BG_PAGE)
-        self.title("DocFlow Lite — Iniciar sesión")
+        self.title(f"{APP_NAME} — Iniciar sesión")
         self.geometry(f"{self.WIDTH}x{self.HEIGHT}")
         self.resizable(False, False)
         self._center_on_screen()
@@ -150,7 +152,7 @@ class LoginWindow(ctk.CTk):
         credit = ctk.CTkFrame(footer, fg_color="transparent")
         credit.pack(anchor="center")
         ctk.CTkLabel(
-            credit, text="DocFlow Lite v0.1  ·  © 2026  ",
+            credit, text=f"{APP_FIRMA}  ·  © 2026  ",
             font=theme.FONT_TINY, text_color=theme.TEXT_MUTED,
         ).pack(side="left")
         link = ctk.CTkLabel(

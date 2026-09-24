@@ -134,6 +134,7 @@ docflow/
 │   ├── widgets/                    # sidebar, tablas, botones, toasts
 │   └── views/                      # una por sección (21)
 ├── tests/                          # pruebas que se lanzan a mano, sin pytest
+├── tools/capturas.py               # las capturas del README, con datos de mentira
 ├── docs/img/                       # capturas del README
 ├── data/                           # data_erp.xlsx, consulta_erp.xlsx
 └── state/                          # JSON de runtime (preferencias, registros, logs)
@@ -173,10 +174,17 @@ SMTP_PASS=tu-password
 No hay pytest: son guiones que se ejecutan a mano y terminan diciendo cuántos fallos hay.
 
 ```bash
+.venv\Scripts\python.exe tests\import_all.py         # todos los módulos importan
+.venv\Scripts\python.exe tests\smoke_views.py        # las 20 secciones se levantan
 .venv\Scripts\python.exe tests\test_carpetas.py      # dónde cae cada documento devuelto
 .venv\Scripts\python.exe tests\test_vpr.py           # el informe de avance
 .venv\Scripts\python.exe tests\test_portadas.py      # plantillas Word y Excel
 ```
+
+Los dos primeros son la red de seguridad rápida: `import_all` caza lo que el
+linter no ve (un import circular, un nombre a medio renombrar) y `smoke_views`
+construye cada sección en una ventana oculta, así que un widget con un
+argumento inválido se cae ahí y no delante del usuario.
 
 ---
 

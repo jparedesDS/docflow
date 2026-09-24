@@ -22,6 +22,13 @@ load_dotenv(app_root() / ".env")
 
 logger = logging.getLogger(__name__)
 
+# ── Identidad de la app ───────────────────────────────────────────────────────
+# El nombre sale por la ventana, el login, los avisos de Windows y el pie de
+# Inicio. Vive aquí para que cambiarlo sea una línea y no una batida por la GUI.
+APP_NAME = "DocFlow Lite"
+APP_VERSION = "0.1"
+APP_FIRMA = f"{APP_NAME} v{APP_VERSION}"
+
 
 def _cfg(pref_key: str, env_key: str, default: str) -> str:
     """Ajuste no secreto: preferences → .env → default."""
