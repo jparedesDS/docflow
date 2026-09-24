@@ -628,6 +628,64 @@ def _portal_names(docs: list[dict], file_docs: dict[str, dict] | None) -> dict[i
     return out
 
 
+def _destino(doc: dict, folders: list[dict], *, uses_letter: bool, default_dotted: bool,
+             nombres: list[str] | None = None) -> tuple[dict | None, str]:
+    """A qué carpeta dev. va un documento devuelto, y con qué revisión.
+
+    Devuelve ({dev_dir, dev_exists, envio, n, letter, estado, how, name, dotted}, "")
+    o (None, motivo) cuando no hay manera de saberlo. Lo usan las dos formas de
+    archivar: la del paquete con PDF y la del correo que viene sin paquete.
+
+    El orden de preferencia es el de siempre: dónde se envió el documento, si
+    no el tipo y el título contra las carpetas que ya tiene el pedido, y si no
+    el catálogo de apertura.
+    """
+    estado = str(doc.get("Estado", ""))
+    if es_anulado(estado):
+        return None, "documento anulado (VOID)"
+    n = _rev_number(doc.get("Rev."))
+    codes = [c for c in (norm_doc_code(doc.get("Doc. Cliente", "")), norm_doc_code(doc.get("Doc. EIPSA", ""))) if len(c) >= 6]
+    # La revisión puede ser solo una letra: en TR las primeras emisiones
+    # van «rev A», «rev B», «rev C» y no traen número por ninguna parte.
+    # Vale igual —la carpeta se llama «rev<orden>-C»—, que es como están
+    # archivadas a mano; lo que no vale es quedarse sin ninguna de las dos.
+    propia = _rev_letter(doc.get("_rev_cliente")) or _rev_letter(doc.get("Rev."))
+    letter = propia if (uses_letter or propia) else ""
+    if n is None and not letter:
+        return None, f"revisión desconocida ({doc.get('Rev.')!r})"
+
+    # 1) carpeta env por el fichero enviado
+    hits = _find_sent_file(folders, codes, nombres)
+    same_rev = [(f, sub) for f, sub in hits if sub is not None and _env_rev_casa(sub.name, n, letter)]
+    env, envio = (same_rev or hits or [(None, None)])[0]
+    name, dotted, how = (env["name"], env["dotted"], "fichero enviado") if env else (None, default_dotted, "")
+    # 2) por tipo + título
+    if name is None:
+        f = _by_type_and_title(folders, str(doc.get("Tipo de documento", "")), str(doc.get("Título", "")))
+        if f:
+            name, dotted, how = f["name"], f["dotted"], "tipo y título"
+    # 3) catálogo de apertura
+    if name is None:
+        cat = _from_catalog(str(doc.get("Doc. EIPSA", "")), str(doc.get("Título", "")))
+        if cat:
+            name, dotted, how = cat, True, "catálogo"
+    if name is None:
+        return None, f"no sé en qué carpeta va ({doc.get('Tipo de documento') or 'sin tipo'})"
+
+    dev_dir, dev_exists = _dev_folder_for(folders, name, dotted)
+    # Algunos pedidos agrupan dentro de la carpeta: en P-26/002 los
+    # documentos cuelgan de «env Specification Technical Data\FL» y
+    # «…\RO» según sean de placas de caudal o de restricción. Ese nivel
+    # se replica en dev, que es como están archivados a mano.
+    grupo = envio.name if (envio is not None and not _REV_DIR_RE.match(envio.name)) else ""
+    if grupo:
+        dev_dir, dev_exists = _subcarpeta(dev_dir, grupo)
+        envio = None            # ya no dice nada de la revisión
+    return {"dev_dir": dev_dir, "dev_exists": dev_exists, "envio": envio, "n": n,
+            "letter": letter, "estado": estado, "how": how, "name": name,
+            "dotted": dotted}, ""
+
+
 def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: bytes | None = None,
                    email_date: str = "", dry_run: bool = False,
                    file_docs: dict[str, dict] | None = None) -> dict:
@@ -660,50 +718,16 @@ def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: 
             if doc is None:
                 res["skipped"].append((fname, "no coincide con ningún documento del correo"))
                 continue
-            estado = str(doc.get("Estado", ""))
-            if es_anulado(estado):
-                res["skipped"].append((fname, "documento anulado (VOID)"))
+            destino, motivo = _destino(doc, folders, uses_letter=uses_letter,
+                                       default_dotted=default_dotted,
+                                       nombres=portal_names.get(id(doc)))
+            if destino is None:
+                res["skipped"].append((fname, motivo))
                 continue
-            n = _rev_number(doc.get("Rev."))
-            codes = [c for c in (norm_doc_code(doc.get("Doc. Cliente", "")), norm_doc_code(doc.get("Doc. EIPSA", ""))) if len(c) >= 6]
-            # La revisión puede ser solo una letra: en TR las primeras emisiones
-            # van «rev A», «rev B», «rev C» y no traen número por ninguna parte.
-            # Vale igual —la carpeta se llama «rev<orden>-C»—, que es como están
-            # archivadas a mano; lo que no vale es quedarse sin ninguna de las dos.
-            propia = _rev_letter(doc.get("_rev_cliente")) or _rev_letter(doc.get("Rev."))
-            letter = propia if (uses_letter or propia) else ""
-            if n is None and not letter:
-                res["skipped"].append((fname, f"revisión desconocida ({doc.get('Rev.')!r})"))
-                continue
-
-            # 1) carpeta env por el fichero enviado
-            hits = _find_sent_file(folders, codes, portal_names.get(id(doc)))
-            same_rev = [(f, sub) for f, sub in hits if sub is not None and _env_rev_casa(sub.name, n, letter)]
-            env, envio = (same_rev or hits or [(None, None)])[0]
-            name, dotted, how = (env["name"], env["dotted"], "fichero enviado") if env else (None, default_dotted, "")
-            # 2) por tipo + título
-            if name is None:
-                f = _by_type_and_title(folders, str(doc.get("Tipo de documento", "")), str(doc.get("Título", "")))
-                if f:
-                    name, dotted, how = f["name"], f["dotted"], "tipo y título"
-            # 3) catálogo de apertura
-            if name is None:
-                cat = _from_catalog(str(doc.get("Doc. EIPSA", "")), str(doc.get("Título", "")))
-                if cat:
-                    name, dotted, how = cat, True, "catálogo"
-            if name is None:
-                res["skipped"].append((fname, f"no sé en qué carpeta va ({doc.get('Tipo de documento') or 'sin tipo'})"))
-                continue
-
-            dev_dir, dev_exists = _dev_folder_for(folders, name, dotted)
-            # Algunos pedidos agrupan dentro de la carpeta: en P-26/002 los
-            # documentos cuelgan de «env Specification Technical Data\FL» y
-            # «…\RO» según sean de placas de caudal o de restricción. Ese nivel
-            # se replica en dev, que es como están archivados a mano.
-            grupo = envio.name if (envio is not None and not _REV_DIR_RE.match(envio.name)) else ""
-            if grupo:
-                dev_dir, dev_exists = _subcarpeta(dev_dir, grupo)
-                envio = None            # ya no dice nada de la revisión
+            dev_dir, dev_exists = destino["dev_dir"], destino["dev_exists"]
+            envio, n, letter = destino["envio"], destino["n"], destino["letter"]
+            estado, how, name, dotted = (destino["estado"], destino["how"],
+                                         destino["name"], destino["dotted"])
             rev_dir = _ya_archivado(dev_dir, fname, zi.file_size, zi.CRC)
             rev_exists = rev_dir is not None
             if rev_dir is None:
@@ -745,6 +769,61 @@ def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: 
     return res
 
 
+def archive_email_only(docs: list[dict], pedido: str, *, email_raw: bytes | None = None,
+                       email_date: str = "", dry_run: bool = False) -> dict:
+    """Abre la carpeta dev. de una devolución que llega sin paquete y deja el correo.
+
+    Wood avisa de documentos «2I - FOR INFORMATION ONLY» sin enlace de descarga:
+    no hay PDF que archivar, pero la devolución existe y su sitio en el pedido
+    es el mismo de siempre (`dev. PMI PROCEDURE\\rev0 AP`). Sin esto, el rastro
+    se quedaba solo en «00 TRANS Y RES» y la carpeta había que hacerla a mano.
+
+    Devuelve lo mismo que `archive_return` más `emails`: los .eml escritos.
+    """
+    res = {"archived": [], "skipped": [], "created": [], "plan": [], "emails": []}
+    pedido = pedido_con_suministro(pedido, docs)
+    tecnico = tecnico_dir(pedido)
+    if tecnico is None or not tecnico.is_dir():
+        res["skipped"].append(("el correo", f"no se localiza 2-Tecnico del pedido {pedido}"))
+        return res
+    folders = scan_folders(tecnico)
+    uses_letter = _uses_letter(folders)
+    default_dotted = any(f["dotted"] for f in folders) or not folders
+    eml_name = f"dev {email_date[:10]}.eml" if email_date else "dev.eml"
+
+    for doc in docs:
+        etiqueta = str(doc.get("Doc. EIPSA") or doc.get("Doc. Cliente")
+                       or doc.get("Título") or "documento")
+        destino, motivo = _destino(doc, folders, uses_letter=uses_letter,
+                                   default_dotted=default_dotted)
+        if destino is None:
+            res["skipped"].append((etiqueta, motivo))
+            continue
+        dev_dir, dev_exists = destino["dev_dir"], destino["dev_exists"]
+        rev_dir, rev_exists = _rev_folder_for(dev_dir, destino["n"], destino["letter"],
+                                              _suffix(destino["estado"]), envio=destino["envio"])
+        res["plan"].append({"file": eml_name, "dest": rev_dir / eml_name,
+                            "how": destino["how"], "doc": etiqueta})
+        if dry_run:
+            continue
+        for d, existe in ((dev_dir, dev_exists), (rev_dir, rev_exists)):
+            if not d.is_dir():
+                d.mkdir(parents=True)
+                res["created"].append(d)
+                if d.parent == tecnico:
+                    folders.append({"kind": "dev", "name": destino["name"],
+                                    "dotted": destino["dotted"], "path": d})
+        if email_raw:
+            eml = rev_dir / eml_name
+            if not eml.exists():
+                eml.write_bytes(email_raw)
+            res["emails"].append(eml)
+    if not dry_run:
+        logger.info("Devolución sin paquete de %s: %d carpeta(s) con el correo, %d sin colocar",
+                    pedido, len(res["emails"]), len(res["skipped"]))
+    return res
+
+
 def summary_line(res: dict) -> str:
     """Frase corta para la GUI: «2 PDF en dev. Cálculos\\rev2 AP · 1 sin colocar»."""
     parts = []
@@ -754,6 +833,8 @@ def summary_line(res: dict) -> str:
         dests[key] = dests.get(key, 0) + 1
     for key, n in dests.items():
         parts.append(f"{n} en {key}")
+    for eml in res.get("emails", []):
+        parts.append(f"correo en {eml.parent.parent.name}\\{eml.parent.name}")
     if res.get("skipped"):
         parts.append(f"{len(res['skipped'])} sin colocar")
     return " · ".join(parts) if parts else "nada que archivar"

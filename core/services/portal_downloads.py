@@ -68,12 +68,15 @@ class NothingToDownload(Exception):
     reintenta cada diez minutos.
 
     El correo sí se archiva —queda constancia de la devolución en su carpeta
-    `NNN (fecha)` aunque no haya paquete—, y `folder`/`eml` dicen dónde."""
+    `NNN (fecha)` y en la `dev.` de cada documento, aunque no haya paquete—, y
+    `folder`/`eml`/`dev_folders` dicen dónde."""
 
-    def __init__(self, msg: str, *, folder=None, eml=None):
+    def __init__(self, msg: str, *, folder=None, eml=None, dev_folders=(), archive=None):
         super().__init__(msg)
         self.folder = folder
         self.eml = eml
+        self.dev_folders = list(dev_folders)
+        self.archive = archive or {}
 
 
 _listeners: list = []          # callbacks(result) para que la GUI avise de descargas automáticas
@@ -164,7 +167,7 @@ def download_status(sender: str, subject: str) -> dict:
         vacio = nothing_info(info["code"])
         return {"code": info["code"], "downloadable": False, "downloaded": False,
                 "only_email": bool(vacio.get("folder")), "folder": vacio.get("folder", ""),
-                "dev_folders": []}
+                "dev_folders": list(vacio.get("dev_folders") or [])}
     return {"code": info["code"], "downloadable": True, "downloaded": done is not None,
             "folder": (done or {}).get("folder", ""),
             "dev_folders": list((done or {}).get("dev_folders") or [])}
@@ -180,6 +183,14 @@ def _mark_done(code: str, info: dict) -> None:
 def _update_done(code: str, extra: dict) -> None:
     reg = _registry()
     entry = reg.setdefault("done", {}).get(code)
+    if entry is not None:
+        entry.update(extra)
+        write_json(PORTAL_DOWNLOADS_FILE, reg)
+
+
+def _update_nothing(code: str, extra: dict) -> None:
+    reg = _registry()
+    entry = reg.setdefault("nothing", {}).get(code)
     if entry is not None:
         entry.update(extra)
         write_json(PORTAL_DOWNLOADS_FILE, reg)
@@ -421,6 +432,28 @@ def archive_pending(uid: str, folder: str = "INBOX", *, session=None) -> dict:
     if info is None:
         raise ValueError("Este correo no es una devolución de un portal")
     done = downloaded_info(info["code"])
+    vacio = nothing_info(info["code"])
+    if not done and vacio.get("folder"):
+        # Devolución sin paquete (Wood «for information»): no hay zip que
+        # repartir, pero el correo sí tiene que estar en la carpeta dev. del
+        # documento. Es lo que arregla las que se archivaron antes de que esto
+        # existiera.
+        docs = pv.get("documents") or []
+        pedido = _pedido_de(docs) or str(vacio.get("pedido") or "").strip()
+        if not pedido:
+            raise LookupError("No sé a qué pedido pertenece esta devolución (no está en el ERP)")
+        raw = imap_service.fetch_raw(uid, folder)
+        # Como en la descarga normal: en Document Space el estado de cada
+        # documento sale del transmittal adjunto, no de la tabla del correo, y
+        # sin él un aprobado acabaría en una carpeta «com».
+        docs, _ = _docs_y_ficheros(info, docs, pv.get("subject", ""), raw, session=session)
+        eml = vacio.get("eml")
+        res = {"code": info["code"], "po": info["po"], "pedido": pedido,
+               "portal": info["portal"], "zip": None, "folder": Path(vacio["folder"]),
+               "eml": Path(eml) if eml else None, "already": True,
+               "motivo": vacio.get("msg", "")}
+        res.update(_archivar_correo(info["code"], docs, pedido, raw, pv.get("date", "")))
+        return res
     if not done or not done.get("zip"):
         raise LookupError(f"La devolución {info['code']} todavía no está descargada")
     zip_path = Path(done["zip"])
@@ -483,8 +516,11 @@ def download_for_email(uid: str, folder: str = "INBOX", *, session=None) -> dict
             motivo = ("Este correo de Document Space no trae el botón «Download»: "
                       "no hay paquete que bajar")
             vacia = save_email_only(code, pedido, subject=subject, raw_email=raw,
-                                    portal="docspace", po=info["po"], motivo=motivo)
-            raise NothingToDownload(motivo, folder=vacia["folder"], eml=vacia["eml"])
+                                    portal="docspace", po=info["po"], motivo=motivo,
+                                    docs=docs, fecha=pv.get("date", ""))
+            raise NothingToDownload(motivo, folder=vacia["folder"], eml=vacia["eml"],
+                                    dev_folders=vacia["dev_folders"],
+                                    archive=vacia.get("archive"))
 
         adjunto = docspace.cover_adjunto(raw)
 
@@ -507,10 +543,15 @@ def download_for_email(uid: str, folder: str = "INBOX", *, session=None) -> dict
                       "documentación se subió solo para información "
                       "(2I - FOR INFORMATION ONLY)")
             # No hay paquete, pero la devolución existe: se archiva el correo en
-            # su carpeta «NNN (fecha)» y queda apuntada para no volver a pedirla.
+            # su carpeta «NNN (fecha)», y también en la carpeta dev. de cada
+            # documento, que es donde se busca luego. Queda apuntada para no
+            # volver a pedirla.
             vacia = save_email_only(code, pedido, subject=subject, raw_email=raw,
-                                    portal="prodoc", po=info["po"], motivo=motivo)
-            raise NothingToDownload(motivo, folder=vacia["folder"], eml=vacia["eml"])
+                                    portal="prodoc", po=info["po"], motivo=motivo,
+                                    docs=docs, fecha=pv.get("date", ""))
+            raise NothingToDownload(motivo, folder=vacia["folder"], eml=vacia["eml"],
+                                    dev_folders=vacia["dev_folders"],
+                                    archive=vacia.get("archive"))
 
         def fetch(dest: Path) -> Path:
             return prodoc.download(url, dest, code)
@@ -572,40 +613,71 @@ def download(code: str, pedido: str, fetch: Callable[[Path], Path], *, subject: 
     return res
 
 
+def _archivar_correo(code: str, docs: list[dict], pedido: str,
+                     raw: bytes | None, fecha: str) -> dict:
+    """Abre la carpeta `dev.` de cada documento y deja dentro el correo.
+
+    Devuelve {archive, dev_folders}. Nunca lanza: el correo ya está a salvo en
+    «00 TRANS Y RES», y que no se sepa colocar no puede tirar nada.
+    """
+    from core.services import dev_folders
+
+    try:
+        archive = dev_folders.archive_email_only(docs, pedido, email_raw=raw, email_date=fecha)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Archivo en dev. del correo de %s falló: %s", code, exc)
+        archive = {"archived": [], "skipped": [("el correo", str(exc))], "created": [],
+                   "plan": [], "emails": []}
+    devs = sorted({str(eml.parent) for eml in archive["emails"]})
+    if devs:
+        _update_nothing(code, {"dev_folders": devs})
+    return {"archive": archive, "dev_folders": devs}
+
+
 def save_email_only(code: str, pedido: str, *, subject: str = "", raw_email: bytes | None = None,
-                    portal: str = "", po: str = "", motivo: str = "") -> dict:
+                    portal: str = "", po: str = "", motivo: str = "",
+                    docs: list[dict] | None = None, fecha: str = "") -> dict:
     """Archiva el correo de una devolución que no trae paquete.
 
     Se crea la carpeta `NNN (fecha)` igual que en una descarga normal y dentro
     queda el .eml: aunque no haya nada que bajar, la devolución existe y tiene
     que dejar rastro en el pedido. Si ya se archivó antes, se devuelve la misma
-    carpeta en vez de crear otra."""
+    carpeta en vez de crear otra.
+
+    Y con `docs`, el correo se guarda además en la carpeta `dev.` que le toca a
+    cada documento —`dev. PMI PROCEDURE\\rev0 AP`—, que es donde se busca luego
+    la devolución. Si la carpeta faltaba de una vez anterior, se abre ahora."""
     previo = nothing_info(code)
-    if previo.get("folder"):
-        carpeta = Path(previo["folder"])
-        if carpeta.is_dir():
-            eml = Path(previo["eml"]) if previo.get("eml") else None
-            return {"code": code, "po": po, "pedido": pedido, "portal": portal,
-                    "folder": carpeta, "eml": eml if (eml and eml.is_file()) else None,
-                    "motivo": previo.get("msg", motivo), "already": True}
+    carpeta = Path(previo["folder"]) if previo.get("folder") else None
+    if carpeta is not None and carpeta.is_dir():
+        eml = Path(previo["eml"]) if previo.get("eml") else None
+        res = {"code": code, "po": po, "pedido": pedido, "portal": portal,
+               "folder": carpeta, "eml": eml if (eml and eml.is_file()) else None,
+               "motivo": previo.get("msg", motivo), "already": True,
+               "dev_folders": list(previo.get("dev_folders") or [])}
+    else:
+        root = trans_root(pedido)
+        if root is None:
+            raise FileNotFoundError(f"No se localiza la carpeta del pedido {pedido} (¿unidad M: conectada?)")
+        dest = next_folder(root)
+        eml_path = None
+        try:
+            if raw_email:
+                eml_path = files.escribir(eml_path_de(dest, subject, code), raw_email)
+        except Exception:
+            _remove_if_empty(dest)     # no dejar un «NNN (fecha)» vacío
+            raise
 
-    root = trans_root(pedido)
-    if root is None:
-        raise FileNotFoundError(f"No se localiza la carpeta del pedido {pedido} (¿unidad M: conectada?)")
-    dest = next_folder(root)
-    eml_path = None
-    try:
-        if raw_email:
-            eml_path = files.escribir(eml_path_de(dest, subject, code), raw_email)
-    except Exception:
-        _remove_if_empty(dest)     # no dejar un «NNN (fecha)» vacío
-        raise
+        _mark_nothing(code, motivo, folder=dest, eml=eml_path, pedido=pedido, portal=portal, po=po)
+        logger.info("Devolución %s (%s) sin paquete: se archiva solo el correo en %s",
+                    code, PORTAL_NAMES.get(portal, portal), dest)
+        res = {"code": code, "po": po, "pedido": pedido, "portal": portal,
+               "folder": dest, "eml": eml_path, "motivo": motivo, "already": False,
+               "dev_folders": []}
 
-    _mark_nothing(code, motivo, folder=dest, eml=eml_path, pedido=pedido, portal=portal, po=po)
-    logger.info("Devolución %s (%s) sin paquete: se archiva solo el correo en %s",
-                code, PORTAL_NAMES.get(portal, portal), dest)
-    return {"code": code, "po": po, "pedido": pedido, "portal": portal,
-            "folder": dest, "eml": eml_path, "motivo": motivo, "already": False}
+    if docs and not res["dev_folders"]:
+        res.update(_archivar_correo(code, docs, pedido, raw_email, fecha))
+    return res
 
 
 def _info(res: dict) -> dict:

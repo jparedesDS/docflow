@@ -45,7 +45,10 @@ HELP: dict[str, dict] = {
             "Escribe el Nº de pedido o el cliente y elígelo en la lista.",
             "«Estado del pedido»: veredicto, avance documental, fabricación (fases y órdenes de trabajo) y plazo.",
             "«Equipos & Tags»: cada equipo con su plano, su cálculo y su estado de fabricación; doble clic abre la ficha.",
-            "«Informe del pedido →» genera un informe web completo para compartir."
+            "«Informe del pedido →» genera un informe web completo para compartir.",
+            "«⤓ Comentados del cliente» baja del portal el PDF comentado de cada documento "
+            "cerrado (DOC. STATUS: Final). De momento solo Técnicas Reunidas; se puede parar "
+            "y seguir otro día, porque lo que ya está en la carpeta no se vuelve a pedir."
         ],
         "atajos": [
             "Ctrl+K · escribe P-26/023 y Enter",
@@ -164,6 +167,7 @@ HELP: dict[str, dict] = {
             "«⤓ Descargar devolución» (Técnicas Reunidas y AYESA): baja el zip del portal y lo guarda con el "
             "correo en 00 TRANS Y RES \\ NNN (fecha) del pedido; además copia cada PDF devuelto a su carpeta "
             "2-Tecnico \\ dev. <Tipo> \\ rev<N> AP|COM (la crea si no existe). Con la descarga automática activa se hace solo.",
+            "Hay devoluciones que no traen paquete —Wood avisa de documentos «2I - FOR INFORMATION ONLY» sin enlace—: entonces se archiva el correo, tanto en 00 TRANS Y RES como en la carpeta dev. del documento, que se crea igual. Si te falta esa carpeta en una devolución antigua, el botón «🗂 Archivar en 2-Tecnico» la abre.",
             "La columna «Descarga» marca «✓ guardada» cuando la devolución ya está en su carpeta; en la preview el botón "
             "pasa a «📂 Abrir carpetas» (abre 00 TRANS Y RES \\ NNN y las dev. donde quedaron los PDF) para comprobarla "
             "antes de enviar la notificación (que indica dónde está guardada).",

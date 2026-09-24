@@ -68,6 +68,12 @@ vuelo, ya no hay nada que pintar y el resultado se descarta en silencio.
 5. Si algo se quedó sin colocar, el botón del preview permite repartirlo después
    sin volver a pedirle el paquete al portal.
 
+Hay devoluciones que llegan **sin paquete**: Wood avisa de documentos
+«2I - FOR INFORMATION ONLY» y el correo no trae enlace de descarga. No hay PDF
+que repartir, pero la devolución existe igual, así que se le abre su carpeta
+`dev. <Tipo>ev<N> AP` y dentro queda el correo (`archive_email_only`). Es lo
+que se hacía a mano, y sin ello el rastro se quedaba solo en «00 TRANS Y RES».
+
 ## Las carpetas de revisión
 
 Cada pedido numera sus carpetas a su manera y se respeta la suya:

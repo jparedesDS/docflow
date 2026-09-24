@@ -302,6 +302,29 @@ class PreviewWindow(ctk.CTkToplevel):
                 text=f"⚠  Devolución {info['code']} descargada, pero sus documentos no se "
                      f"archivaron en las carpetas dev. · pulsa «Archivar en 2-Tecnico».")
             return
+        vacio = portal_downloads.nothing_info(info["code"])
+        if not done and vacio.get("folder"):
+            # Devolución sin paquete (Wood «for information»). Si el correo ya
+            # está en la carpeta dev. del documento, el botón solo abre; si no
+            # —las archivadas antes de que esto existiera—, ofrece hacerlo.
+            devs = list(vacio.get("dev_folders") or [])
+            carpeta = vacio["folder"]
+            if devs:
+                self.btn_transmittal.configure(
+                    state="normal", text="📂  Abrir carpetas de la devolución",
+                    command=lambda: _open_return_folders(carpeta, devs))
+                self.lbl_status.configure(
+                    text=f"ℹ  Devolución {info['code']} sin paquete que descargar · el correo "
+                         f"está en {Path(carpeta).name} y en {Path(devs[0]).name}.")
+            else:
+                self.btn_transmittal.configure(
+                    state="normal", text="🗂  Archivar en 2-Tecnico",
+                    command=self._archive_pending)
+                self.lbl_status.configure(
+                    text=f"⚠  Devolución {info['code']} sin paquete: el correo está en "
+                         f"{Path(carpeta).name}, pero no en su carpeta dev. · pulsa "
+                         f"«Archivar en 2-Tecnico».")
+            return
         if done and done.get("folder"):
             # Ya descargada y archivada: el botón lleva directamente a la carpeta
             # para comprobarlo antes de avisar a los compañeros.
@@ -332,7 +355,8 @@ class PreviewWindow(ctk.CTkToplevel):
             except portal_downloads.NothingToDownload as exc:
                 # No es un fallo: este correo no traía paquete, solo se archiva él.
                 msg, carpeta = str(exc), exc.folder
-                ui.en_ui(self, lambda: self._transmittal_empty(msg, carpeta))
+                devs, archive = exc.dev_folders, exc.archive
+                ui.en_ui(self, lambda: self._transmittal_empty(msg, carpeta, devs, archive))
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Descarga de transmittal")
                 msg = str(exc)
@@ -374,25 +398,39 @@ class PreviewWindow(ctk.CTkToplevel):
         detalle = "\n".join(f"· {f}: {why}" for f, why in archive.get("skipped", [])[:4])
         if self._on_sent:
             self._on_sent()          # refresca la lista: la fila pasa a «✓ guardada»
+        # Las devoluciones «for information» de Wood no traen paquete: hay
+        # carpeta y correo, pero no zip del que sacar el nombre.
+        paquete = res.get("zip")
+        que = paquete.name if paquete else res["code"]
         ui.toast(self, "Devolución archivada" if res.get("already") else "Devolución descargada",
-                 f"{res['zip'].name} → {folder.name}\nArchivo en 2-Tecnico: {resumen}" + (f"\n{detalle}" if detalle else ""),
+                 f"{que} → {folder.name}\nArchivo en 2-Tecnico: {resumen}" + (f"\n{detalle}" if detalle else ""),
                  kind="success" if not archive.get("skipped") else "warn")
 
-    def _transmittal_empty(self, msg: str, folder=None) -> None:
+    def _transmittal_empty(self, msg: str, folder=None, devs=(), archive=None) -> None:
         """El correo es una devolución, pero no trae paquete que descargar.
 
-        El correo sí queda archivado en su carpeta del pedido, así que el botón
-        pasa a abrirla en vez de a reintentar una descarga que no existe.
+        El correo sí queda archivado —en su carpeta del pedido y en la `dev.` de
+        cada documento—, así que el botón pasa a abrirlas en vez de a reintentar
+        una descarga que no existe.
         """
+        from core.services import dev_folders
+
+        devs = list(devs or [])
         donde = f" El correo queda en {Path(folder).name}." if folder else ""
+        if devs:
+            donde += f" Y en {Path(devs[0]).parent.name}\\{Path(devs[0]).name}."
         self.lbl_status.configure(text=f"ℹ  {msg}.{donde}")
         if folder:
             self.btn_transmittal.configure(
-                state="normal", text="📂  Abrir la carpeta de la devolución",
-                command=lambda: _open_return_folders(folder, []))
+                state="normal", text="📂  Abrir carpetas de la devolución",
+                command=lambda: _open_return_folders(folder, devs))
         else:
             self.btn_transmittal.configure(state="disabled", text="—  Sin descarga")
-        ui.toast(self, "Sin paquete que descargar", msg + donde, kind="info")
+        detalle = "\n".join(f"· {f}: {why}" for f, why in (archive or {}).get("skipped", [])[:4])
+        resumen = dev_folders.summary_line(archive or {})
+        ui.toast(self, "Sin paquete que descargar",
+                 f"{msg}{donde}\nArchivo en 2-Tecnico: {resumen}" + (f"\n{detalle}" if detalle else ""),
+                 kind="info")
         if self._on_sent:
             self._on_sent()          # la columna Descarga deja de pedirlo
 

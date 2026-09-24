@@ -83,4 +83,59 @@ try:
 finally:
     P.egesdoc.transmittal_file_map = guardado
 
+# ── Devolución sin paquete: también deja rastro en la carpeta dev. ─────────
+# Wood avisa de documentos «2I - FOR INFORMATION ONLY» sin enlace: no hay zip,
+# pero el correo tiene que quedar en «00 TRANS Y RES» y en la carpeta dev.
+VACIO = "TL-1234AB00A-VDC-6480"
+tmp = Path(tempfile.mkdtemp())
+registro, trans_root_real = P.PORTAL_DOWNLOADS_FILE, P.trans_root
+archivar_real = dev_folders.archive_email_only
+try:
+    P.PORTAL_DOWNLOADS_FILE = tmp / "portal_downloads.json"
+    trans = tmp / "00 TRANS Y RES"
+    trans.mkdir()
+    P.trans_root = lambda _pedido: trans
+    DEVDIR = tmp / "2-Tecnico" / "dev. PMI PROCEDURE" / "rev0 AP"
+    dev_folders.archive_email_only = lambda *a, **k: {
+        "archived": [], "skipped": [], "created": [DEVDIR], "plan": [],
+        "emails": [DEVDIR / "dev 2026-09-24.eml"]}
+
+    res = P.save_email_only(VACIO, "P-26/004", subject="Wood Transmittal", raw_email=b"correo",
+                            portal="prodoc", po="7000100010", motivo="sin enlace",
+                            docs=[{"Título": "PMI PROCEDURE"}], fecha="2026-09-24")
+    ok(res["folder"].is_dir() and res["eml"] and res["eml"].is_file(),
+       f"el correo se archiva en su carpeta del pedido: {res['folder'].name}")
+    ok(res["dev_folders"] == [str(DEVDIR)], f"y en la carpeta dev.: {res['dev_folders']}")
+    ok(P.nothing_info(VACIO).get("dev_folders") == [str(DEVDIR)],
+       "queda apuntado en el registro, que es de donde lo lee la ventana")
+    ok(P.download_status("Prodoc.postmaster@woodgroup.com",
+                         f"Wood Transmittal {VACIO} - algo").get("dev_folders") == [str(DEVDIR)],
+       "y la lista de devoluciones también lo ve")
+
+    # Repetirlo no vuelve a archivar ni crea otra carpeta «NNN (fecha)»
+    carpetas = sorted(p.name for p in trans.iterdir())
+    otra = P.save_email_only(VACIO, "P-26/004", subject="Wood Transmittal", raw_email=b"correo",
+                             portal="prodoc", po="7000100010", motivo="sin enlace",
+                             docs=[{"Título": "PMI PROCEDURE"}], fecha="2026-09-24")
+    ok(otra["already"] and sorted(p.name for p in trans.iterdir()) == carpetas,
+       "la segunda vez se reutiliza lo que ya había")
+
+    # Si colocar el correo falla, la devolución sigue archivada igual
+    def revienta(*a, **k):
+        raise OSError("M: no está conectada")
+
+    dev_folders.archive_email_only = revienta
+    res = P.save_email_only("OTRO-VACIO", "P-26/004", subject="x", raw_email=b"c",
+                            portal="prodoc", po="1", motivo="sin enlace",
+                            docs=[{"Título": "X"}], fecha="2026-09-24")
+    ok(res["dev_folders"] == [] and res["archive"]["skipped"],
+       f"el fallo se cuenta como «sin colocar», no como excepción: {res['archive']['skipped']}")
+    ok(res["eml"] is not None and res["eml"].is_file(),
+       "y el correo se queda guardado igual")
+finally:
+    dev_folders.archive_email_only = archivar_real
+    P.trans_root = trans_root_real
+    P.PORTAL_DOWNLOADS_FILE = registro
+    shutil.rmtree(tmp, ignore_errors=True)
+
 print("FALLOS:", fallos)

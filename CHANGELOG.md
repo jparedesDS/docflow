@@ -5,6 +5,14 @@ los commits; aquí queda lo que cambió la forma de trabajar.
 
 ## Septiembre 2026
 
+- **Devoluciones sin paquete**: los transmittals «for information» de Wood no
+  traen enlace de descarga, pero la devolución existe: ahora se le abre su
+  carpeta `dev. <Tipo>ev<N> AP` y el correo queda dentro, como el resto.
+- **Documentos cerrados de un pedido**: botón «⤓ Comentados del cliente» en
+  Pedidos (y `tools/finales_egesdoc.py` para la línea de comandos) que baja de
+  eGesDoc el PDF comentado de todos los documentos en Final de un PO —los 345
+  de un pedido son 345 clics—. Se puede parar y seguir: lo que ya está en la
+  carpeta no se vuelve a pedir. Solo Técnicas Reunidas por ahora.
 - **VPR**: el informe mensual de avance para el cliente, con los datos del ERP y
   sobre su propia plantilla de Word.
 - **Portadas**: se rellena la plantilla del cliente (Word o Excel) con los datos

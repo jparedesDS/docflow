@@ -169,4 +169,50 @@ try:
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 
+# ── Devolución sin paquete: el correo abre igual su carpeta dev. ───────────
+# Los transmittals «2I - FOR INFORMATION ONLY» de Wood llegan sin enlace de
+# descarga. No hay PDF, pero la devolución existe y va donde iría el documento.
+tmp = Path(tempfile.mkdtemp())
+tecnico_real = D.tecnico_dir
+try:
+    tecnico = tmp / "2-Tecnico"
+    (tecnico / "env. PMI PROCEDURE").mkdir(parents=True)
+    (tecnico / "env. MANUAL").mkdir()
+    D.tecnico_dir = lambda _pedido: tecnico
+
+    DOC = {"Nº Pedido": "P-26/004", "Supp.": "S00", "Doc. EIPSA": "",
+           "Doc. Cliente": "V-1234AB00A-1100-300-PRO-001", "Título": "PMI PROCEDURE",
+           "Rev.": "0", "Estado": "Informativo", "Tipo de documento": ""}
+    CORREO = b"From: Prodoc.postmaster@woodgroup.com\r\n\r\nWood Transmittal"
+
+    res = D.archive_email_only([DOC], "P-26/004", email_raw=CORREO,
+                               email_date="2026-09-24", dry_run=True)
+    ok(res["plan"] and res["plan"][0]["dest"].parent.name == "rev0 AP",
+       f"el «for information» es AP: {res['plan'] and res['plan'][0]['dest'].parent.name}")
+    ok(not (tecnico / "dev. PMI PROCEDURE").exists(), "con dry_run no se crea nada")
+
+    res = D.archive_email_only([DOC], "P-26/004", email_raw=CORREO, email_date="2026-09-24")
+    eml = tecnico / "dev. PMI PROCEDURE" / "rev0 AP" / "dev 2026-09-24.eml"
+    ok(eml.is_file(), f"el correo queda en dev. PMI PROCEDURE\\rev0 AP: {eml.is_file()}")
+    ok(eml.read_bytes() == CORREO, "y es el correo entero")
+    ok(res["emails"] == [eml] and not res["skipped"], f"se informa de dónde cayó: {res}")
+    ok("correo en dev. PMI PROCEDURE\\rev0 AP" in D.summary_line(res),
+       f"el resumen lo dice: {D.summary_line(res)}")
+
+    # Repetirlo no duplica ni la carpeta ni el correo
+    antes = sorted(p.name for p in (tecnico / "dev. PMI PROCEDURE").iterdir())
+    D.archive_email_only([DOC], "P-26/004", email_raw=b"otro", email_date="2026-09-24")
+    ok(sorted(p.name for p in (tecnico / "dev. PMI PROCEDURE").iterdir()) == antes,
+       "repetirlo no crea una carpeta nueva")
+    ok(eml.read_bytes() == CORREO, "ni pisa el correo que ya estaba")
+
+    # Un documento anulado no abre carpeta
+    void = dict(DOC, Estado="M - VOID", Título="MANUAL")
+    res = D.archive_email_only([void], "P-26/004", email_raw=CORREO, email_date="2026-09-24")
+    ok(not res["emails"] and res["skipped"], f"un VOID se deja fuera: {res['skipped']}")
+    ok(not (tecnico / "dev. MANUAL").exists(), "y no le abre carpeta")
+finally:
+    D.tecnico_dir = tecnico_real
+    shutil.rmtree(tmp, ignore_errors=True)
+
 print("FALLOS:", fallos)
