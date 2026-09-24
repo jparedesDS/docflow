@@ -38,3 +38,6 @@ state/secrets.enc
 state/.secretkey
 state/*.enc
 state/logs/
+
+# Descargas de los portales (documentos del cliente)
+descargas/

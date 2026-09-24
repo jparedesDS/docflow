@@ -67,13 +67,24 @@ def filename_from_headers(headers) -> str:
     return _BAD_CHARS.sub("_", name)
 
 
-def save_response(response: requests.Response, dest_dir: Path | str, default_name: str) -> Path:
+def save_response(response: requests.Response, dest_dir: Path | str, default_name: str,
+                  name: str = "") -> Path:
     """Guarda el cuerpo de `response` (en streaming) en `dest_dir`, con el nombre
     del Content-Disposition o `default_name`. Escritura atómica y **sin pisar**:
-    si ahí ya hay otro fichero con ese nombre, este se guarda al lado."""
+    si ahí ya hay otro fichero con ese nombre, este se guarda al lado.
+
+    Con `name` se impone el nombre y se ignora el del servidor: hace falta
+    cuando el portal bautiza los ficheros con su id interno y queremos el
+    código del documento delante.
+    """
     dest = Path(dest_dir)
     dest.mkdir(parents=True, exist_ok=True)
-    target = dest / (filename_from_headers(response.headers) or default_name)
+    # El nombre impuesto se limpia: viene del portal (el código del documento) y
+    # una barra o un «:» lo convertirían en una ruta imposible, con lo que la
+    # escritura fallaría documento tras documento. Se sustituyen, no se cortan:
+    # el código entero tiene que seguir leyéndose en el nombre del fichero.
+    elegido = _BAD_CHARS.sub("_", str(name)) if name else ""
+    target = dest / (elegido or filename_from_headers(response.headers) or default_name)
     tmp = files.libre(target.with_suffix(target.suffix + ".part"))
     with open(tmp, "xb") as fh:
         for chunk in response.iter_content(1 << 16):
