@@ -88,11 +88,12 @@ class VprView(ctk.CTkFrame):
         self._pedidos = pedidos
         self.cmb_pedido.configure(values=pedidos or ["—"])
         if pedidos:
-            self.cmb_pedido.set(pedidos[0])
+            self.cmb_pedido.set(ui.pedido_inicial(pedidos, "vpr_ultimo_pedido"))
             self._cargar_datos()
 
     def _cargar_datos(self) -> None:
         pedido = self.cmb_pedido.get()
+        ui.recordar_pedido("vpr_ultimo_pedido", pedido)
         self.lbl_estado.configure(text="⏳  Leyendo el ERP…")
         self.btn_generar.configure(state="disabled")
 
@@ -134,9 +135,13 @@ class VprView(ctk.CTkFrame):
     def _refresca_estado(self) -> None:
         plantilla = Path(self._plantilla).name if self._plantilla else "sin plantilla"
         d = self._datos
-        resumen = (f"{d['equipos']} equipos · {d['documentos']['aprobados']}/"
-                   f"{d['documentos']['total']} documentos aprobados · "
-                   f"{len(d['subpedidos'])} subpedidos") if d else ""
+        resumen = ""
+        if d:
+            equipos, subs = d["equipos"], len(d["subpedidos"])
+            resumen = (f"{equipos} {'equipo' if equipos == 1 else 'equipos'} · "
+                       f"{d['documentos']['aprobados']}/{d['documentos']['total']} "
+                       f"documentos aprobados · "
+                       f"{subs} {'subpedido' if subs == 1 else 'subpedidos'}")
         self.lbl_estado.configure(text=f"{self._cliente or '—'} · {plantilla} · {resumen}")
         self.btn_generar.configure(state="normal" if (self._plantilla and d) else "disabled")
 

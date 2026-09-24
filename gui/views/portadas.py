@@ -98,11 +98,12 @@ class PortadasView(ctk.CTkFrame):
         self._pedidos = pedidos
         self.cmb_pedido.configure(values=pedidos or ["—"])
         if pedidos:
-            self.cmb_pedido.set(pedidos[0])
+            self.cmb_pedido.set(ui.pedido_inicial(pedidos, "portadas_ultimo_pedido"))
             self._cargar_docs()
 
     def _cargar_docs(self) -> None:
         pedido = self.cmb_pedido.get()
+        ui.recordar_pedido("portadas_ultimo_pedido", pedido)
 
         def trabajo():
             todos = monitoring_service.get_monitoring_data()

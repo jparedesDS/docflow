@@ -41,6 +41,8 @@ class DataTable(ctk.CTkFrame):
         self._striped = striped
         self._row_count = 0           # para alternar zebra
         self._base_tags: dict[str, tuple] = {}  # iid → tags base (sin hover)
+        self._valores: dict[str, tuple] = {}    # iid → valores sin recortar
+        self._recorte_pendiente = None
         self._hover_iid: str | None = None
         self._ctx_builder = None      # builder(iid, col_idx) -> items | None
         self._sb_visible: dict[str, bool | None] = {"v": None, "h": None}
@@ -149,6 +151,8 @@ class DataTable(ctk.CTkFrame):
         # Hover por fila
         self.tree.bind("<Motion>", self._on_motion)
         self.tree.bind("<Leave>", self._on_leave)
+        # Al cambiar el ancho, lo que antes cabía puede dejar de caber
+        self.tree.bind("<Configure>", self._pedir_recorte, add="+")
 
         # ── Tags base ───────────────────────────────────────────────────
         # Zebra: dos bandas. 'oddrow' = BG_CARD (igual que el fondo) para que
@@ -260,10 +264,11 @@ class DataTable(ctk.CTkFrame):
     # ── Helpers de datos / portapapeles ─────────────────────────────────────
 
     def row_values(self, iid: str) -> tuple:
-        return self.tree.item(iid, "values")
+        """Los valores tal cual se metieron, aunque en pantalla salgan recortados."""
+        return self._valores.get(iid) or self.tree.item(iid, "values")
 
     def cell_value(self, iid: str, col_idx: int):
-        vals = self.tree.item(iid, "values")
+        vals = self.row_values(iid)
         if 0 <= col_idx < len(vals):
             return vals[col_idx]
         return ""
@@ -296,6 +301,7 @@ class DataTable(ctk.CTkFrame):
             self.tree.delete(iid)
         self._row_count = 0
         self._base_tags.clear()
+        self._valores.clear()
         self._hover_iid = None
 
     def add_row(self, values: list, iid: str | None = None, tags: tuple = ()) -> str:
@@ -309,6 +315,7 @@ class DataTable(ctk.CTkFrame):
 
         new_iid = self.tree.insert("", "end", iid=iid, values=values, tags=final_tags)
         self._base_tags[new_iid] = final_tags
+        self._valores[new_iid] = tuple(values)
         return new_iid
 
     def set_columns_width(self, widths: dict[str, int]) -> None:
@@ -362,8 +369,10 @@ class DataTable(ctk.CTkFrame):
             except Exception:
                 head = col
             w = body.measure(head) + padding + 14  # +14 por el icono de orden/flecha
+            idx = self._columns.index(col)
             for iid in self.tree.get_children():
-                val = self.tree.set(iid, col)
+                completos = self._valores.get(iid)
+                val = completos[idx] if completos and idx < len(completos) else self.tree.set(iid, col)
                 if val:
                     w = max(w, body.measure(str(val)) + padding)
             cap = max_per.get(col, max_w)
@@ -392,6 +401,63 @@ class DataTable(ctk.CTkFrame):
 
         for col, w in widths.items():
             self.tree.column(col, width=w, stretch=True)
+        self.recortar_celdas()
+
+    # ── Texto que no cabe ───────────────────────────────────────────────────
+
+    def recortar_celdas(self) -> None:
+        """Remata con «…» lo que no entra en su columna.
+
+        ttk.Treeview corta por donde caiga y sin avisar: un asunto largo se
+        quedaba en «eGesdoc - New transmittal registered (10001-TRXXX-V-1». El
+        valor completo se conserva en `_valores` para copiar y para medir.
+        """
+        import tkinter.font as tkfont
+
+        try:
+            fuente = tkfont.Font(font=theme.FONT_BODY)
+        except Exception:  # noqa: BLE001 — sin medidor, se deja como está
+            return
+        anchos = {}
+        for col in self._columns:
+            try:
+                anchos[col] = int(self.tree.column(col, "width")) - 16
+            except Exception:  # noqa: BLE001
+                anchos[col] = 0
+        for iid in self.tree.get_children():
+            completos = self._valores.get(iid)
+            if not completos:
+                continue
+            recortados = [self._recortar(str(v), anchos.get(c, 0), fuente)
+                          for c, v in zip(self._columns, completos)]
+            if list(self.tree.item(iid, "values")) != recortados:
+                self.tree.item(iid, values=recortados)
+
+    def _pedir_recorte(self, _e=None) -> None:
+        """Agrupa los recortes: redimensionar dispara decenas de eventos."""
+        if self._recorte_pendiente is not None:
+            try:
+                self.after_cancel(self._recorte_pendiente)
+            except Exception:  # noqa: BLE001
+                pass
+        self._recorte_pendiente = self.after(80, self._recorte_diferido)
+
+    def _recorte_diferido(self) -> None:
+        self._recorte_pendiente = None
+        self.recortar_celdas()
+
+    @staticmethod
+    def _recortar(texto: str, ancho: int, fuente) -> str:
+        if ancho <= 10 or not texto or fuente.measure(texto) <= ancho:
+            return texto
+        bajo, alto = 0, len(texto)
+        while bajo < alto:                        # el corte más largo que entra
+            medio = (bajo + alto + 1) // 2
+            if fuente.measure(texto[:medio] + "…") <= ancho:
+                bajo = medio
+            else:
+                alto = medio - 1
+        return (texto[:bajo].rstrip() + "…") if bajo else "…"
 
     def selected_iid(self) -> str | None:
         sel = self.tree.selection()

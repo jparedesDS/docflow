@@ -35,6 +35,31 @@ def en_ui(widget, funcion, *args) -> None:
         pass
 
 
+def pedido_inicial(pedidos: list[str], clave: str) -> str:
+    """Con qué pedido abrir una sección: el último que se usó.
+
+    Si no hay ninguno recordado, el primero de cliente. La lista llega ordenada
+    al revés, así que el primero era siempre un pedido de almacén (PA-…), y
+    empezar ahí no le sirve a nadie.
+    """
+    from core import preferences
+
+    if not pedidos:
+        return ""
+    ultimo = preferences.get(clave)
+    if ultimo and ultimo in pedidos:
+        return str(ultimo)
+    return next((p for p in pedidos if not p.upper().startswith("PA")), pedidos[0])
+
+
+def recordar_pedido(clave: str, pedido: str) -> None:
+    """Guarda el pedido elegido para volver a él la próxima vez."""
+    from core import preferences
+
+    if pedido and pedido != "—":
+        preferences.set_value(clave, pedido)
+
+
 # ── Colores por tier ──────────────────────────────────────────────────────────
 
 def pct_color(pct: float) -> str:

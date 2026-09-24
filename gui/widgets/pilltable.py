@@ -38,6 +38,8 @@ class PillTable(ctk.CTkFrame):
         self._ctx_builder = None
         self._pool: list[dict] = []
         self._rowid_pos: dict[str, int] = {}
+        self._medidores: dict[str, object] = {}   # fuente → tkfont.Font
+        self._recorte_pendiente = None
         self._selected: str | None = None
         self._sel: list[str] = []
         self._header_labels: dict[str, tk.Label] = {}
@@ -105,6 +107,8 @@ class PillTable(ctk.CTkFrame):
         if e.width != self._last_canvas_w:
             self._last_canvas_w = e.width
             self._canvas.itemconfigure(self._win, width=e.width)
+            # Las columnas cambian de ancho: lo que antes cabía puede no caber
+            self._pedir_recorte()
 
     def _on_inner_configure(self, _e) -> None:
         # Coalesce: recalcula el scrollregion una sola vez al final de la ráfaga.
@@ -158,6 +162,7 @@ class PillTable(ctk.CTkFrame):
         self._selected = None
         self._sel = []
         self._canvas.yview_moveto(0)
+        self._pedir_recorte()
 
     def clear(self) -> None:
         for ro in self._pool:
@@ -201,6 +206,7 @@ class PillTable(ctk.CTkFrame):
         lbl = cell["label"]
         cell["cont"].configure(bg=base)
         text = str(spec.get("text", ""))
+        cell["texto"] = text
         if spec.get("pill") and text:
             lbl.configure(text=f" {text} ", bg=spec.get("pill_bg", theme.BG_INPUT),
                           fg=spec.get("fg", theme.TEXT_MAIN), font=self._tf(10, True), padx=4)
@@ -209,6 +215,71 @@ class PillTable(ctk.CTkFrame):
             lbl.configure(text=text, bg=base, fg=spec.get("fg", theme.TEXT_MAIN),
                           font=self._tf(11, bool(spec.get("bold"))), padx=0)
             cell["pill"] = False
+
+    # ── Texto que no cabe ────────────────────────────────────────────────────
+
+    def _medidor(self, fuente):
+        """Un `tkfont.Font` por tipografía, para medir sin recrearlo cada vez."""
+        import tkinter.font as tkfont
+
+        clave = str(fuente)
+        medidor = self._medidores.get(clave)
+        if medidor is None:
+            try:
+                medidor = tkfont.Font(font=fuente)
+            except Exception:  # noqa: BLE001 — sin medidor, no se recorta
+                return None
+            self._medidores[clave] = medidor
+        return medidor
+
+    def _recortar(self, cell: dict) -> None:
+        """Corta el texto que no cabe y lo remata con «…».
+
+        Un `tk.Label` más estrecho que su texto lo parte por donde caiga, sin
+        avisar: en la tabla de documentos eso dejaba títulos como «PRESERVATION
+        AND STORA». Aquí se mide y se corta a propósito.
+        """
+        if cell["pill"]:
+            return
+        texto = cell.get("texto") or ""
+        etiqueta = cell["label"]
+        if not texto:
+            return
+        ancho = cell["cont"].winfo_width() - 14   # el hueco del place() y un respiro
+        if ancho <= 10:
+            return
+        medidor = self._medidor(etiqueta.cget("font"))
+        if medidor is None:
+            return
+        if medidor.measure(texto) <= ancho:
+            if etiqueta.cget("text") != texto:
+                etiqueta.configure(text=texto)
+            return
+        bajo, alto = 0, len(texto)
+        while bajo < alto:                        # el corte más largo que entra
+            medio = (bajo + alto + 1) // 2
+            if medidor.measure(texto[:medio] + "…") <= ancho:
+                bajo = medio
+            else:
+                alto = medio - 1
+        etiqueta.configure(text=(texto[:bajo].rstrip() + "…") if bajo else "…")
+
+    def _recortar_todo(self) -> None:
+        self._recorte_pendiente = None
+        for ro in self._pool:
+            if ro["rowid"] is None:
+                continue
+            for cell in ro["cells"]:
+                self._recortar(cell)
+
+    def _pedir_recorte(self, _e=None) -> None:
+        """Agrupa los recortes: al redimensionar llegan decenas de eventos."""
+        if self._recorte_pendiente is not None:
+            try:
+                self.after_cancel(self._recorte_pendiente)
+            except Exception:  # noqa: BLE001
+                pass
+        self._recorte_pendiente = self.after(80, self._recortar_todo)
 
     # ── Interacción ─────────────────────────────────────────────────────────
 

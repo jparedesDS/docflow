@@ -251,16 +251,20 @@ class HomeView(ctk.CTkFrame):
                          font=theme.FONT_SMALL_BOLD, text_color=theme.GREEN, anchor="w").pack(
                 fill="x", padx=theme.SPACE_4, pady=theme.SPACE_3)
             return
-        for icon, color, text, btn_text, cmd in items[:5]:
+        visibles = items[:5]
+        for i, (icon, color, text, btn_text, cmd) in enumerate(visibles):
             row = ctk.CTkFrame(box, fg_color="transparent")
-            row.pack(fill="x", padx=theme.SPACE_3, pady=(theme.SPACE_1, 0))
+            # El hueco de abajo va en la última fila: un separador suelto sin
+            # `fill="x"` se pintaba del color de la tarjeta y dejaba un corte en
+            # el borde inferior.
+            ultimo = theme.SPACE_2 if i == len(visibles) - 1 else 0
+            row.pack(fill="x", padx=theme.SPACE_3, pady=(theme.SPACE_1, ultimo))
             ctk.CTkLabel(row, text=icon, font=theme.font(14, "bold"), text_color=color,
                          width=24).pack(side="left")
             ctk.CTkLabel(row, text=text, font=theme.FONT_SMALL, text_color=theme.TEXT_MAIN,
                          anchor="w").pack(side="left", fill="x", expand=True)
             ui.button(row, btn_text, "outline", size="xs", width=100,
                       command=cmd).pack(side="right", padx=(theme.SPACE_2, 0))
-        ctk.CTkFrame(box, fg_color="transparent", height=theme.SPACE_2).pack()
 
     # ── Nav Card ─────────────────────────────────────────────────────────────
 
