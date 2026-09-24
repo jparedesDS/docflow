@@ -25,6 +25,8 @@ from gui.views.devoluciones.preview import (
 )
 
 logger = logging.getLogger(__name__)
+
+
 class ManualDevolucionWindow(ctk.CTkToplevel):
     """Ventana para crear una devolución 100% manual.
 

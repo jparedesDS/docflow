@@ -10,6 +10,8 @@ from datetime import datetime
 from email.utils import parsedate_to_datetime
 
 logger = logging.getLogger(__name__)
+
+
 def _lookup_pedido(raw: str) -> dict | None:
     """Busca cliente / material / PO de un pedido en los datos del ERP.
 
