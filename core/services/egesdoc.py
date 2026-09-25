@@ -89,7 +89,8 @@ def is_configured() -> bool:
 
 # En el ERP, Técnicas Reunidas aparece como cliente de varias maneras: el
 # nombre entero con tilde y también abreviado con el proyecto detrás
-# («TR - SIGMA», «TR-OMEGA»). El «TR» suelto no vale: KAPPA no es TR.
+# («TR - NORDIC», «TR-OMEGA»). El «TR» suelto no vale: una central que empiece
+# por esas letras no es Técnicas Reunidas, de ahí el límite de palabra.
 _TR_RE = re.compile(r"^TR\b|TECNICAS REUNIDAS")
 
 
