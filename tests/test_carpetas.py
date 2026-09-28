@@ -111,6 +111,25 @@ ok(D.sufijo_de({"Doc. EIPSA": "26-031-S01-PLG-0005"}) == "S01", "el suministro d
 ok(D.sufijo_de({"Supp.": "S02", "Doc. EIPSA": ""}) == "S02", "y el del ERP")
 ok(D.sufijo_de({"Doc. EIPSA": "26-031-PLG-0005"}) == "", "el documento base no lo lleva")
 
+# ── Las carpetas que ofrece «Nuevo pedido» ─────────────────────────────────
+# El código va al Excel de importación como nº de documento EIPSA
+# («26-099-CER-0002»): dos carpetas con el mismo darían dos filas iguales.
+ok(not apertura.validate_catalog(), f"el catálogo está bien formado: {apertura.validate_catalog()}")
+_codigos = [e["eipsa_code"] for e in apertura.SUBFOLDER_CATALOG]
+ok(len(_codigos) == len(set(_codigos)),
+   f"sin códigos repetidos: {[c for c in _codigos if _codigos.count(c) > 1]}")
+ok(len(apertura.ALL_SUBFOLDERS) == len(set(apertura.ALL_SUBFOLDERS)), "ni carpetas repetidas")
+for _carpeta, _code in (("env. Certificado Visual y Dimensional", "PRC-0013"),
+                        ("env. Catálogo", "CAT-0001"),
+                        ("env. Certificado ATEX", "ATEX-0001"),
+                        ("env. PMI PROCEDURE", "PRC-0008"),
+                        ("env. Certificado Cumplimiento", "CER-0002")):
+    _e = apertura.SUBFOLDER_INDEX.get(_carpeta)
+    ok(_e is not None and _e["eipsa_code"] == _code,
+       f"{_carpeta} con {_code}: {_e and _e['eipsa_code']}")
+ok("env. PMI" not in apertura.SUBFOLDER_INDEX,
+   "«env. PMI» se renombró a «env. PMI PROCEDURE», no conviven las dos")
+
 ok(apertura.sufijos_de_carpeta("P-26-001-S10 - TR-OMEGA - ACME") == {"S10"},
    f"la carpeta de un suministro: {apertura.sufijos_de_carpeta('P-26-001-S10 - TR')}")
 ok(apertura.sufijos_de_carpeta("P-26-001 - S00 - S01 - TR-OMEGA") == {"S00", "S01"},

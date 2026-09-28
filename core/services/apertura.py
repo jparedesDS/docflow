@@ -169,7 +169,9 @@ SUBFOLDER_CATALOG: list[dict] = [
      "es": "Prueba Hidrostática",               "en": "Hydrostatic Test",
      "tipo_doc": _canonical_tipo_doc("Procedimientos"),      "eipsa_code": "PRC-0010",
      "critico": "No"},
-    {"folder": "env. PMI",
+    # Se llamaba «env. PMI» a secas: lo que pide el cliente es el procedimiento,
+    # y así está escrito en el ERP («PMI PROCEDURE», 22 documentos con PRC-0008).
+    {"folder": "env. PMI PROCEDURE",
      "es": "PMI",                               "en": "Positive Material Identification (PMI)",
      "tipo_doc": _canonical_tipo_doc("PMI"),                 "eipsa_code": "PRC-0008",
      "critico": "No"},
@@ -238,6 +240,28 @@ SUBFOLDER_CATALOG: list[dict] = [
     {"folder": "env. Proc. Calibración",
      "es": "Procedimientos de calibración",     "en": "Calibration Procedures",
      "tipo_doc": _canonical_tipo_doc("Procedimientos"),      "eipsa_code": "PRC-0025",
+     "critico": "No"},
+    # ─── Las que ya se hacían a mano en los pedidos (2026-09-28) ─────────
+    # Existían en disco («env certificados ATEX», «env catálogo»…) pero no en
+    # el catálogo, así que había que crearlas y darlas de alta a mano. El
+    # código es el que el ERP viene usando para esos documentos.
+    {"folder": "env. Certificado Visual y Dimensional",
+     "es": "Certificado visual y dimensional",  "en": "Visual and Dimensional Certificate",
+     "tipo_doc": _canonical_tipo_doc("Certificados"),        "eipsa_code": "PRC-0013",
+     "critico": "No"},
+    {"folder": "env. Catálogo",
+     "es": "Catálogos descriptivos",            "en": "Descriptive Catalogues",
+     "tipo_doc": _canonical_tipo_doc("Catálogo"),            "eipsa_code": "CAT-0001",
+     "critico": "No"},
+    {"folder": "env. Certificado ATEX",
+     "es": "Certificados ATEX (directiva 2014/34/EU)",
+     "en": "ATEX Certificates (Directive 2014/34/EU)",
+     "tipo_doc": _canonical_tipo_doc("Certificados"),        "eipsa_code": "ATEX-0001",
+     "critico": "No"},
+    {"folder": "env. Certificado Cumplimiento",
+     "es": "Certificados y declaraciones de conformidad",
+     "en": "Certificates and Declarations of Conformity",
+     "tipo_doc": _canonical_tipo_doc("Certificados"),        "eipsa_code": "CER-0002",
      "critico": "No"},
 ]
 
