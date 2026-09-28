@@ -174,6 +174,20 @@ class PreviewWindow(ctk.CTkToplevel):
                    "Descarga el zip de la devolución (eGesDoc o enlace de AYESA) y lo guarda\n"
                    "con el correo en 00 TRANS Y RES \\ NNN (fecha) del pedido.")
 
+        # Reparte otra vez el paquete que ya está descargado. Solo se ve cuando
+        # hay algo que repartir, y se deja disponible aunque la devolución ya
+        # esté archivada: es la salida cuando el reparto de entonces se
+        # equivocó de carpeta. Repetirlo no estropea nada —un documento
+        # archivado no se pisa nunca— y actualiza a dónde apunta el aviso.
+        self.btn_rearchive = ui.button(
+            footer, "🗂  Volver a archivar", "chip", size="lg",
+            command=self._archive_pending,
+        )
+        ui.tooltip(self.btn_rearchive,
+                   "Vuelve a repartir por las carpetas dev. el paquete ya descargado,\n"
+                   "sin pedírselo otra vez al portal. Lo que ya esté archivado se queda\n"
+                   "como está; solo se copia lo que falte.")
+
         self.lbl_status = ctk.CTkLabel(
             self, text="⏳  Parseando email…", font=theme.FONT_BODY,
             text_color=theme.TEXT_MUTED, anchor="w",
@@ -283,12 +297,21 @@ class PreviewWindow(ctk.CTkToplevel):
 
     # ── Descarga del transmittal (eGesDoc) ────────────────────────────────────
 
+    def _mostrar_rearchivo(self, visible: bool) -> None:
+        """El botón de volver a repartir solo cuando hay paquete que repartir."""
+        if visible:
+            self.btn_rearchive.configure(state="normal", text="🗂  Volver a archivar")
+            self.btn_rearchive.pack(side="left", padx=(8, 0))
+        else:
+            self.btn_rearchive.pack_forget()
+
     def _setup_transmittal_button(self, pv: dict) -> None:
         from core.services import portal_downloads
 
         info = portal_downloads.describe_email(pv.get("from", ""), pv.get("subject", ""))
         if info is None:
             self.btn_transmittal.pack_forget()
+            self._mostrar_rearchivo(False)
             return
         done = portal_downloads.downloaded_info(info["code"])
         if done and done.get("zip") and not done.get("dev_folders"):
@@ -298,6 +321,7 @@ class PreviewWindow(ctk.CTkToplevel):
             self.btn_transmittal.configure(
                 state="normal", text="🗂  Archivar en 2-Tecnico",
                 command=self._archive_pending)
+            self._mostrar_rearchivo(False)          # ya lo ofrece el principal
             self.lbl_status.configure(
                 text=f"⚠  Devolución {info['code']} descargada, pero sus documentos no se "
                      f"archivaron en las carpetas dev. · pulsa «Archivar en 2-Tecnico».")
@@ -313,6 +337,7 @@ class PreviewWindow(ctk.CTkToplevel):
                 self.btn_transmittal.configure(
                     state="normal", text="📂  Abrir carpetas de la devolución",
                     command=lambda: _open_return_folders(carpeta, devs))
+                self._mostrar_rearchivo(True)       # el correo se puede recolocar
                 self.lbl_status.configure(
                     text=f"ℹ  Devolución {info['code']} sin paquete que descargar · el correo "
                          f"está en {Path(carpeta).name} y en {Path(devs[0]).name}.")
@@ -320,6 +345,7 @@ class PreviewWindow(ctk.CTkToplevel):
                 self.btn_transmittal.configure(
                     state="normal", text="🗂  Archivar en 2-Tecnico",
                     command=self._archive_pending)
+                self._mostrar_rearchivo(False)
                 self.lbl_status.configure(
                     text=f"⚠  Devolución {info['code']} sin paquete: el correo está en "
                          f"{Path(carpeta).name}, pero no en su carpeta dev. · pulsa "
@@ -332,10 +358,12 @@ class PreviewWindow(ctk.CTkToplevel):
             self.btn_transmittal.configure(
                 state="normal", text="📂  Abrir carpetas de la devolución",
                 command=lambda: _open_return_folders(folder, devs))
+            self._mostrar_rearchivo(bool(done.get("zip")))
             self.lbl_status.configure(
                 text=f"✓  Devolución {info['code']} ya guardada en {Path(folder).name} · "
                      f"revisa la carpeta y envía la notificación.")
             return
+        self._mostrar_rearchivo(False)              # aún no hay nada descargado
         ready, why = portal_downloads.portal_ready(info["portal"])
         if not ready:
             self.btn_transmittal.configure(state="disabled", text=f"⤓  Descargar ({why})")
@@ -365,7 +393,9 @@ class PreviewWindow(ctk.CTkToplevel):
         threading.Thread(target=worker, daemon=True).start()
 
     def _archive_pending(self) -> None:
-        """Reparte una devolución ya descargada que se quedó sin archivar."""
+        """Reparte una devolución ya descargada: la que se quedó sin archivar y
+        la que se archivó donde no era."""
+        self.btn_rearchive.configure(state="disabled", text="🗂  Archivando…")
         self.btn_transmittal.configure(state="disabled", text="🗂  Archivando…")
         self.lbl_status.configure(text="⏳  Repartiendo los documentos por sus carpetas dev.…")
         uid = self._uid
@@ -388,6 +418,7 @@ class PreviewWindow(ctk.CTkToplevel):
             state="normal", text="📂  Abrir carpetas de la devolución",
             command=lambda: _open_return_folders(folder, devs),
         )
+        self._mostrar_rearchivo(bool(res.get("zip")) or bool(devs))
         from core.services import dev_folders
 
         estado = "ya estaba descargada" if res.get("already") else "descargada"
@@ -426,6 +457,7 @@ class PreviewWindow(ctk.CTkToplevel):
                 command=lambda: _open_return_folders(folder, devs))
         else:
             self.btn_transmittal.configure(state="disabled", text="—  Sin descarga")
+        self._mostrar_rearchivo(bool(devs))
         detalle = "\n".join(f"· {f}: {why}" for f, why in (archive or {}).get("skipped", [])[:4])
         resumen = dev_folders.summary_line(archive or {})
         ui.toast(self, "Sin paquete que descargar",
@@ -438,6 +470,8 @@ class PreviewWindow(ctk.CTkToplevel):
         self.btn_transmittal.configure(
             state="normal",
             text="🗂  Reintentar archivado" if archivando else "⤓  Reintentar descarga")
+        if archivando:                       # el secundario vuelve a estar listo
+            self.btn_rearchive.configure(state="normal", text="🗂  Volver a archivar")
         verbo = "archivar" if archivando else "descargar"
         self.lbl_status.configure(text=f"✗  No se pudo {verbo} la devolución: {msg}")
         ui.toast(self, f"{'Archivado' if archivando else 'Descarga'} · error", msg, kind="error")

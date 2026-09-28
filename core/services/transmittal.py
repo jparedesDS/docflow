@@ -189,7 +189,7 @@ def saved_dev_folders_for(preview: dict) -> list[str]:
 
 # Caracteres que hay que escapar en un enlace `file:` para que no se rompa la
 # URL. Los acentos NO están: ver `uri_carpeta`.
-def folder_link_html(folder: str, depth: int = 1) -> str:
+def folder_link_html(folder: str, depth: int = 1, prefijo: str = "") -> str:
     """Enlace corto para el correo: «📂 dev NDE\\rev2 COM» que abre el Explorador.
 
     El enlace es **la ruta a secas**, sin `file:` delante. Con `file:` el clic
@@ -203,7 +203,8 @@ def folder_link_html(folder: str, depth: int = 1) -> str:
 
     Se enlaza la unidad M:, que es la que el departamento tiene mapeada, y la
     ruta completa va también en el tooltip para poder copiarla. `depth` =
-    cuántos tramos finales se muestran.
+    cuántos tramos finales se muestran; `prefijo` va delante de la etiqueta
+    (el suministro, cuando hay varios y las carpetas se llaman igual).
     """
     from html import escape
 
@@ -212,7 +213,45 @@ def folder_link_html(folder: str, depth: int = 1) -> str:
     if not p.is_absolute():      # ruta relativa o rara: mejor sin enlace que uno roto
         return escape(str(folder))
     return (f'<a href="{escape(str(p))}" title="{escape(str(p))}" '
-            f'style="color:inherit;text-decoration:underline;">📂 {escape(label)}</a>')
+            f'style="color:inherit;text-decoration:underline;">📂 {escape(prefijo + label)}</a>')
+
+
+# Carpeta de pedido dentro de una ruta: «P-26-031-S01 - TR-SILLENO…», «PA-26-004…»
+_PEDIDO_DIR_RE = re.compile(r"^PA?-\s*\d{2}\s*-\s*\d{3}\b", re.I)
+
+
+def _suministro_de_carpeta(ruta: str) -> str:
+    """El suministro de la carpeta de pedido que contiene esa ruta («S01»)."""
+    from core.services import apertura
+
+    for tramo in reversed(Path(ruta).parts):
+        if _PEDIDO_DIR_RE.match(tramo):
+            return " ".join(sorted(apertura.sufijos_de_carpeta(tramo)))
+    return ""
+
+
+def enlaces_guardado(devs: list[str]) -> str:
+    """Los enlaces de «Guardado en» del correo de aviso.
+
+    Una devolución puede repartirse por las carpetas de varios suministros del
+    pedido —TR devuelve en un mismo transmittal el plano del S00, el del S01 y
+    el del S02—, y ahí las carpetas se llaman igual en todos
+    («dev planos\\rev1-B com»): sin el suministro delante, los tres enlaces se
+    leerían idénticos y no se sabría cuál es cuál.
+    """
+    sufijos = [_suministro_de_carpeta(d) for d in devs]
+    varios = len({s for s in sufijos if s}) > 1
+    return "<br>".join(
+        folder_link_html(d, depth=2, prefijo=f"{s} · " if (varios and s) else "")
+        for d, s in zip(devs, sufijos))
+
+
+def suministros_de(df) -> str:
+    """Los suministros del correo: «S01» o «S00, S01, S02» si los mezcla."""
+    if df is None or "Supp." not in getattr(df, "columns", []):
+        return ""
+    vistos = sorted({str(s).strip().upper() for s in df["Supp."] if str(s).strip()})
+    return ", ".join(vistos)
 
 
 # ── Preview ───────────────────────────────────────────────────────────────────
@@ -492,14 +531,14 @@ def generate_notification_html(
         "Nº Pedido": first.get("Nº Pedido", ""),
         "Cliente": first.get("Cliente", ""),
         "Material": first.get("Material", ""),
-        "Supp.": first.get("Supp.", "S00"),
+        "Supp.": suministros_de(df) or first.get("Supp.", "S00"),
         "PO": first.get("PO", ""),
         "Fecha": str(fecha)[:10] if fecha else "",
     }
     # Si la devolución ya está descargada y archivada, el correo dice dónde.
     devs = saved_dev_folders_for(preview)
     if devs:
-        info_dict["Guardado en"] = "<br>".join(folder_link_html(d, depth=2) for d in devs)
+        info_dict["Guardado en"] = enlaces_guardado(devs)
 
     html_body = build_notification_html(info_dict, df, deadline)
     subject = f"DEV: {first.get('Nº Pedido', '')} [{preview['subject']}]"
@@ -545,14 +584,14 @@ def process_and_notify(
         "Nº Pedido": first.get("Nº Pedido", ""),
         "Cliente": first.get("Cliente", ""),
         "Material": first.get("Material", ""),
-        "Supp.": first.get("Supp.", "S00"),
+        "Supp.": suministros_de(df) or first.get("Supp.", "S00"),
         "PO": first.get("PO", ""),
         "Fecha": str(fecha)[:10] if fecha else "",
     }
     # Si la devolución ya está descargada y archivada, el correo dice dónde.
     devs = saved_dev_folders_for(preview)
     if devs:
-        info_dict["Guardado en"] = "<br>".join(folder_link_html(d, depth=2) for d in devs)
+        info_dict["Guardado en"] = enlaces_guardado(devs)
 
     html_body = build_notification_html(info_dict, df, deadline)
     subject = f"DEV: {first.get('Nº Pedido', '')} [{preview['subject']}]"

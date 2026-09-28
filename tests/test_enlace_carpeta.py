@@ -11,7 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.services.dev_folders import carpeta_vigente
-from core.services.transmittal import folder_link_html
+from core.services.transmittal import enlaces_guardado, folder_link_html, suministros_de
 
 fallos = 0
 
@@ -48,6 +48,32 @@ ok("&lt;pendiente&gt;" in raro and "&amp;" in raro, f"HTML escapado: {raro[:130]
 # Una ruta relativa no genera enlace: mejor texto suelto que un enlace roto
 suelto = folder_link_html("dev CÁLCULOS")
 ok("<a " not in suelto, f"ruta relativa sin enlace: {suelto}")
+
+# ── Una devolución repartida por varios suministros ────────────────────────
+# Las carpetas se llaman igual en los tres, así que los enlaces del correo se
+# leerían idénticos: delante va el suministro.
+PED = r"M:\base de datos de pedidos\Año 2026\2026 Pedidos"
+TRES = [rf"{PED}\P-26-031-S00 - TR-SILLENO - RO - 10574\2-Tecnico\dev planos\rev1-B com",
+        rf"{PED}\P-26-031-S01 - TR-SILLENO - RO -10574\2-Tecnico\dev planos\rev1-B com",
+        rf"{PED}\P-26-031-S02 - TR-SILLENO - ORIFICIOS - 10574\2-Tecnico\dev planos\rev1-B com"]
+html = enlaces_guardado(TRES)
+ok(html.count("<a ") == 3, f"un enlace por carpeta: {html.count('<a ')}")
+for supp in ("S00", "S01", "S02"):
+    ok(f">📂 {supp} · dev planos\\rev1-B com<" in html, f"falta el enlace del {supp}: {html[:200]}")
+ok(html.count("S01 · ") == 1, "cada suministro, una vez")
+
+# Con un solo suministro no se repite lo que ya dice la cabecera del correo
+uno = enlaces_guardado(TRES[:1])
+ok(">📂 dev planos\\rev1-B com<" in uno and " · dev planos" not in uno,
+   f"sin suministro delante cuando solo hay uno: {uno}")
+
+# Y el «Supp.» de la cabecera los nombra todos, no solo el del primer documento
+import pandas as pd  # noqa: E402
+
+ok(suministros_de(pd.DataFrame([{"Supp.": "S01"}, {"Supp.": "S00"}, {"Supp.": "S02"}]))
+   == "S00, S01, S02", "los tres suministros del transmittal")
+ok(suministros_de(pd.DataFrame([{"Supp.": "S01"}, {"Supp.": "S01"}])) == "S01", "uno solo, uno")
+ok(suministros_de(pd.DataFrame([{"Doc. EIPSA": "x"}])) == "", "sin columna, cadena vacía")
 
 # ── La carpeta apuntada puede haberse renombrado a mano ─────────────────────
 tmp = Path(tempfile.mkdtemp())
