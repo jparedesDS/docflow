@@ -16,7 +16,10 @@ Patrón de carpetas de los pedidos (se conserva el que ya tenga cada pedido):
     en sus carpetas «dev» o el cliente la manda en el correo (TR: «TR Rev»).
 
 Cada PDF del zip se empareja con un documento del correo por su código (Doc.
-Cliente / Doc. EIPSA dentro del nombre del fichero). La carpeta se decide así:
+Cliente / Doc. EIPSA dentro del nombre del fichero). Lo primero es de qué
+suministro es cada uno —un mismo transmittal puede traer documentos de varios y
+cada suministro tiene su carpeta de pedido (`_PorSuministro`)—; dentro de él, la
+carpeta se decide así:
   1. Buscando el fichero ENVIADO con ese código en las carpetas «env» (da la
      carpeta y la revisión exactas).
   2. Si no aparece, por tipo de documento + palabras del título contra las
@@ -123,6 +126,18 @@ _SUFIJO_SUELTO_RE = re.compile(r"^(S\d{2}[A-Z]?)$", re.I)
 _SUFIJO_DOC_RE = re.compile(r"^\s*\d{2}\s*-\s*\d{3}\s*-\s*(S\d{2}[A-Z]?)\b", re.I)
 
 
+def sufijo_de(doc: dict) -> str:
+    """El suministro que dice un documento («S01»), o '' si no lo dice.
+
+    Sale del «Supp.» del ERP y, si ahí faltara, del código EIPSA, que empieza
+    por pedido y suministro: 26-001-S10-ESP-0005.
+    """
+    supp = _SUFIJO_SUELTO_RE.match(str(doc.get("Supp.", "") or "").strip())
+    codigo = _SUFIJO_DOC_RE.match(str(doc.get("Doc. EIPSA", "") or ""))
+    m = supp or codigo
+    return m.group(1).upper() if m else ""
+
+
 def pedido_con_suministro(pedido: str, docs: list[dict]) -> str:
     """El pedido con su suministro, si los documentos dicen cuál es.
 
@@ -132,20 +147,63 @@ def pedido_con_suministro(pedido: str, docs: list[dict]) -> str:
     alfabético —la de otro suministro— y los documentos acaban donde no son.
     El suministro sí está en el código EIPSA del documento.
 
-    Solo se usa cuando TODOS los documentos que lo llevan coinciden: un
-    transmittal que mezclara dos suministros no cabe en una sola carpeta.
+    Solo devuelve uno cuando TODOS los documentos que lo llevan coinciden: un
+    transmittal que mezcle dos suministros no cabe en una sola carpeta, y ahí
+    cada documento se va a la suya (`_PorSuministro`).
     """
     if re.search(r"-\s*S\d{2}", str(pedido or ""), re.I):     # ya lo trae escrito
         return pedido
-    vistos = set()
-    for d in docs:
-        supp = _SUFIJO_SUELTO_RE.match(str(d.get("Supp.", "") or "").strip())
-        codigo = _SUFIJO_DOC_RE.match(str(d.get("Doc. EIPSA", "") or ""))
-        if supp or codigo:
-            vistos.add((supp or codigo).group(1).upper())
+    vistos = {s for s in (sufijo_de(d) for d in docs) if s}
     if len(vistos) != 1:
         return pedido
     return f"{pedido}-{vistos.pop()}"
+
+
+class _PorSuministro:
+    """Las carpetas «2-Tecnico» donde archivar, una por suministro.
+
+    Un mismo transmittal puede traer documentos de varios suministros del
+    pedido: TR devolvió en un solo correo el plano de P-26/031, el de su S01 y
+    el de su S02. Cada suministro es una carpeta de pedido distinta, así que la
+    carpeta no se puede elegir una vez para todo el paquete —haciéndolo, los
+    tres planos acababan en la del S00— sino documento a documento.
+
+    Reglas:
+      · Si el pedido ya trae el suministro escrito («P-26/001-S10»), manda ese
+        y no se agrupa: alguien lo ha dicho a propósito.
+      · Un documento que no diga de cuál es se va al suministro del resto,
+        cuando el correo trae uno solo; si el correo los mezcla, al pedido a
+        secas, que es donde TR nombra el documento base (26-031-PLG-0005).
+    """
+
+    def __init__(self, pedido: str, docs: list[dict]) -> None:
+        self.pedido = str(pedido or "")
+        self.fijo = bool(re.search(r"-\s*S\d{2}", self.pedido, re.I))
+        vistos = {s for s in (sufijo_de(d) for d in docs) if s}
+        self.defecto = vistos.pop() if len(vistos) == 1 else ""
+        self._abiertas: dict[str, tuple[dict | None, str]] = {}
+
+    def para(self, doc: dict | None = None) -> tuple[dict | None, str]:
+        """({pedido, tecnico, folders, uses_letter, default_dotted}, '') del
+        suministro de ese documento, o (None, motivo) si no hay carpeta.
+
+        Sin documento da la del suministro por defecto, que es la del pedido
+        entero: sirve para no abrir el zip si ni eso existe.
+        """
+        supp = "" if self.fijo else (sufijo_de(doc or {}) or self.defecto)
+        if supp not in self._abiertas:
+            self._abiertas[supp] = self._abrir(supp)
+        return self._abiertas[supp]
+
+    def _abrir(self, supp: str) -> tuple[dict | None, str]:
+        pedido = f"{self.pedido}-{supp}" if supp else self.pedido
+        tecnico = tecnico_dir(pedido)
+        if tecnico is None or not tecnico.is_dir():
+            return None, f"no se localiza 2-Tecnico del pedido {pedido}"
+        folders = scan_folders(tecnico)
+        return {"pedido": pedido, "tecnico": tecnico, "folders": folders,
+                "uses_letter": _uses_letter(folders),
+                "default_dotted": any(f["dotted"] for f in folders) or not folders}, ""
 
 
 def tecnico_dir(pedido: str) -> Path | None:
@@ -691,20 +749,20 @@ def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: 
                    file_docs: dict[str, dict] | None = None) -> dict:
     """Copia los ficheros devueltos del zip a sus carpetas `dev.` del pedido.
 
+    Cada documento va a la carpeta del suministro que él dice, que en un mismo
+    transmittal no tiene por qué ser el mismo para todos.
+
     `file_docs`: mapa opcional {fichero → {vendor_number, tr_number}} dado por el
     portal, para zips cuyos ficheros no llevan el código del documento.
     Devuelve {archived: [(fichero, destino)], skipped: [(fichero, motivo)],
     created: [carpetas nuevas], plan: [...]} — con `dry_run` solo calcula.
     """
     res = {"archived": [], "skipped": [], "created": [], "plan": []}
-    pedido = pedido_con_suministro(pedido, docs)
-    tecnico = tecnico_dir(pedido)
-    if tecnico is None or not tecnico.is_dir():
-        res["skipped"].append((zip_path.name, f"no se localiza 2-Tecnico del pedido {pedido}"))
+    suministros = _PorSuministro(pedido, docs)
+    base, motivo = suministros.para()
+    if base is None:
+        res["skipped"].append((zip_path.name, motivo))
         return res
-    folders = scan_folders(tecnico)
-    uses_letter = _uses_letter(folders)
-    default_dotted = any(f["dotted"] for f in folders) or not folders
     eml_name = f"dev {email_date[:10]}.eml" if email_date else "dev.eml"
 
     with zipfile.ZipFile(zip_path) as zf:
@@ -718,8 +776,15 @@ def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: 
             if doc is None:
                 res["skipped"].append((fname, "no coincide con ningún documento del correo"))
                 continue
-            destino, motivo = _destino(doc, folders, uses_letter=uses_letter,
-                                       default_dotted=default_dotted,
+            # Cada documento va a la carpeta de SU suministro, que en un mismo
+            # transmittal no tiene por qué ser la misma para todos.
+            ctx, motivo = suministros.para(doc)
+            if ctx is None:
+                res["skipped"].append((fname, motivo))
+                continue
+            tecnico, folders = ctx["tecnico"], ctx["folders"]
+            destino, motivo = _destino(doc, folders, uses_letter=ctx["uses_letter"],
+                                       default_dotted=ctx["default_dotted"],
                                        nombres=portal_names.get(id(doc)))
             if destino is None:
                 res["skipped"].append((fname, motivo))
@@ -781,21 +846,23 @@ def archive_email_only(docs: list[dict], pedido: str, *, email_raw: bytes | None
     Devuelve lo mismo que `archive_return` más `emails`: los .eml escritos.
     """
     res = {"archived": [], "skipped": [], "created": [], "plan": [], "emails": []}
-    pedido = pedido_con_suministro(pedido, docs)
-    tecnico = tecnico_dir(pedido)
-    if tecnico is None or not tecnico.is_dir():
-        res["skipped"].append(("el correo", f"no se localiza 2-Tecnico del pedido {pedido}"))
+    suministros = _PorSuministro(pedido, docs)
+    base, motivo = suministros.para()
+    if base is None:
+        res["skipped"].append(("el correo", motivo))
         return res
-    folders = scan_folders(tecnico)
-    uses_letter = _uses_letter(folders)
-    default_dotted = any(f["dotted"] for f in folders) or not folders
     eml_name = f"dev {email_date[:10]}.eml" if email_date else "dev.eml"
 
     for doc in docs:
         etiqueta = str(doc.get("Doc. EIPSA") or doc.get("Doc. Cliente")
                        or doc.get("Título") or "documento")
-        destino, motivo = _destino(doc, folders, uses_letter=uses_letter,
-                                   default_dotted=default_dotted)
+        ctx, motivo = suministros.para(doc)
+        if ctx is None:
+            res["skipped"].append((etiqueta, motivo))
+            continue
+        tecnico, folders = ctx["tecnico"], ctx["folders"]
+        destino, motivo = _destino(doc, folders, uses_letter=ctx["uses_letter"],
+                                   default_dotted=ctx["default_dotted"])
         if destino is None:
             res["skipped"].append((etiqueta, motivo))
             continue

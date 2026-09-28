@@ -8,6 +8,7 @@ Se ejecuta a mano, sin pytest, con el intérprete de la app:
 import shutil
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -105,6 +106,10 @@ ok(D.pedido_con_suministro("P-26/001", [{"Doc. EIPSA": "26-001-S02-ESP-0001"},
    "mezclados, no se elige: no caben en una sola carpeta")
 ok(D.pedido_con_suministro("P-26/412", [{"Doc. EIPSA": "23-037-PRC-0006"}]) == "P-26/412",
    "un pedido sin suministro se queda como está")
+
+ok(D.sufijo_de({"Doc. EIPSA": "26-031-S01-PLG-0005"}) == "S01", "el suministro del código")
+ok(D.sufijo_de({"Supp.": "S02", "Doc. EIPSA": ""}) == "S02", "y el del ERP")
+ok(D.sufijo_de({"Doc. EIPSA": "26-031-PLG-0005"}) == "", "el documento base no lo lleva")
 
 ok(apertura.sufijos_de_carpeta("P-26-001-S10 - TR-OMEGA - ACME") == {"S10"},
    f"la carpeta de un suministro: {apertura.sufijos_de_carpeta('P-26-001-S10 - TR')}")
@@ -211,6 +216,72 @@ try:
     res = D.archive_email_only([void], "P-26/004", email_raw=CORREO, email_date="2026-09-24")
     ok(not res["emails"] and res["skipped"], f"un VOID se deja fuera: {res['skipped']}")
     ok(not (tecnico / "dev. MANUAL").exists(), "y no le abre carpeta")
+finally:
+    D.tecnico_dir = tecnico_real
+    shutil.rmtree(tmp, ignore_errors=True)
+
+# ── Un transmittal con documentos de VARIOS suministros ────────────────────
+# TR devolvió en un mismo correo el plano de P-26/031, el de su S01 y el de su
+# S02. Cada suministro es una carpeta de pedido distinta; antes se elegía una
+# sola para todo el paquete y los tres planos caían en la del S00.
+tmp = Path(tempfile.mkdtemp())
+tecnico_real = D.tecnico_dir
+try:
+    tecnicos = {}
+    for supp in ("S00", "S01", "S02"):
+        t = tmp / f"P-26-031-{supp} - TR-SILLENO" / "2-Tecnico"
+        (t / "env planos").mkdir(parents=True)
+        tecnicos[f"P-26/031-{supp}"] = t
+    tecnicos["P-26/031"] = tecnicos["P-26/031-S00"]    # el pedido a secas es el S00
+    D.tecnico_dir = lambda pedido: tecnicos.get(pedido)
+
+    def plano(codigo, supp, cliente):
+        return {"Nº Pedido": "P-26/031", "Supp.": supp, "Doc. EIPSA": codigo,
+                "Doc. Cliente": cliente, "Título": "OVERALL DRAWING WITH PRINCIPAL DIMENSIONS",
+                "Tipo de documento": "Planos", "Rev.": "1", "_rev_cliente": "B",
+                "Estado": "C - REVIEWED WITH MINOR COMMENTS"}
+
+    PLANOS = [plano("26-031-PLG-0005", "S00", "SLN.5024-2000-1057410920-C16-0001"),
+              plano("26-031-S01-PLG-0005", "S01", "SLN.5024-2000-1057410920-C16-0002"),
+              plano("26-031-S02-PLG-0005", "S02", "SLN.5024-2000-1057410920-C16-0003")]
+
+    paquete = tmp / "10571-TRSEI-V-14021.zip"
+    with zipfile.ZipFile(paquete, "w") as zf:
+        for i, d in enumerate(PLANOS):
+            zf.writestr(d["Doc. Cliente"] + ".pdf", b"%PDF-" + str(i).encode())
+
+    res = D.archive_return(paquete, PLANOS, "P-26/031")
+    caidos = {Path(dest).parts[-5]: Path(dest).parent.name for _, dest in res["archived"]}
+    ok(not res["skipped"] and len(res["archived"]) == 3, f"los tres se colocan: {res['skipped']}")
+    ok(caidos == {"P-26-031-S00 - TR-SILLENO": "rev1-B com",
+                  "P-26-031-S01 - TR-SILLENO": "rev1-B com",
+                  "P-26-031-S02 - TR-SILLENO": "rev1-B com"},
+       f"cada plano en la carpeta de SU suministro: {caidos}")
+
+    # Y el suministro que no tiene carpeta no se lleva por delante a los demás
+    suelto = plano("26-031-S09-PLG-0007", "S09", "SLN.5024-2000-1057410920-C16-0009")
+    otro = tmp / "suelto.zip"
+    with zipfile.ZipFile(otro, "w") as zf:
+        zf.writestr(suelto["Doc. Cliente"] + ".pdf", b"%PDF-9")
+        zf.writestr(PLANOS[1]["Doc. Cliente"] + ".pdf", b"%PDF-1b")
+    res = D.archive_return(otro, [suelto, PLANOS[1]], "P-26/031")
+    ok(len(res["archived"]) == 1 and len(res["skipped"]) == 1,
+       f"uno se coloca y el otro se informa: {res['archived']} / {res['skipped']}")
+    ok("S09" in res["skipped"][0][1], f"y se dice qué pedido falta: {res['skipped'][0][1]}")
+
+    # Con un solo suministro en el correo, los documentos que no lo dicen van
+    # con el resto (un plano de S01 y su índice sin código de suministro)
+    sin_supp = {"Nº Pedido": "P-26/031", "Doc. EIPSA": "26-031-PLG-0009",
+                "Doc. Cliente": "SLN.5024-2000-1057410920-C16-0010",
+                "Título": "OVERALL DRAWING", "Tipo de documento": "Planos", "Rev.": "1",
+                "_rev_cliente": "B", "Estado": "C - REVIEWED WITH MINOR COMMENTS"}
+    solo_s01 = tmp / "solo-s01.zip"
+    with zipfile.ZipFile(solo_s01, "w") as zf:
+        zf.writestr(sin_supp["Doc. Cliente"] + ".pdf", b"%PDF-10")
+    res = D.archive_return(solo_s01, [sin_supp, PLANOS[1]], "P-26/031")
+    ok(len(res["archived"]) == 1 and
+       Path(res["archived"][0][1]).parts[-5] == "P-26-031-S01 - TR-SILLENO",
+       f"sigue al único suministro del correo: {res['archived']}")
 finally:
     D.tecnico_dir = tecnico_real
     shutil.rmtree(tmp, ignore_errors=True)
