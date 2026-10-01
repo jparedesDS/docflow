@@ -230,11 +230,20 @@ try:
        "repetirlo no crea una carpeta nueva")
     ok(eml.read_bytes() == CORREO, "ni pisa el correo que ya estaba")
 
-    # Un documento anulado no abre carpeta
+    # Un documento anulado no abre carpeta dev nueva: cancela algo ya archivado
     void = dict(DOC, Estado="M - VOID", Título="MANUAL")
     res = D.archive_email_only([void], "P-26/004", email_raw=CORREO, email_date="2026-09-24")
-    ok(not res["emails"] and res["skipped"], f"un VOID se deja fuera: {res['skipped']}")
+    ok(not res["emails"] and res["skipped"], f"un VOID sin carpeta dev se deja fuera: {res['skipped']}")
     ok(not (tecnico / "dev. MANUAL").exists(), "y no le abre carpeta")
+
+    # Pero si la carpeta de esa revisión ya está, la anulación va dentro de ella
+    void = dict(DOC, Estado="M - VOID")
+    res = D.archive_email_only([void], "P-26/004", email_raw=CORREO, email_date="2026-10-01")
+    eml = tecnico / "dev. PMI PROCEDURE" / "rev0 AP" / "VOID" / "dev 2026-10-01.eml"
+    ok(res["emails"] == [eml], f"el VOID va a rev0 AP\\VOID: {res['emails']}")
+    ok(eml.is_file(), "y el correo queda ahí")
+    ok(not (tecnico / "dev. PMI PROCEDURE" / "rev1 VOID").exists(),
+       "la anulación no abre un correlativo nuevo")
 finally:
     D.tecnico_dir = tecnico_real
     shutil.rmtree(tmp, ignore_errors=True)
@@ -301,6 +310,69 @@ try:
     ok(len(res["archived"]) == 1 and
        Path(res["archived"][0][1]).parts[-5] == "P-26-031-S01 - TR-SILLENO",
        f"sigue al único suministro del correo: {res['archived']}")
+finally:
+    D.tecnico_dir = tecnico_real
+    shutil.rmtree(tmp, ignore_errors=True)
+
+# ── Un documento que el cliente ANULA (VOID) ───────────────────────────────
+# TR anuló el 01-10-2026 dos planos que ya estaban aprobados en «rev0-A». La
+# anulación no es una devolución más: va a «rev0-A\VOID», al lado del aprobado,
+# y no abre un correlativo nuevo. Antes se dejaba fuera y había que colocarla
+# a mano.
+tmp = Path(tempfile.mkdtemp())
+tecnico_real = D.tecnico_dir
+try:
+    tecnico = tmp / "P-24-066-S05 - TR-SINOPEC" / "2-Tecnico"
+    (tecnico / "env cál y pla" / "rev 0").mkdir(parents=True)
+    (tecnico / "env cál y pla" / "rev 0" / "V-1065110910-0209.pdf").write_bytes(b"%PDF-enviado")
+    # El aprobado cuelga de una subcarpeta hecha a mano dentro de la revisión
+    aprobado = tecnico / "dev cál y pla" / "rev0-A" / "AProbados"
+    aprobado.mkdir(parents=True)
+    (aprobado / "V-1065110910-0209.pdf").write_bytes(b"%PDF-aprobado")
+    (tecnico / "dev cál y pla" / "rev1-B").mkdir()
+    D.tecnico_dir = lambda pedido: tecnico if pedido == "P-24/066-S05" else None
+
+    ANULADO = {"Nº Pedido": "P-24/066", "Supp.": "S05",
+               "Doc. EIPSA": "24-066-S05-ESP-0053", "Doc. Cliente": "V-1065110910-0209",
+               "Título": "SPECIFICATION AND TECHNICAL DATA 889-260-FE -00311",
+               "Tipo de documento": "Cálculos y Planos", "Rev.": "0",
+               "_rev_cliente": "A", "Estado": "VOID"}
+
+    paquete = tmp / "10651-TSOOK-1065110910-00081.zip"
+    with zipfile.ZipFile(paquete, "w") as zf:
+        zf.writestr("V-1065110910-0209.pdf", b"%PDF-anulado")
+
+    res = D.archive_return(paquete, [ANULADO], "P-24/066", email_raw=b"correo",
+                           email_date="2026-10-01")
+    ok(len(res["archived"]) == 1 and not res["skipped"], f"el VOID se archiva: {res}")
+    destino = Path(res["archived"][0][1])
+    ok(destino.parent.name == "VOID" and destino.parent.parent.name == "rev0-A",
+       f"en rev0-A\\VOID, con el aprobado al lado: {destino.parent}")
+    ok((aprobado / "V-1065110910-0209.pdf").read_bytes() == b"%PDF-aprobado",
+       "sin tocar el PDF aprobado, que es el mismo nombre de fichero")
+    ok(destino.read_bytes() == b"%PDF-anulado", "y con el documento anulado dentro")
+    ok((destino.parent / "dev 2026-10-01.eml").is_file(), "el correo queda en la carpeta VOID")
+    ok(not (tecnico / "dev cál y pla" / "rev2-A VOID").exists(),
+       "la anulación no abre correlativo nuevo")
+    ok("rev0-A\\VOID" in D.summary_line(res), f"el resumen lo dice: {D.summary_line(res)}")
+
+    # Repetir la descarga no duplica nada
+    antes = sorted(p.name for p in destino.parent.iterdir())
+    res = D.archive_return(paquete, [ANULADO], "P-24/066", email_raw=b"otro",
+                           email_date="2026-10-01")
+    ok(sorted(p.name for p in destino.parent.iterdir()) == antes and not res["skipped"],
+       "volver a archivarlo no duplica nada")
+
+    # Sin carpeta de esa revisión, la anulación abre la suya con sufijo VOID
+    otra = {**ANULADO, "Doc. EIPSA": "24-066-S05-ESP-0099",
+            "Doc. Cliente": "V-1065110910-0299", "Rev.": "3", "_rev_cliente": "D"}
+    suelto = tmp / "otro.zip"
+    with zipfile.ZipFile(suelto, "w") as zf:
+        zf.writestr("V-1065110910-0299.pdf", b"%PDF-anulado-3")
+    res = D.archive_return(suelto, [otra], "P-24/066")
+    ok(len(res["archived"]) == 1 and
+       Path(res["archived"][0][1]).parent.name == "rev2-D VOID",
+       f"sin revisión archivada, carpeta propia: {res['archived']} / {res['skipped']}")
 finally:
     D.tecnico_dir = tecnico_real
     shutil.rmtree(tmp, ignore_errors=True)

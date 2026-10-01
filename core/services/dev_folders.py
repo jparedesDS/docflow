@@ -14,6 +14,9 @@ Patrón de carpetas de los pedidos (se conserva el que ya tenga cada pedido):
     «rev0-1 REJ».
   · Letra de revisión del cliente («rev0-A COM»): solo si el pedido ya la usa
     en sus carpetas «dev» o el cliente la manda en el correo (TR: «TR Rev»).
+  · Lo que el cliente ANULA («M - VOID») no abre correlativo: va a una
+    subcarpeta «VOID» de la revisión que cancela («rev0-A\\VOID»), al lado del
+    documento que estaba aprobado (`_rev_del_anulado`).
 
 Cada PDF del zip se empareja con un documento del correo por su código (Doc.
 Cliente / Doc. EIPSA dentro del nombre del fichero). Lo primero es de qué
@@ -79,6 +82,9 @@ TYPE_KEYWORDS = {
     "Catalogo": ["catalog"],
 }
 _APPROVED = ("aprob", "certific", "informativ")
+# La subcarpeta donde se archiva lo que el cliente anula, escrita como está en
+# los pedidos: «…\dev cál y pla\rev0-A\VOID».
+VOID_DIR = "VOID"
 _MAJOR = ("mayor",)
 _REJECTED = ("rechaz", "reject")
 _STOP_WORDS = {"THE", "AND", "FOR", "WITH", "DE", "DEL", "LOS", "LAS", "PARA", "CON"}
@@ -105,7 +111,12 @@ def _suffix(estado: str) -> str:
     Un documento rechazado tiene su propia carpeta y no se mezcla con los de
     comentarios mayores: son dos cosas distintas —uno hay que rehacerlo y el
     otro corregirlo— y en los pedidos ya se archivaban así a mano («rev0-1 REJ»).
+
+    VOID (anulado) solo se usa si hubiera que abrir carpeta: su sitio normal es
+    una subcarpeta «VOID» de la revisión que el cliente cancela (`_rev_del_anulado`).
     """
+    if es_anulado(estado):
+        return VOID_DIR
     e = _fold(estado)
     if any(k in e for k in _REJECTED):
         return "REJ"
@@ -240,23 +251,28 @@ def _uses_letter(folders: list[dict]) -> bool:
     return False
 
 
-def _find_sent_file(folders: list[dict], codes: list[str],
-                    names: list[str] | None = None) -> list[tuple[dict, Path | None]]:
-    """Carpetas env (y subcarpeta rev) donde está el fichero que se envió.
+def _es_del_documento(nombre: str, codes: list[str], quiere: set[str]) -> bool:
+    """¿Este fichero es el de ese documento?
 
     Se reconoce de dos maneras: porque el nombre lleva el código del documento,
-    o porque es exactamente el fichero que el portal da como suyo (`names`). Lo
+    o porque es exactamente el fichero que el portal da como suyo (`quiere`). Lo
     segundo hace falta con Técnicas Reunidas, donde el fichero se llama con el
     id interno del cliente (AD-3000-G-00968.pdf) y el código no aparece por
     ningún lado.
     """
+    if _fold(nombre) in quiere:
+        return True
+    norm = norm_doc_code(nombre)
+    return any(c in norm for c in codes)
+
+
+def _find_sent_file(folders: list[dict], codes: list[str],
+                    names: list[str] | None = None) -> list[tuple[dict, Path | None]]:
+    """Carpetas env (y subcarpeta rev) donde está el fichero que se envió."""
     quiere = {_fold(n) for n in (names or []) if n}
 
     def casa(fichero: Path) -> bool:
-        if _fold(fichero.name) in quiere:
-            return True
-        norm = norm_doc_code(fichero.name)
-        return any(c in norm for c in codes)
+        return _es_del_documento(fichero.name, codes, quiere)
 
     hits = []
     for f in folders:
@@ -617,6 +633,51 @@ def _rev_folder_for(dev_dir: Path, n: int | None, letter: str, suffix: str,
     return dev_dir / f"rev{n}{'-' + letter if letter else ''} {suffix}", False
 
 
+def _rev_del_anulado(dev_dir: Path, n: int | None, letter: str, codes: list[str],
+                     nombres: list[str] | None = None,
+                     envio: Path | None = None) -> tuple[Path, bool]:
+    """Dónde va un documento que el cliente anula (VOID), y si la carpeta existe.
+
+    Un VOID no es una devolución más: el cliente cancela un documento que ya
+    está archivado, así que no abre correlativo nuevo —lo que dejaría el aviso
+    de la anulación lejos del documento— sino que va a una subcarpeta «VOID» de
+    la carpeta de revisión que cancela, que es como se archiva a mano:
+
+        dev cál y pla\\rev0-A\\AProbados\\V-1065110910-0209.pdf   ← lo aprobado
+        dev cál y pla\\rev0-A\\VOID\\V-1065110910-0209.pdf        ← la anulación
+
+    Esa carpeta de revisión se busca, por orden:
+      1. Donde YA está archivado el documento (aunque cuelgue de una subcarpeta
+         suya: «rev0\\ap rev 0\\12-05-2025»). Es la pista buena, porque dice la
+         revisión que el cliente cancela y no hay que deducirla.
+      2. La de su revisión: la de detrás del guion («rev2-A»), y si las carpetas
+         de ese pedido no la llevan, la que tiene ese número («rev0», «rev1»),
+         donde el número SÍ es la revisión.
+      3. Si no hay ninguna, la que toque con sufijo VOID («rev0-A VOID»): sin
+         revisión archivada no hay nada dentro de qué colgarla.
+    """
+    subs = _rev_subfolders(dev_dir)
+    quiere = {_fold(x) for x in (nombres or []) if x}
+    rev_text = (letter or (str(n) if n is not None else "")).upper()
+
+    def tiene_el_documento(sub: Path) -> bool:
+        try:
+            return any(ruta.is_file() and _es_del_documento(ruta.name, codes, quiere)
+                       for ruta in sub.rglob("*"))
+        except OSError:
+            return False
+
+    elegida = next((sub for sub, _num, _rev, _suf in subs if tiene_el_documento(sub)), None)
+    if elegida is None and rev_text:
+        elegida = next((sub for sub, _num, rev, _suf in subs if rev == rev_text), None)
+    if elegida is None and n is not None:
+        # Sin revisión detrás del guion el número ES la revisión: «rev0», «rev1».
+        elegida = next((sub for sub, num, rev, _suf in subs if not rev and num == n), None)
+    if elegida is not None:
+        return _subcarpeta(elegida, VOID_DIR)
+    return _rev_folder_for(dev_dir, n, letter, VOID_DIR, envio=envio)
+
+
 # ── Archivado ─────────────────────────────────────────────────────────────────
 
 def _match_docs(names: list[str], docs: list[dict], file_docs: dict[str, dict] | None = None) -> dict[str, dict | None]:
@@ -699,8 +760,7 @@ def _destino(doc: dict, folders: list[dict], *, uses_letter: bool, default_dotte
     el catálogo de apertura.
     """
     estado = str(doc.get("Estado", ""))
-    if es_anulado(estado):
-        return None, "documento anulado (VOID)"
+    anulado = es_anulado(estado)
     n = _rev_number(doc.get("Rev."))
     codes = [c for c in (norm_doc_code(doc.get("Doc. Cliente", "")), norm_doc_code(doc.get("Doc. EIPSA", ""))) if len(c) >= 6]
     # La revisión puede ser solo una letra: en TR las primeras emisiones
@@ -739,9 +799,13 @@ def _destino(doc: dict, folders: list[dict], *, uses_letter: bool, default_dotte
     if grupo:
         dev_dir, dev_exists = _subcarpeta(dev_dir, grupo)
         envio = None            # ya no dice nada de la revisión
+    # Un VOID cancela algo ya archivado: si el pedido no tiene ni esa carpeta,
+    # lo que haría es inventarse un sitio para un documento que nunca se envió.
+    if anulado and not dev_dir.is_dir():
+        return None, f"documento anulado (VOID) y el pedido no tiene «{dev_dir.name}»"
     return {"dev_dir": dev_dir, "dev_exists": dev_exists, "envio": envio, "n": n,
             "letter": letter, "estado": estado, "how": how, "name": name,
-            "dotted": dotted}, ""
+            "dotted": dotted, "anulado": anulado, "codes": codes}, ""
 
 
 def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: bytes | None = None,
@@ -793,12 +857,20 @@ def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: 
             envio, n, letter = destino["envio"], destino["n"], destino["letter"]
             estado, how, name, dotted = (destino["estado"], destino["how"],
                                          destino["name"], destino["dotted"])
-            rev_dir = _ya_archivado(dev_dir, fname, zi.file_size, zi.CRC)
-            rev_exists = rev_dir is not None
-            if rev_dir is None:
-                rev_dir, rev_exists = _rev_folder_for(dev_dir, n, letter, _suffix(estado), envio=envio)
-                rev_dir, rev_exists = _sin_pisar(dev_dir, rev_dir, rev_exists, fname,
-                                                 zi.file_size, zi.CRC)
+            if destino["anulado"]:
+                # La anulación va DENTRO de la revisión que cancela, así que no
+                # entra en el correlativo: lo que la protege de pisar algo es el
+                # «xb» de más abajo.
+                rev_dir, rev_exists = _rev_del_anulado(
+                    dev_dir, n, letter, destino["codes"],
+                    nombres=portal_names.get(id(doc)), envio=envio)
+            else:
+                rev_dir = _ya_archivado(dev_dir, fname, zi.file_size, zi.CRC)
+                rev_exists = rev_dir is not None
+                if rev_dir is None:
+                    rev_dir, rev_exists = _rev_folder_for(dev_dir, n, letter, _suffix(estado), envio=envio)
+                    rev_dir, rev_exists = _sin_pisar(dev_dir, rev_dir, rev_exists, fname,
+                                                     zi.file_size, zi.CRC)
             target = rev_dir / fname
             res["plan"].append({"file": fname, "dest": target, "how": how, "doc": doc.get("Doc. EIPSA") or doc.get("Doc. Cliente")})
             if dry_run:
@@ -867,8 +939,12 @@ def archive_email_only(docs: list[dict], pedido: str, *, email_raw: bytes | None
             res["skipped"].append((etiqueta, motivo))
             continue
         dev_dir, dev_exists = destino["dev_dir"], destino["dev_exists"]
-        rev_dir, rev_exists = _rev_folder_for(dev_dir, destino["n"], destino["letter"],
-                                              _suffix(destino["estado"]), envio=destino["envio"])
+        if destino["anulado"]:
+            rev_dir, rev_exists = _rev_del_anulado(dev_dir, destino["n"], destino["letter"],
+                                                   destino["codes"], envio=destino["envio"])
+        else:
+            rev_dir, rev_exists = _rev_folder_for(dev_dir, destino["n"], destino["letter"],
+                                                  _suffix(destino["estado"]), envio=destino["envio"])
         res["plan"].append({"file": eml_name, "dest": rev_dir / eml_name,
                             "how": destino["how"], "doc": etiqueta})
         if dry_run:
