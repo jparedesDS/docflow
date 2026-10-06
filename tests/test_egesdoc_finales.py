@@ -278,5 +278,56 @@ try:
 except Exception:  # noqa: BLE001
     pass
 
+# ── El nombre del fichero de un documento devuelto ────────────────────────────
+# El portal acepta la petición al momento pero prepara la exportación en su
+# servidor: mientras no está, la descarga contesta 200 con la página HTML de
+# espera y sin «Content-Disposition». Con un solo intento el documento se
+# quedaba sin nombre y su PDF del zip no se archivaba (1078010920-VT-0004, el
+# 2026-10-06: 3 de 4 documentos sin colocar).
+class SesionTardona:
+    """Contesta la página de espera las `tarda` primeras veces, luego el fichero."""
+
+    def __init__(self, tarda, nombre="AD-3000-G-00968.pdf", result=True):
+        self.tarda = tarda
+        self.nombre = nombre
+        self.result = result
+        self.gets = 0
+
+    def post(self, _url, data=None, **kw):
+        return Respuesta(json={"result": self.result})
+
+    def get(self, _url, **kw):
+        self.gets += 1
+        if self.gets <= self.tarda:
+            return Respuesta(headers={"Content-Type": "text/html; charset=utf-8"})
+        return Respuesta(headers={"Content-Disposition": f"attachment; filename={self.nombre}"})
+
+
+esperas = []
+dormir_real = egesdoc.time.sleep
+egesdoc.time.sleep = esperas.append
+try:
+    s = SesionTardona(tarda=0)
+    comprobar(egesdoc.document_filename(s, 1) == "AD-3000-G-00968.pdf",
+              "si la exportación ya está, el nombre sale al primer intento")
+    comprobar(s.gets == 1 and not esperas, "y no se espera de más")
+
+    s, esperas[:] = SesionTardona(tarda=1), []
+    comprobar(egesdoc.document_filename(s, 1) == "AD-3000-G-00968.pdf",
+              "si el portal contesta la página de espera, se reintenta y sale")
+    comprobar(s.gets == 2 and esperas == [1.5], "con una espera entre medias")
+
+    s, esperas[:] = SesionTardona(tarda=99), []
+    comprobar(egesdoc.document_filename(s, 1) == "",
+              "si nunca llega, se devuelve vacío en vez de colgarse")
+    comprobar(s.gets == egesdoc.NAME_RETRIES,
+              f"tras {egesdoc.NAME_RETRIES} intentos: {s.gets}")
+
+    s, esperas[:] = SesionTardona(tarda=0, result=False), []
+    comprobar(egesdoc.document_filename(s, 1) == "" and s.gets == 0,
+              "y si el portal no acepta la petición, no se descarga nada")
+finally:
+    egesdoc.time.sleep = dormir_real
+
 print(f"FALLOS: {fallos}")
 sys.exit(1 if fallos else 0)

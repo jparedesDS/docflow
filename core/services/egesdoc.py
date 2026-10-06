@@ -50,6 +50,9 @@ TIMEOUT = 60
 DOWNLOAD_TIMEOUT = 180
 EXPORT_RETRIES = 3
 OPEN_RETRIES = 3
+# El portal prepara cada exportación en su servidor y tarda un poco: hasta que
+# está, la descarga contesta 200 con la página HTML de espera. Se reintenta.
+NAME_RETRIES = 4
 
 
 class PortalOcupado(RuntimeError):
@@ -336,7 +339,17 @@ def transmittal_documents(s: requests.Session, transmittal_id: int) -> list[dict
 
 def document_filename(s: requests.Session, document_id: int) -> str:
     """Nombre del fichero de un documento devuelto, SIN descargarlo: se pide la
-    exportación y se leen solo las cabeceras de la descarga."""
+    exportación y se leen solo las cabeceras de la descarga.
+
+    El portal acepta la petición al momento («result: true») pero prepara la
+    exportación en su servidor, y mientras no está contesta **200 con la página
+    HTML de espera y sin «Content-Disposition»**: no es un error, es que hemos
+    llegado antes. Con un solo intento el documento se quedaba sin nombre, y
+    entonces su PDF del zip no encontraba pareja y no se archivaba —pasó el
+    2026-10-06 con 3 de los 4 documentos del 1078010920-VT-0004—, mientras el
+    mismo transmittal funcionaba al rato. Así que se reintenta hasta que el
+    portal entrega el fichero.
+    """
     r = s.post(f"{BASE}/Supplier/Documents/DownloadDocumentAjax", data={"id": document_id},
                headers={**_AJAX, "Referer": f"{BASE}/Supplier/Transmittal"}, timeout=DOWNLOAD_TIMEOUT)
     r.raise_for_status()
@@ -345,11 +358,20 @@ def document_filename(s: requests.Session, document_id: int) -> str:
             return ""
     except ValueError:
         return ""
-    r = s.get(f"{BASE}/Supplier/Documents/DownloadExportedDocument", timeout=DOWNLOAD_TIMEOUT, stream=True)
-    try:
-        return http.filename_from_headers(r.headers) if r.ok else ""
-    finally:
-        r.close()
+    for intento in range(1, NAME_RETRIES + 1):
+        r = s.get(f"{BASE}/Supplier/Documents/DownloadExportedDocument",
+                  timeout=DOWNLOAD_TIMEOUT, stream=True)
+        try:
+            nombre = http.filename_from_headers(r.headers) if r.ok else ""
+        finally:
+            r.close()
+        if nombre or intento == NAME_RETRIES:
+            if not nombre:
+                logger.info("eGesDoc: el documento %s sigue sin fichero tras %d intentos",
+                            document_id, NAME_RETRIES)
+            return nombre
+        time.sleep(1.5 * intento)
+    return ""
 
 
 def transmittal_file_map(po: str, code: str, *, project_hint: str | None = None,
