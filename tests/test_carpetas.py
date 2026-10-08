@@ -314,6 +314,75 @@ finally:
     D.tecnico_dir = tecnico_real
     shutil.rmtree(tmp, ignore_errors=True)
 
+# ── Una devolución con VARIAS resoluciones de la misma revisión ────────────
+# Wood devolvió 26 cálculos en rev 0: 15 con comentarios menores y 11 con
+# mayores. La carpeta se decidía documento a documento, así que los 11 mayores
+# acabaron cada uno en la suya («rev1 COM», «rev2 COM»… «rev11 COM»). Y el
+# sufijo corto no los separa: en Windows «rev0 com» y «rev0 COM» son la misma
+# carpeta. Ahora la revisión va sin sufijo y cada resolución a su subcarpeta.
+tmp = Path(tempfile.mkdtemp())
+tecnico_real = D.tecnico_dir
+try:
+    tecnico = tmp / "P-26-062-S00 - WOOD-ONUBA" / "2-Tecnico"
+    envio = tecnico / "env. Cálculos" / "REV 0"
+    envio.mkdir(parents=True)
+    (tecnico / "dev. Cálculos").mkdir()
+    D.tecnico_dir = lambda _pedido: tecnico
+
+    def calculo(num, estado):
+        codigo = f"V-2401HG04A-2206-300-OEFO-{num:04d}-CAL-001"
+        (envio / f"{codigo}.PDF").write_bytes(b"enviado")
+        return {"Nº Pedido": "P-26/062", "Supp.": "S00", "Doc. EIPSA": f"26-062-CAL-{num:04d}",
+                "Doc. Cliente": codigo, "Título": "CALCULATIONS", "Rev.": "0",
+                "Estado": estado, "Tipo de documento": ""}
+
+    MENORES = [calculo(n, "Com. Menores") for n in (1, 2, 3)]
+    MAYORES = [calculo(n, "Com. Mayores") for n in (51, 52)]
+
+    paquete = tmp / "TL-2401HG04A-VDC-6696.zip"
+    with zipfile.ZipFile(paquete, "w") as zf:
+        for doc in MENORES + MAYORES:
+            zf.writestr(doc["Doc. Cliente"] + ".PDF", b"%PDF-" + doc["Doc. Cliente"].encode())
+
+    res = D.archive_return(paquete, MENORES + MAYORES, "P-26/062", email_raw=b"correo",
+                           email_date="2026-10-08")
+    ok(len(res["archived"]) == 5 and not res["skipped"], f"se colocan los cinco: {res['skipped']}")
+    donde = {}
+    for _f, dest in res["archived"]:
+        donde.setdefault(f"{Path(dest).parent.parent.name}\\{Path(dest).parent.name}", 0)
+        donde[f"{Path(dest).parent.parent.name}\\{Path(dest).parent.name}"] += 1
+    ok(donde == {"rev0\\com. menores": 3, "rev0\\com. mayores": 2},
+       f"cada resolución a su subcarpeta de rev0: {donde}")
+    ok(not list((tecnico / "dev. Cálculos").glob("rev1*")),
+       "y ninguna abre un correlativo nuevo")
+    ok(not list((tecnico / "dev. Cálculos").glob("rev0 *")),
+       "la carpeta de revisión va sin sufijo, que no cabrían las dos")
+    for sub in ("com. menores", "com. mayores"):
+        eml = tecnico / "dev. Cálculos" / "rev0" / sub / "dev 2026-10-08.eml"
+        ok(eml.is_file(), f"el correo queda en rev0\\{sub}")
+
+    # Repetir la descarga no duplica ni mueve nada
+    antes = sorted(str(p.relative_to(tecnico)) for p in (tecnico / "dev. Cálculos").rglob("*"))
+    res = D.archive_return(paquete, MENORES + MAYORES, "P-26/062")
+    ok(sorted(str(p.relative_to(tecnico)) for p in (tecnico / "dev. Cálculos").rglob("*")) == antes
+       and not res["skipped"], "volver a archivarlo deja el árbol igual")
+
+    # Con una sola resolución se respeta el nombre de siempre
+    solo = tmp / "solo-menores.zip"
+    otros = [calculo(n, "Com. Menores") for n in (7, 8)]
+    for doc in otros:
+        doc["Rev."] = "1"
+    with zipfile.ZipFile(solo, "w") as zf:
+        for doc in otros:
+            zf.writestr(doc["Doc. Cliente"] + ".PDF", b"%PDF-" + doc["Doc. Cliente"].encode())
+    res = D.archive_return(solo, otros, "P-26/062")
+    carpetas = {Path(dest).parent.name for _f, dest in res["archived"]}
+    ok(carpetas == {"rev1 com"},
+       f"una resolución sola sigue yendo a «rev1 com», como todos los pedidos: {carpetas}")
+finally:
+    D.tecnico_dir = tecnico_real
+    shutil.rmtree(tmp, ignore_errors=True)
+
 # ── Un documento que el cliente ANULA (VOID) ───────────────────────────────
 # TR anuló el 01-10-2026 dos planos que ya estaban aprobados en «rev0-A». La
 # anulación no es una devolución más: va a «rev0-A\VOID», al lado del aprobado,
