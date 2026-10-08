@@ -17,6 +17,10 @@ Dentro del zip los ficheros van con el código del documento tal cual
 de la tabla del correo, así que el archivado los empareja sin ayuda de ningún
 mapa —al revés que en eGesDoc, donde hay que preguntarle al portal.
 
+El enlace del correo ya no sirve el zip directamente: desde octubre de 2026
+redirige a una **página puente** cuyo único contenido es un script que arma la
+URL de verdad con el parámetro `ctl=` de su propia dirección (`_url_del_zip`).
+
 **Los enlaces caducan** (el propio correo lo dice: «The links to electronic
 files will expire on …», al mes). Pasada esa fecha el portal no da un error HTTP:
 contesta 200 con una página que pone «Error Executing Database Query». Por eso
@@ -87,6 +91,33 @@ def download_link(html: str) -> str:
     return enlaces[0][0]
 
 
+def _url_del_zip(url_pagina: str) -> str:
+    """La URL del zip que arma el script de la página puente de PRODOC.
+
+    Desde octubre de 2026 el enlace del correo no devuelve el paquete: redirige
+    a `…/downloadDocs/vndDownloadZIPMail.htm?ctl=//…/TL-…-VDC-6696_1.zip`, una
+    página de seis líneas cuyo script pega «https:» al valor de `ctl=`, lo corta
+    en «.zip» y pulsa el enlace. Aquí se hace lo mismo con la dirección a la que
+    nos ha llevado el portal. Sin esto la descarga se quedaba en la página y el
+    transmittal no bajaba (TL-2401HG04A-VDC-6696 y -6697, el 2026-10-08).
+
+    El parámetro se usa TAL CUAL, sin descodificar: el separador de carpeta del
+    portal viaja como «%5C» y descodificarlo rompe la petición.
+
+    Devuelve '' si esa dirección no es la página puente, que es lo que pasa con
+    las otras dos respuestas conocidas —«se está preparando» y enlace caducado—,
+    servidas en el propio `.cfm` y sin `ctl=`.
+    """
+    _, _, resto = (url_pagina or "").partition("ctl=")
+    i = resto.find(".zip")
+    if i < 0:
+        return ""
+    destino = resto[:i + 4]
+    if destino.startswith("//"):          # el ctl= viene sin protocolo
+        return f"https:{destino}"
+    return destino if destino.lower().startswith("http") else ""
+
+
 def has_download(html: str) -> bool:
     """¿Este correo trae algo que descargar?
 
@@ -109,6 +140,15 @@ def download(url: str, dest_dir: Path | str, code: str) -> Path:
         for intento in range(1, ZIP_RETRIES + 1):
             r = s.get(url, timeout=DOWNLOAD_TIMEOUT, stream=True, allow_redirects=True)
             r.raise_for_status()
+            # Si el portal nos ha dejado en su página puente, el zip está en la
+            # dirección que el script de esa página construye: se sigue a mano,
+            # porque aquí no hay navegador que ejecute el JavaScript.
+            zip_url = _url_del_zip(r.url)
+            if zip_url:
+                r.close()
+                logger.info("PRODOC: %s va por la página puente, se sigue al zip", code)
+                r = s.get(zip_url, timeout=DOWNLOAD_TIMEOUT, stream=True, allow_redirects=True)
+                r.raise_for_status()
             ctype = (r.headers.get("Content-Type") or "").lower()
             if not ("html" in ctype or "text/" in ctype):
                 target = http.save_response(r, dest_dir, f"{code}.zip")
