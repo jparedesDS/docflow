@@ -383,6 +383,51 @@ finally:
     D.tecnico_dir = tecnico_real
     shutil.rmtree(tmp, ignore_errors=True)
 
+# ── Una devolución que llega SIN empaquetar ────────────────────────────────
+# Document Space (Hyundai) manda el PDF a pelo cuando el transmittal trae un
+# solo documento. `zipfile` reventaba con «File is not a zip file», el reparto
+# se iba por el except y el documento se quedaba en «00 TRANS Y RES» aunque la
+# carpeta estaba bien calculada (el proceso de pintura del T-0040, 2026-10-13).
+tmp = Path(tempfile.mkdtemp())
+tecnico_real = D.tecnico_dir
+try:
+    tecnico = tmp / "P-24-070-S00 - HYUNDAI" / "2-Tecnico"
+    (tecnico / "env Painting and Coating" / "rev1 IFC").mkdir(parents=True)
+    (tecnico / "env Painting and Coating" / "rev1 IFC"
+     / "VD-CI0021-022_1 PAINTING AND COATING PROCEDURE.pdf").write_bytes(b"enviado")
+    for sub in ("rev0-A com", "rev1-B COM"):
+        (tecnico / "dev Painting and Coating" / sub).mkdir(parents=True)
+    D.tecnico_dir = lambda _pedido: tecnico
+
+    PINTURA = {"Nº Pedido": "P-24/070", "Supp.": "S00", "Doc. EIPSA": "",
+               "Doc. Cliente": "VD-CI0021-022",
+               "Título": "(NMR 602) PAINTING AND COATING PROCEDURE",
+               "Rev.": "1", "Estado": "Aprobado", "Tipo de documento": ""}
+
+    suelto = tmp / "VD-CI0021-022_(NMR 602) PAINTING AND COATING PROCEDURE_1.pdf"
+    suelto.write_bytes(b"%PDF-1.7 proceso de pintura")
+    ok(not zipfile.is_zipfile(suelto), "la devolución llega como PDF, no como zip")
+
+    res = D.archive_return(suelto, [PINTURA], "P-24/070", email_raw=b"correo",
+                           email_date="2026-10-13")
+    ok(len(res["archived"]) == 1 and not res["skipped"],
+       f"el PDF suelto se archiva igual: {res['skipped']}")
+    destino = Path(res["archived"][0][1])
+    ok(destino.parent.name == "rev2-1 AP", f"en la carpeta que le toca: {destino.parent.name}")
+    ok(destino.read_bytes() == b"%PDF-1.7 proceso de pintura", "con su contenido")
+    ok((destino.parent / "dev 2026-10-13.eml").is_file(), "y el correo al lado")
+    ok(suelto.is_file(), "el original no se mueve, se copia")
+
+    # Volver a archivarlo no duplica: el CRC del fichero suelto también cuenta
+    antes = sorted(str(p.relative_to(tecnico)) for p in tecnico.rglob("*"))
+    res = D.archive_return(suelto, [PINTURA], "P-24/070")
+    ok(sorted(str(p.relative_to(tecnico)) for p in tecnico.rglob("*")) == antes
+       and len(res["archived"]) == 1 and not res["skipped"],
+       "repetirlo deja el árbol igual")
+finally:
+    D.tecnico_dir = tecnico_real
+    shutil.rmtree(tmp, ignore_errors=True)
+
 # ── Un documento que el cliente ANULA (VOID) ───────────────────────────────
 # TR anuló el 01-10-2026 dos planos que ya estaban aprobados en «rev0-A». La
 # anulación no es una devolución más: va a «rev0-A\VOID», al lado del aprobado,

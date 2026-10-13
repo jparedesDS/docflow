@@ -47,6 +47,7 @@ entonces y no se puede recuperar de ningún sitio.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import re
 import unicodedata
@@ -878,10 +879,45 @@ def _destino(doc: dict, folders: list[dict], *, uses_letter: bool, default_dotte
             "dotted": dotted, "anulado": anulado, "codes": codes}, ""
 
 
+class _Fichero:
+    """Un fichero devuelto, venga dentro del paquete o suelto."""
+
+    def __init__(self, nombre: str, tamaño: int, crc: int | None, abrir) -> None:
+        self.nombre = nombre
+        self.tamaño = tamaño
+        self.crc = crc
+        self.abrir = abrir
+
+
+@contextlib.contextmanager
+def _ficheros_devueltos(paquete: Path):
+    """Los ficheros que hay que repartir: los del zip, o el fichero suelto.
+
+    Document Space (Hyundai) no empaqueta cuando el transmittal trae un solo
+    documento: manda el PDF a pelo. Y entonces `zipfile` reventaba con «File is
+    not a zip file», el reparto se iba por el except de `_archivar` y el
+    documento se quedaba en «00 TRANS Y RES» sin colocar —el proceso de pintura
+    del JUS&ICS2-CI0021-HS-EI-T-0040, el 2026-10-13—, aunque la carpeta a la
+    que iba estaba bien calculada.
+    """
+    if zipfile.is_zipfile(paquete):
+        with zipfile.ZipFile(paquete) as zf:
+            yield [_Fichero(zi.filename, zi.file_size, zi.CRC, lambda zi=zi: zf.open(zi))
+                   for zi in zf.infolist() if not zi.is_dir()]
+        return
+    # Suelto: el CRC se calcula aquí, que es lo que hace idempotente volver a
+    # archivarlo (y lo que distingue dos revisiones del mismo PDF).
+    yield [_Fichero(paquete.name, paquete.stat().st_size, _crc32(paquete),
+                    lambda: open(paquete, "rb"))]
+
+
 def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: bytes | None = None,
                    email_date: str = "", dry_run: bool = False,
                    file_docs: dict[str, dict] | None = None) -> dict:
-    """Copia los ficheros devueltos del zip a sus carpetas `dev.` del pedido.
+    """Copia los ficheros devueltos a sus carpetas `dev.` del pedido.
+
+    `zip_path` es el paquete de la devolución: el zip, o el documento suelto
+    cuando el portal no empaqueta (`_ficheros_devueltos`).
 
     Cada documento va a la carpeta del suministro que él dice, que en un mismo
     transmittal no tiene por qué ser el mismo para todos.
@@ -899,18 +935,17 @@ def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: 
         return res
     eml_name = f"dev {email_date[:10]}.eml" if email_date else "dev.eml"
 
-    with zipfile.ZipFile(zip_path) as zf:
-        entries = [zi for zi in zf.infolist() if not zi.is_dir()]
-        matched = _match_docs([zi.filename for zi in entries], docs, file_docs)
+    with _ficheros_devueltos(zip_path) as entries:
+        matched = _match_docs([f.nombre for f in entries], docs, file_docs)
         portal_names = _portal_names(docs, file_docs)
 
         # Primero se resuelve la carpeta dev de cada fichero y solo después la
         # de revisión: esa depende del paquete entero, porque si de una misma
         # revisión vienen varias resoluciones cada una va a su subcarpeta.
         trabajos = []
-        for zi in entries:
-            fname = Path(zi.filename).name
-            doc = matched.get(zi.filename)
+        for fich in entries:
+            fname = Path(fich.nombre).name
+            doc = matched.get(fich.nombre)
             if doc is None:
                 res["skipped"].append((fname, "no coincide con ningún documento del correo"))
                 continue
@@ -926,11 +961,11 @@ def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: 
             if destino is None:
                 res["skipped"].append((fname, motivo))
                 continue
-            trabajos.append((zi, fname, doc, ctx, destino))
+            trabajos.append((fich, fname, doc, ctx, destino))
 
         revisiones = _CarpetasDeRevision([d for _, _, _, _, d in trabajos])
         touched: set[Path] = set()
-        for zi, fname, doc, ctx, destino in trabajos:
+        for fich, fname, doc, ctx, destino in trabajos:
             tecnico, folders = ctx["tecnico"], ctx["folders"]
             envio, n, letter = destino["envio"], destino["n"], destino["letter"]
             how, name, dotted = destino["how"], destino["name"], destino["dotted"]
@@ -943,13 +978,13 @@ def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: 
                     dev_dir, n, letter, destino["codes"],
                     nombres=portal_names.get(id(doc)), envio=envio)
             else:
-                rev_dir = _ya_archivado(dev_dir, fname, zi.file_size, zi.CRC)
+                rev_dir = _ya_archivado(dev_dir, fname, fich.tamaño, fich.crc)
                 rev_exists = rev_dir is not None
                 if rev_dir is None:
                     rev_dir, rev_exists = revisiones.para(destino)
                     if not revisiones.mezclada(destino):
                         rev_dir, rev_exists = _sin_pisar(dev_dir, rev_dir, rev_exists, fname,
-                                                         zi.file_size, zi.CRC)
+                                                         fich.tamaño, fich.crc)
                     # Con la resolución en subcarpeta no se avanza el
                     # correlativo —sacaría el documento de su revisión—: ahí lo
                     # que protege de pisar algo es el «xb» de más abajo.
@@ -963,13 +998,13 @@ def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: 
                     res["created"].append(d)
                     if d.parent == tecnico:
                         folders.append({"kind": "dev", "name": name, "dotted": dotted, "path": d})
-            if _mismo_fichero(target, zi.file_size, zi.CRC):
+            if _mismo_fichero(target, fich.tamaño, fich.crc):
                 res["archived"].append((fname, target))   # ya estaba, y es el mismo
             else:
                 # «xb» (creación exclusiva) es la última red: si algo se colara,
                 # esto revienta en vez de destruir un documento ya archivado.
                 try:
-                    with zf.open(zi) as src, open(target, "xb") as dst:
+                    with fich.abrir() as src, open(target, "xb") as dst:
                         for chunk in iter(lambda: src.read(1 << 16), b""):
                             dst.write(chunk)
                 except FileExistsError:
