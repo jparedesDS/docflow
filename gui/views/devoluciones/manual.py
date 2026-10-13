@@ -12,7 +12,7 @@ from tkinter import messagebox
 
 from core.services import transmittal
 from gui import theme
-from gui.widgets import ui
+from gui.widgets import contactos, ui
 from gui.widgets.scrollframe import ScrollFrame
 
 from gui.views.devoluciones.comun import (
@@ -140,8 +140,10 @@ class ManualDevolucionWindow(ctk.CTkToplevel):
         addr = ctk.CTkFrame(scroll, fg_color="transparent")
         addr.pack(fill="x", pady=(0, theme.SPACE_4))
 
-        ctk.CTkLabel(addr, text="Para (To) *", font=theme.FONT_TINY_BOLD,
-                     text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w")
+        cab_to = ctk.CTkFrame(addr, fg_color="transparent")
+        cab_to.pack(fill="x")
+        ctk.CTkLabel(cab_to, text="Para (To) *", font=theme.FONT_TINY_BOLD,
+                     text_color=theme.TEXT_MUTED, anchor="w").pack(side="left")
         self.ent_to = ctk.CTkEntry(
             addr, placeholder_text="email1@cliente.com, email2@cliente.com",
             height=theme.HEIGHT_INPUT, corner_radius=theme.RADIUS_MD,
@@ -149,9 +151,13 @@ class ManualDevolucionWindow(ctk.CTkToplevel):
             text_color=theme.TEXT_MAIN, font=theme.FONT_BODY,
         )
         self.ent_to.pack(fill="x", pady=(theme.SPACE_1, theme.SPACE_2))
+        contactos.boton_contactos(cab_to, self.ent_to, "Para").pack(side="left",
+                                                                    padx=(theme.SPACE_2, 0))
 
-        ctk.CTkLabel(addr, text="Copia (Cc)", font=theme.FONT_TINY_BOLD,
-                     text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w")
+        cab_cc = ctk.CTkFrame(addr, fg_color="transparent")
+        cab_cc.pack(fill="x")
+        ctk.CTkLabel(cab_cc, text="Copia (Cc)", font=theme.FONT_TINY_BOLD,
+                     text_color=theme.TEXT_MUTED, anchor="w").pack(side="left")
         self.ent_cc = ctk.CTkEntry(
             addr, placeholder_text="opcional",
             height=theme.HEIGHT_INPUT, corner_radius=theme.RADIUS_MD,
@@ -159,6 +165,8 @@ class ManualDevolucionWindow(ctk.CTkToplevel):
             text_color=theme.TEXT_MAIN, font=theme.FONT_BODY,
         )
         self.ent_cc.pack(fill="x", pady=(theme.SPACE_1, 0))
+        contactos.boton_contactos(cab_cc, self.ent_cc, "Copia").pack(side="left",
+                                                                      padx=(theme.SPACE_2, 0))
 
     def _section_label(self, parent, text: str) -> None:
         ctk.CTkLabel(

@@ -11,7 +11,7 @@ from core.services import claims as claims_service
 from core.services import smtp as smtp_service
 from gui import cell_format
 from gui import theme
-from gui.widgets import ui
+from gui.widgets import contactos, ui
 from gui.widgets.scrollframe import ScrollFrame
 from gui.widgets.pilltable import PillTable
 from gui.widgets.table import DataTable
@@ -502,23 +502,31 @@ class ReclamacionPreview(ctk.CTkToplevel):
         )
         self.btn_reset_recipients.pack(side="right")
 
-        ctk.CTkLabel(addr, text="Para (To)", font=theme.font(10),
-                     text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w", pady=(6, 0))
+        cab_to = ctk.CTkFrame(addr, fg_color="transparent")
+        cab_to.pack(fill="x", pady=(6, 0))
+        ctk.CTkLabel(cab_to, text="Para (To)", font=theme.font(10),
+                     text_color=theme.TEXT_MUTED, anchor="w").pack(side="left")
         self.ent_to = ctk.CTkEntry(
             addr, height=34, corner_radius=8,
             fg_color=theme.BG_INPUT, border_color=theme.BORDER,
             text_color=theme.TEXT_MAIN, font=theme.FONT_BODY,
         )
         self.ent_to.pack(fill="x", pady=(0, 4))
+        contactos.boton_contactos(cab_to, self.ent_to, "Para").pack(side="left",
+                                                                    padx=(theme.SPACE_2, 0))
 
-        ctk.CTkLabel(addr, text="Copia (Cc)", font=theme.font(10),
-                     text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w")
+        cab_cc = ctk.CTkFrame(addr, fg_color="transparent")
+        cab_cc.pack(fill="x")
+        ctk.CTkLabel(cab_cc, text="Copia (Cc)", font=theme.font(10),
+                     text_color=theme.TEXT_MUTED, anchor="w").pack(side="left")
         self.ent_cc = ctk.CTkEntry(
             addr, height=34, corner_radius=8,
             fg_color=theme.BG_INPUT, border_color=theme.BORDER,
             text_color=theme.TEXT_MAIN, font=theme.FONT_BODY,
         )
         self.ent_cc.pack(fill="x")
+        contactos.boton_contactos(cab_cc, self.ent_cc, "Copia").pack(side="left",
+                                                                      padx=(theme.SPACE_2, 0))
 
         # Tabla docs (con header + botones Todos/Ninguno + contador)
         docs_head = ctk.CTkFrame(self, fg_color="transparent")

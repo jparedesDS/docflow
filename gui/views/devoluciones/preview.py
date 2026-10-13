@@ -15,7 +15,7 @@ from tkinter import messagebox
 
 from core.services import transmittal
 from gui import theme
-from gui.widgets import ui
+from gui.widgets import contactos, ui
 from gui.widgets.table import DataTable
 
 from gui.views.devoluciones.comun import (
@@ -120,23 +120,31 @@ class PreviewWindow(ctk.CTkToplevel):
         fields = ctk.CTkFrame(self, fg_color="transparent")
         fields.pack(fill="x", padx=22, pady=(12, 8))
 
-        ctk.CTkLabel(fields, text="Para (To)", font=theme.FONT_SECTION,
-                     text_color=theme.TEXT_MUTED).grid(row=0, column=0, sticky="w", pady=(0, 2))
+        cab_to = ctk.CTkFrame(fields, fg_color="transparent")
+        cab_to.grid(row=0, column=0, sticky="ew", pady=(0, 2))
+        ctk.CTkLabel(cab_to, text="Para (To)", font=theme.FONT_SECTION,
+                     text_color=theme.TEXT_MUTED).pack(side="left")
         self.ent_to = ctk.CTkEntry(
             fields, height=34, corner_radius=8,
             fg_color=theme.BG_INPUT, border_color=theme.BORDER,
             text_color=theme.TEXT_MAIN, font=theme.FONT_BODY,
         )
         self.ent_to.grid(row=1, column=0, sticky="ew", pady=(0, 8))
+        contactos.boton_contactos(cab_to, self.ent_to, "Para").pack(side="left",
+                                                                    padx=(theme.SPACE_2, 0))
 
-        ctk.CTkLabel(fields, text="Copia (Cc)", font=theme.FONT_SECTION,
-                     text_color=theme.TEXT_MUTED).grid(row=2, column=0, sticky="w", pady=(0, 2))
+        cab_cc = ctk.CTkFrame(fields, fg_color="transparent")
+        cab_cc.grid(row=2, column=0, sticky="ew", pady=(0, 2))
+        ctk.CTkLabel(cab_cc, text="Copia (Cc)", font=theme.FONT_SECTION,
+                     text_color=theme.TEXT_MUTED).pack(side="left")
         self.ent_cc = ctk.CTkEntry(
             fields, height=34, corner_radius=8,
             fg_color=theme.BG_INPUT, border_color=theme.BORDER,
             text_color=theme.TEXT_MAIN, font=theme.FONT_BODY,
         )
         self.ent_cc.grid(row=3, column=0, sticky="ew", pady=(0, 0))
+        contactos.boton_contactos(cab_cc, self.ent_cc, "Copia").pack(side="left",
+                                                                      padx=(theme.SPACE_2, 0))
 
         fields.grid_columnconfigure(0, weight=1)
 
