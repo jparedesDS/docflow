@@ -367,6 +367,21 @@ try:
     ok(sorted(str(p.relative_to(tecnico)) for p in (tecnico / "dev. Cálculos").rglob("*")) == antes
        and not res["skipped"], "volver a archivarlo deja el árbol igual")
 
+    # Una devolución POSTERIOR de esa misma revisión va con los suyos, no a un
+    # correlativo nuevo: el TL-2401HG04A-VDC-6699 traía un solo plano con
+    # comentarios mayores y abrió «dev. Planos\rev1 COM» en vez de ir a
+    # «rev0\com. mayores», que es donde había que moverlo a mano.
+    luego = [calculo(99, "Com. Mayores")]
+    paquete2 = tmp / "TL-2401HG04A-VDC-6699.zip"
+    with zipfile.ZipFile(paquete2, "w") as zf:
+        zf.writestr(luego[0]["Doc. Cliente"] + ".PDF", b"%PDF-mas-tarde")
+    res = D.archive_return(paquete2, luego, "P-26/062")
+    destino = Path(res["archived"][0][1])
+    ok(destino.parent.name == "com. mayores" and destino.parent.parent.name == "rev0",
+       f"se mete en rev0\\com. mayores: {destino.parent}")
+    ok(not list((tecnico / "dev. Cálculos").glob("rev1*")),
+       "sin abrir «rev1 COM» al lado")
+
     # Con una sola resolución se respeta el nombre de siempre
     solo = tmp / "solo-menores.zip"
     otros = [calculo(n, "Com. Menores") for n in (7, 8)]

@@ -695,6 +695,44 @@ def _clave_rev(dev_dir: Path, n: int | None, letter: str) -> tuple:
     return (str(dev_dir).lower(), n, str(letter or "").upper())
 
 
+# El nombre largo de cada resolución, para cuando va en subcarpeta de la revisión.
+SUBCARPETA_ESTADO = {"com": "com. menores", "COM": "com. mayores",
+                     "AP": "aprobados", "REJ": "rechazados", VOID_DIR: VOID_DIR}
+
+
+def _rev_por_estados(dev_dir: Path, n: int | None, letter: str) -> Path | None:
+    """La carpeta de esa revisión, si YA está repartida por resolución.
+
+    Una revisión puede estar organizada en subcarpetas por estado: porque la
+    trajo así una devolución con varias resoluciones, o porque se archivó así a
+    mano («rev0-A\\AProbados», «rev0-A\\com. menores»). Cuando llega otra
+    devolución de la MISMA revisión, su sitio es la subcarpeta que le toque y no
+    un correlativo nuevo, que dejaría el documento lejos de los suyos: pasó con
+    el TL-2401HG04A-VDC-6699, un plano con comentarios mayores que abrió
+    «dev. Planos\\rev1 COM» cuando su sitio era «rev0\\com. mayores».
+
+    Solo cuentan las carpetas de revisión SIN sufijo —en «rev0 com» la
+    resolución ya va en el nombre— y que tengan dentro alguna subcarpeta con
+    nombre de resolución, mayúsculas y acentos aparte. Así se reconoce lo que
+    la propia app archiva y cómo está a mano, sin tocar los pedidos que usan
+    otra forma («rev0\\ap rev 0»), que siguen por el correlativo de siempre.
+    """
+    conocidas = {_fold(v) for v in SUBCARPETA_ESTADO.values()}
+    rev_text = (letter or (str(n) if n is not None else "")).upper()
+    for sub, num, rev, sufijo in _rev_subfolders(dev_dir):
+        if sufijo:
+            continue
+        de_esta = (rev == rev_text) if (rev and rev_text) else (n is not None and num == n)
+        if not de_esta:
+            continue
+        try:
+            if any(h.is_dir() and _fold(h.name) in conocidas for h in sub.iterdir()):
+                return sub
+        except OSError:
+            pass
+    return None
+
+
 class _CarpetasDeRevision:
     """La subcarpeta de revisión de cada grupo de documentos del paquete.
 
@@ -717,10 +755,6 @@ class _CarpetasDeRevision:
     llamándose «rev0 com», como en todos los pedidos.
     """
 
-    # El nombre largo de cada resolución, para cuando va en subcarpeta.
-    NOMBRES = {"com": "com. menores", "COM": "com. mayores",
-               "AP": "aprobados", "REJ": "rechazados", VOID_DIR: VOID_DIR}
-
     def __init__(self, destinos: list[dict]) -> None:
         resoluciones: dict[tuple, set[str]] = {}
         for d in destinos:
@@ -737,16 +771,18 @@ class _CarpetasDeRevision:
             self._abiertas[clave] = self._abrir(destino, rev, sufijo)
         return self._abiertas[clave]
 
-    def mezclada(self, destino: dict) -> bool:
-        """¿De esta revisión vienen varias resoluciones en el mismo paquete?"""
-        return _clave_rev(destino["dev_dir"], destino["n"], destino["letter"]) in self._mezcladas
-
     def _abrir(self, destino: dict, rev: tuple, sufijo: str) -> tuple[Path, bool]:
         dev_dir, n, letter = destino["dev_dir"], destino["n"], destino["letter"]
-        if rev not in self._mezcladas:
-            return _rev_folder_for(dev_dir, n, letter, sufijo, envio=destino["envio"])
-        padre, _existe = _rev_folder_for(dev_dir, n, letter, "", envio=destino["envio"])
-        return _subcarpeta(padre, self.NOMBRES.get(sufijo, sufijo))
+        if rev in self._mezcladas:
+            # El paquete trae varias resoluciones: la revisión va sin sufijo.
+            padre, _existe = _rev_folder_for(dev_dir, n, letter, "", envio=destino["envio"])
+        else:
+            # Una sola, pero si esa revisión ya está repartida por resolución,
+            # el documento va con los suyos y no abre correlativo.
+            padre = _rev_por_estados(dev_dir, n, letter)
+            if padre is None:
+                return _rev_folder_for(dev_dir, n, letter, sufijo, envio=destino["envio"])
+        return _subcarpeta(padre, SUBCARPETA_ESTADO.get(sufijo, sufijo))
 
 
 # ── Archivado ─────────────────────────────────────────────────────────────────
@@ -982,12 +1018,12 @@ def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: 
                 rev_exists = rev_dir is not None
                 if rev_dir is None:
                     rev_dir, rev_exists = revisiones.para(destino)
-                    if not revisiones.mezclada(destino):
-                        rev_dir, rev_exists = _sin_pisar(dev_dir, rev_dir, rev_exists, fname,
-                                                         fich.tamaño, fich.crc)
                     # Con la resolución en subcarpeta no se avanza el
                     # correlativo —sacaría el documento de su revisión—: ahí lo
                     # que protege de pisar algo es el «xb» de más abajo.
+                    if _REV_DIR_RE.match(rev_dir.name):
+                        rev_dir, rev_exists = _sin_pisar(dev_dir, rev_dir, rev_exists, fname,
+                                                         fich.tamaño, fich.crc)
             target = rev_dir / fname
             res["plan"].append({"file": fname, "dest": target, "how": how, "doc": doc.get("Doc. EIPSA") or doc.get("Doc. Cliente")})
             if dry_run:
