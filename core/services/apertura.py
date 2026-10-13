@@ -268,6 +268,58 @@ SUBFOLDER_CATALOG: list[dict] = [
 # Opciones válidas para la columna F del ERP
 ERP_CRITICO_OPTIONS: tuple[str, ...] = ("No", "Sí")
 
+# Cómo se llama esa misma carpeta en los pedidos que YA existen.
+#
+# La apertura crea «env. PLANOS DIMENSIONALES», pero en los 1.743 pedidos de M:
+# esa carpeta se llama «dev planos» (836 veces), y el reparto de devoluciones
+# compara por nombre exacto: sin esto, un documento que no se pueda colocar por
+# el fichero enviado ni por el título abriría una segunda carpeta al lado de la
+# que ya existe. Con el alias reconoce que son la misma y reutiliza la de siempre.
+#
+# Sale del censo de las 7.860 carpetas de M:, y es a propósito CORTA: un alias
+# de más archivaría documentos en la carpeta de otro tipo, que es peor que
+# duplicar una carpeta. Lo dudoso se queda fuera —«repuestos» a secas, que vale
+# para los de puesta en marcha y para los de 2 años; «PLANNING», que unas veces
+# es el programa de fabricación y otras el fichero de Planning; «certificados
+# materiales», que no se sabe si son los de pruebas—. `validate_catalog`
+# comprueba que no haya un alias en dos entradas.
+SUBFOLDER_ALIAS: dict[str, tuple[str, ...]] = {
+    "ESP-0003": ("cálculos y planos", "planos y cálculos", "cál y pla", "pla y cál",
+                 "cál pla", "cal pla", "cálculo y plano", "plano y cálculo"),
+    "CAL-0001": ("cálculos", "cál", "cálculo"),
+    "PLG-0005": ("planos", "plano", "pla"),
+    "CER-0006": ("certificados calibración",),
+    "CER-0001": ("certificados protección electrica", "certificados eléctricos"),
+    "LIS-0022": ("custom", "custom classification"),
+    "DOS-0002": ("dossier final", "final quality dossier"),
+    "DOS-0003": ("indice dossier", "index quality dossier"),
+    "PLN-0001": ("ppi", "itp"),
+    "MAN-0001": ("manual", "manual instalación"),
+    "PRC-0012": ("packing list", "proc packing", "packing", "packing procedure"),
+    "PRC-0010": ("ph", "prueba hidrostática", "prueba hidraulica",
+                "proc hydrostatic test"),
+    "PRC-0008": ("pmi",),
+    "PRC-0009": ("preservation", "preservation instructions", "preservation and storage"),
+    "DOS-0001": ("proc soldadura", "procedimientos soldadura"),
+    "LIS-0016": ("repuestos puesta en marcha", "spare parts precommissioning"),
+    "LIS-0001": ("vddl", "lista documentos"),
+    "PRG-0001": ("progress report", "reporte progreso"),
+    "PRC-0001": ("test procedures", "proc test"),
+    "PRG-0003": ("programa fabricación",),
+    "CER-0004": ("certificados pruebas y materiales", "certificados prueba y materiales"),
+    "HD-0001": ("hojas de datos", "hhdd"),
+    "PRC-0006": ("nde", "procedimientos nde"),
+    "VDB-0001": ("indice vendor data book",),
+    "VDB-0002": ("vendor data book",),
+    "LIS-0017": ("repuestos 2 años", "spare parts 2years"),
+    "PRC-0016": ("pintura", "procedimiento pintura", "proc pintura"),
+    "PRC-0025": ("proc calibración",),
+    "CAT-0001": ("catálogo", "catálogos descriptivos"),
+    "ATEX-0001": ("certificados atex", "certificado atex"),
+    "CER-0002": ("certificados conformidad", "certificados de conformidad",
+                 "certificado cumplimiento", "certificados cumplimiento"),
+}
+
 # Acceso rápido por nombre de carpeta
 SUBFOLDER_INDEX: dict[str, dict] = {e["folder"]: e for e in SUBFOLDER_CATALOG}
 
@@ -303,6 +355,25 @@ def nombre_subcarpeta(entry: dict, lang: str = "es", kind: str = "env") -> str:
     return f"{kind}. {cuerpo.upper()}"
 
 
+def alias_de(entry: dict) -> frozenset[str]:
+    """Todos los nombres por los que se conoce esa carpeta, normalizados.
+
+    Para que el reparto de devoluciones reconozca la carpeta que el pedido ya
+    tiene, se llame como se llame: el nombre que crearía hoy la apertura en los
+    dos idiomas, el que tenía el catálogo antes, los títulos del VDDL y los
+    alias del censo de M: (`SUBFOLDER_ALIAS`).
+    """
+    nombres = {
+        entry["folder"].split(". ", 1)[-1],
+        subfolder_title(entry, "es"),
+        subfolder_title(entry, "en"),
+        nombre_subcarpeta(entry, "es").split(". ", 1)[-1],
+        nombre_subcarpeta(entry, "en").split(". ", 1)[-1],
+        *SUBFOLDER_ALIAS.get(str(entry.get("eipsa_code") or ""), ()),
+    }
+    return frozenset(_fold(n) for n in nombres if n)
+
+
 def validate_catalog() -> list[str]:
     """Comprueba que el catálogo está bien formado contra los desplegables ERP."""
     errors: list[str] = []
@@ -332,6 +403,20 @@ def validate_catalog() -> list[str]:
                     f"«{nombre}» en {lang}."
                 )
             vistos[nombre] = e["folder"]
+    # Un alias en dos entradas mandaría los documentos de una a la carpeta de la
+    # otra, que es peor que no tener alias: mejor que no arranque la prueba.
+    de_quien: dict[str, str] = {}
+    for e in SUBFOLDER_CATALOG:
+        for a in alias_de(e):
+            if a in de_quien and de_quien[a] != e["folder"]:
+                errors.append(
+                    f"«{a}» vale para {e['folder']} y para {de_quien[a]}: "
+                    "un alias no puede ser de dos."
+                )
+            de_quien[a] = e["folder"]
+    sobran = set(SUBFOLDER_ALIAS) - {str(e.get("eipsa_code")) for e in SUBFOLDER_CATALOG}
+    if sobran:
+        errors.append(f"alias de códigos que no están en el catálogo: {sorted(sobran)}")
         if not e.get("eipsa_code"):
             errors.append(f"{e['folder']}: eipsa_code vacío.")
     return errors

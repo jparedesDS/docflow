@@ -378,19 +378,13 @@ def _by_type_and_title(folders: list[dict], tipo: str, title: str) -> dict | Non
     return top[0] if len(names) == 1 else None
 
 
-def _from_catalog(eipsa_doc: str, title: str) -> str | None:
-    """El nombre de carpeta que le toca a ese documento según el catálogo.
+def _entrada_catalogo(eipsa_doc: str, title: str) -> dict | None:
+    """La entrada del catálogo que le toca a ese documento, por su código EIPSA.
 
     Es el último recurso: solo se llega aquí cuando el pedido no tiene ninguna
-    carpeta de ese tipo, así que no hay de dónde deducir el idioma y se usa el
-    español, que es el de la apertura por defecto. Si el pedido ya tuviera la
-    carpeta en inglés, manda la que hay (`_dev_folder_for` compara sin acentos
-    ni mayúsculas).
+    carpeta de ese tipo ni por el fichero enviado ni por el título.
     """
     from core.services import apertura
-
-    def nombre(entry: dict) -> str:
-        return apertura.nombre_subcarpeta(entry, "es").split(". ", 1)[-1]
 
     m = re.search(r"-([A-Z]{2,5})-\d+", str(eipsa_doc or "").upper())
     if not m:
@@ -400,18 +394,26 @@ def _from_catalog(eipsa_doc: str, title: str) -> str | None:
     if not entries:
         return None
     if len(entries) == 1:
-        return nombre(entries[0])
+        return entries[0]
     words = _title_words(title)
     scored = [(len(words & (_title_words(e["es"]) | _title_words(e["en"]))), e) for e in entries]
     best = max(s for s, _ in scored)
     top = [e for s, e in scored if s == best]
-    return nombre(top[0]) if len(top) == 1 and best > 0 else None
+    return top[0] if len(top) == 1 and best > 0 else None
 
 
-def _dev_folder_for(folders: list[dict], name: str, style_dotted: bool) -> tuple[Path, bool]:
-    """(ruta de la carpeta dev, existe_ya) para el tipo `name`."""
+def _dev_folder_for(folders: list[dict], name: str, style_dotted: bool,
+                    alias: frozenset[str] = frozenset()) -> tuple[Path, bool]:
+    """(ruta de la carpeta dev, existe_ya) para el tipo `name`.
+
+    `alias` son los otros nombres de esa misma carpeta (`apertura.alias_de`):
+    la apertura crea hoy «dev. PLANOS DIMENSIONALES», pero el pedido puede
+    tener la de siempre, «dev planos», y es esa la que hay que usar en vez de
+    abrir una segunda al lado.
+    """
+    conocidos = {_fold(name), *alias}
     for f in folders:
-        if f["kind"] == "dev" and _fold(f["name"]) == _fold(name):
+        if f["kind"] == "dev" and _fold(f["name"]) in conocidos:
             return f["path"], True
     tecnico = folders[0]["path"].parent if folders else None
     return tecnico / (("dev. " if style_dotted else "dev ") + name), False
@@ -901,14 +903,18 @@ def _destino(doc: dict, folders: list[dict], *, uses_letter: bool, default_dotte
         if f:
             name, dotted, how = f["name"], f["dotted"], "tipo y título"
     # 3) catálogo de apertura
+    alias: frozenset[str] = frozenset()
     if name is None:
-        cat = _from_catalog(str(doc.get("Doc. EIPSA", "")), str(doc.get("Título", "")))
-        if cat:
-            name, dotted, how = cat, True, "catálogo"
+        cat = _entrada_catalogo(str(doc.get("Doc. EIPSA", "")), str(doc.get("Título", "")))
+        if cat is not None:
+            from core.services import apertura
+            name = apertura.nombre_subcarpeta(cat, "es").split(". ", 1)[-1]
+            alias = apertura.alias_de(cat)
+            dotted, how = True, "catálogo"
     if name is None:
         return None, f"no sé en qué carpeta va ({doc.get('Tipo de documento') or 'sin tipo'})"
 
-    dev_dir, dev_exists = _dev_folder_for(folders, name, dotted)
+    dev_dir, dev_exists = _dev_folder_for(folders, name, dotted, alias)
     # Algunos pedidos agrupan dentro de la carpeta: en P-26/002 los
     # documentos cuelgan de «env Specification Technical Data\FL» y
     # «…\RO» según sean de placas de caudal o de restricción. Ese nivel

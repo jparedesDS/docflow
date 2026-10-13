@@ -150,6 +150,52 @@ for _code, _fijo in (("PRC-0008", "PMI PROCEDURE"), ("LIS-0001", "VDDL")):
        f"{_code} es «env. {_fijo}» en los dos idiomas: {_nombre(_e, 'en')}")
     ok(_nombre(_e, "en", "dev") == f"dev. {_fijo}", f"y «dev. {_fijo}» al devolver")
 
+# ── Los alias: la carpeta que el pedido ya tiene, se llame como se llame ───
+# La apertura crea «dev. PLANOS DIMENSIONALES», pero en los 1.743 pedidos de M:
+# esa carpeta es «dev planos» (836 veces). Sin alias, un documento que no se
+# pueda colocar por el fichero enviado ni por el título abriría una segunda al
+# lado de la que ya existe.
+_planos = next(e for e in apertura.SUBFOLDER_CATALOG if e["eipsa_code"] == "PLG-0005")
+ok("planos" in apertura.alias_de(_planos), "«planos» es la carpeta de PLG-0005")
+ok("planos dimensionales" in apertura.alias_de(_planos),
+   "y también el nombre que crea la apertura")
+_ppi = next(e for e in apertura.SUBFOLDER_CATALOG if e["eipsa_code"] == "PLN-0001")
+ok({"ppi", "itp"} <= apertura.alias_de(_ppi), f"PPI e ITP son lo mismo: {apertura.alias_de(_ppi)}")
+
+_de_quien = {}
+for _e in apertura.SUBFOLDER_CATALOG:
+    for _a in apertura.alias_de(_e):
+        ok(_de_quien.setdefault(_a, _e["folder"]) == _e["folder"],
+           f"«{_a}» no puede ser de {_e['folder']} y de {_de_quien.get(_a)}")
+
+tmp = Path(tempfile.mkdtemp())
+tecnico_real = D.tecnico_dir
+try:
+    # Un pedido de los de antes: la carpeta se llama «dev planos», sin punto
+    tecnico = tmp / "P-19-004-S00 - CLIENTE" / "2-Tecnico"
+    (tecnico / "dev planos").mkdir(parents=True)
+    (tecnico / "env planos").mkdir()
+    D.tecnico_dir = lambda _pedido: tecnico
+
+    PLANO = {"Nº Pedido": "P-19/004", "Supp.": "S00", "Doc. EIPSA": "19-004-PLG-0005",
+             "Doc. Cliente": "CLI-DWG-0001", "Título": "GENERAL ARRANGEMENT",
+             "Tipo de documento": "", "Rev.": "0", "Estado": "Aprobado"}
+    paquete = tmp / "viejo.zip"
+    with zipfile.ZipFile(paquete, "w") as zf:
+        zf.writestr("CLI-DWG-0001.PDF", b"%PDF-plano")
+
+    res = D.archive_return(paquete, [PLANO], "P-19/004")
+    ok(len(res["archived"]) == 1 and not res["skipped"], f"se coloca: {res['skipped']}")
+    destino = Path(res["archived"][0][1])
+    ok(destino.parent.parent.name == "dev planos",
+       f"en la carpeta que el pedido ya tenía: {destino.parent.parent.name}")
+    ok(not (tecnico / "dev. PLANOS DIMENSIONALES").exists(),
+       "sin abrir una segunda carpeta con el nombre nuevo al lado")
+    ok(res["plan"][0]["how"] == "catálogo", f"y entró por el catálogo: {res['plan'][0]['how']}")
+finally:
+    D.tecnico_dir = tecnico_real
+    shutil.rmtree(tmp, ignore_errors=True)
+
 _titulos = {apertura.subfolder_title(e, "es") for e in apertura.SUBFOLDER_CATALOG}
 ok(any(t != t.upper() for t in _titulos),
    "los títulos del VDDL NO se pasan a mayúsculas: van a la columna del ERP")
