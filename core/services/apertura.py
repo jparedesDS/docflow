@@ -171,7 +171,7 @@ SUBFOLDER_CATALOG: list[dict] = [
      "critico": "No"},
     # Se llamaba «env. PMI» a secas: lo que pide el cliente es el procedimiento,
     # y así está escrito en el ERP («PMI PROCEDURE», 22 documentos con PRC-0008).
-    {"folder": "env. PMI PROCEDURE",
+    {"folder": "env. PMI PROCEDURE",            "carpeta": "PMI PROCEDURE",
      "es": "PMI",                               "en": "Positive Material Identification (PMI)",
      "tipo_doc": _canonical_tipo_doc("PMI"),                 "eipsa_code": "PRC-0008",
      "critico": "No"},
@@ -191,7 +191,7 @@ SUBFOLDER_CATALOG: list[dict] = [
      "es": "Repuestos para puesta en marcha",   "en": "Spare Parts (Precommissioning)",
      "tipo_doc": _canonical_tipo_doc("Repuestos"),           "eipsa_code": "LIS-0016",
      "critico": "No"},
-    {"folder": "env. VDDL",
+    {"folder": "env. VDDL",                     "carpeta": "VDDL",
      "es": "Lista de documentos",               "en": "Vendor Document Deliverables List (VDDL)",
      "tipo_doc": _canonical_tipo_doc("VDDL"),                "eipsa_code": "LIS-0001",
      "critico": "Sí"},
@@ -276,9 +276,31 @@ ALL_SUBFOLDERS: list[str] = [e["folder"] for e in SUBFOLDER_CATALOG]
 
 
 def subfolder_title(entry: dict, lang: str = "es") -> str:
-    """Devuelve el Título VDDL para la subcarpeta en el idioma indicado."""
+    """Devuelve el Título VDDL para la subcarpeta en el idioma indicado.
+
+    Tal cual, con sus mayúsculas y minúsculas: va a la columna Título del VDDL
+    y del ERP. En mayúsculas solo va el nombre de la CARPETA
+    (`nombre_subcarpeta`).
+    """
     lang = (lang or "es").lower()
     return entry.get("en" if lang == "en" else "es") or entry["folder"]
+
+
+def nombre_subcarpeta(entry: dict, lang: str = "es", kind: str = "env") -> str:
+    """Cómo se llama la carpeta en disco: «env. ÍNDICE DEL DOSIER FINAL».
+
+    El nombre es el título del documento en el idioma del pedido, EN MAYÚSCULAS
+    —así se ven de un golpe en 2-Tecnico y no quedan unas en español y otras en
+    inglés según quién las creara—, con el prefijo en minúsculas.
+
+    Con `carpeta` en el catálogo se impone un nombre fijo, igual en los dos
+    idiomas: es para las que se conocen por sus siglas y el título perdería
+    («env. VDDL», no «env. LISTA DE DOCUMENTOS»; «env. PMI PROCEDURE», que es
+    como lo registra el ERP, no «env. PMI»).
+    """
+    fijo = str(entry.get("carpeta") or "").strip()
+    cuerpo = fijo or subfolder_title(entry, lang)
+    return f"{kind}. {cuerpo.upper()}"
 
 
 def validate_catalog() -> list[str]:
@@ -298,6 +320,18 @@ def validate_catalog() -> list[str]:
             errors.append(
                 f"{e['folder']}: critico={critico!r} no es 'Sí'/'No'."
             )
+    # Dos carpetas con el mismo nombre serían la misma en disco, y los
+    # documentos de una acabarían con los de la otra.
+    for lang in ("es", "en"):
+        vistos: dict[str, str] = {}
+        for e in SUBFOLDER_CATALOG:
+            nombre = nombre_subcarpeta(e, lang)
+            if nombre in vistos:
+                errors.append(
+                    f"{e['folder']} y {vistos[nombre]} dan la misma carpeta "
+                    f"«{nombre}» en {lang}."
+                )
+            vistos[nombre] = e["folder"]
         if not e.get("eipsa_code"):
             errors.append(f"{e['folder']}: eipsa_code vacío.")
     return errors
@@ -725,8 +759,13 @@ def create_folder_structure(
 def create_subfolders(
     tecnico_dir: Path,
     folder_names: list[str] | None = None,
+    lang: str = "es",
 ) -> list[Path]:
     """Crea las subcarpetas `env. *` seleccionadas dentro de `2-Tecnico`.
+
+    `folder_names` son claves del catálogo (`ALL_SUBFOLDERS`); el nombre que se
+    escribe en disco sale de `nombre_subcarpeta`, en el idioma del pedido y en
+    mayúsculas. Un nombre que no esté en el catálogo se crea tal cual.
 
     Si `folder_names` es None se crean todas las del catálogo.
     Las carpetas que ya existen se respetan (no se borran ni se vuelven a crear).
@@ -735,12 +774,13 @@ def create_subfolders(
     if not tecnico_dir.exists():
         raise FileNotFoundError(f"2-Tecnico no existe: {tecnico_dir}")
 
-    names = folder_names if folder_names is not None else ALL_SUBFOLDERS
+    claves = folder_names if folder_names is not None else ALL_SUBFOLDERS
     created: list[Path] = []
-    for name in names:
-        if not name:
+    for clave in claves:
+        if not clave:
             continue
-        target = tecnico_dir / name
+        entry = SUBFOLDER_INDEX.get(clave)
+        target = tecnico_dir / (nombre_subcarpeta(entry, lang) if entry else clave)
         target.mkdir(parents=True, exist_ok=True)
         created.append(target)
     return created
@@ -1286,7 +1326,7 @@ def create_order(
     # 4) Subcarpetas env. * dentro de 2-Tecnico
     if do_subfolders:
         try:
-            created = create_subfolders(tecnico_dir, subfolders)
+            created = create_subfolders(tecnico_dir, subfolders, lang=lang)
             result.subfolders_created = [p.name for p in created]
             logger.info("Subcarpetas creadas/garantizadas: %d", len(created))
         except Exception as exc:

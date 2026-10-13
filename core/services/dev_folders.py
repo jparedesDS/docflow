@@ -379,7 +379,18 @@ def _by_type_and_title(folders: list[dict], tipo: str, title: str) -> dict | Non
 
 
 def _from_catalog(eipsa_doc: str, title: str) -> str | None:
+    """El nombre de carpeta que le toca a ese documento según el catálogo.
+
+    Es el último recurso: solo se llega aquí cuando el pedido no tiene ninguna
+    carpeta de ese tipo, así que no hay de dónde deducir el idioma y se usa el
+    español, que es el de la apertura por defecto. Si el pedido ya tuviera la
+    carpeta en inglés, manda la que hay (`_dev_folder_for` compara sin acentos
+    ni mayúsculas).
+    """
     from core.services import apertura
+
+    def nombre(entry: dict) -> str:
+        return apertura.nombre_subcarpeta(entry, "es").split(". ", 1)[-1]
 
     m = re.search(r"-([A-Z]{2,5})-\d+", str(eipsa_doc or "").upper())
     if not m:
@@ -389,12 +400,12 @@ def _from_catalog(eipsa_doc: str, title: str) -> str | None:
     if not entries:
         return None
     if len(entries) == 1:
-        return entries[0]["folder"][len("env. "):]
+        return nombre(entries[0])
     words = _title_words(title)
     scored = [(len(words & (_title_words(e["es"]) | _title_words(e["en"]))), e) for e in entries]
     best = max(s for s, _ in scored)
     top = [e for s, e in scored if s == best]
-    return top[0]["folder"][len("env. "):] if len(top) == 1 and best > 0 else None
+    return nombre(top[0]) if len(top) == 1 and best > 0 else None
 
 
 def _dev_folder_for(folders: list[dict], name: str, style_dotted: bool) -> tuple[Path, bool]:

@@ -130,6 +130,47 @@ for _carpeta, _code in (("env. Certificado Visual y Dimensional", "PRC-0013"),
 ok("env. PMI" not in apertura.SUBFOLDER_INDEX,
    "«env. PMI» se renombró a «env. PMI PROCEDURE», no conviven las dos")
 
+# ── El nombre de la carpeta: mayúsculas y en el idioma del pedido ──────────
+# Así en 2-Tecnico no quedan unas en español y otras en inglés según quién las
+# creara. El prefijo se queda en minúsculas («env. MANUAL»).
+_nombre = apertura.nombre_subcarpeta
+for _code, _es, _en in (("MAN-0001", "env. MANUAL", "env. MANUAL"),
+                        ("DOS-0003", "env. ÍNDICE DEL DOSIER FINAL",
+                         "env. FINAL QUALITY DOSSIER INDEX"),
+                        ("CAL-0001", "env. CÁLCULOS", "env. CALCULATIONS"),
+                        ("PRC-0010", "env. PRUEBA HIDROSTÁTICA", "env. HYDROSTATIC TEST")):
+    _e = next(e for e in apertura.SUBFOLDER_CATALOG if e["eipsa_code"] == _code)
+    ok(_nombre(_e, "es") == _es, f"{_code} en español: {_nombre(_e, 'es')}")
+    ok(_nombre(_e, "en") == _en, f"{_code} en inglés: {_nombre(_e, 'en')}")
+
+# Las que se conocen por sus siglas no se traducen ni se alargan
+for _code, _fijo in (("PRC-0008", "PMI PROCEDURE"), ("LIS-0001", "VDDL")):
+    _e = next(e for e in apertura.SUBFOLDER_CATALOG if e["eipsa_code"] == _code)
+    ok(_nombre(_e, "es") == _nombre(_e, "en") == f"env. {_fijo}",
+       f"{_code} es «env. {_fijo}» en los dos idiomas: {_nombre(_e, 'en')}")
+    ok(_nombre(_e, "en", "dev") == f"dev. {_fijo}", f"y «dev. {_fijo}» al devolver")
+
+_titulos = {apertura.subfolder_title(e, "es") for e in apertura.SUBFOLDER_CATALOG}
+ok(any(t != t.upper() for t in _titulos),
+   "los títulos del VDDL NO se pasan a mayúsculas: van a la columna del ERP")
+
+# Con un catálogo así, crear las carpetas escribe los nombres nuevos
+_tmp = Path(tempfile.mkdtemp())
+try:
+    _tecnico = _tmp / "2-Tecnico"
+    _tecnico.mkdir()
+    _creadas = apertura.create_subfolders(
+        _tecnico, ["env. Manual", "env. VDDL", "env. INDEX QUALITY DOSSIER"], lang="es")
+    ok([p.name for p in _creadas] == ["env. MANUAL", "env. VDDL",
+                                      "env. ÍNDICE DEL DOSIER FINAL"],
+       f"se crean con el nombre nuevo: {[p.name for p in _creadas]}")
+    ok(all(p.is_dir() for p in _creadas), "y existen de verdad")
+    _en = apertura.create_subfolders(_tecnico, ["env. INDEX QUALITY DOSSIER"], lang="en")
+    ok(_en[0].name == "env. FINAL QUALITY DOSSIER INDEX",
+       f"en un pedido en inglés, en inglés: {_en[0].name}")
+finally:
+    shutil.rmtree(_tmp, ignore_errors=True)
+
 ok(apertura.sufijos_de_carpeta("P-26-001-S10 - TR-OMEGA - ACME") == {"S10"},
    f"la carpeta de un suministro: {apertura.sufijos_de_carpeta('P-26-001-S10 - TR')}")
 ok(apertura.sufijos_de_carpeta("P-26-001 - S00 - S01 - TR-OMEGA") == {"S00", "S01"},
