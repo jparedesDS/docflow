@@ -18,7 +18,7 @@ from core.services import apertura as apertura_service
 from core.services import comm_matrix as comm_matrix_service
 from core.services import erp_tags
 from gui import theme
-from gui.widgets import ui
+from gui.widgets import contactos, ui
 from gui.widgets.scrollframe import ScrollFrame
 
 
@@ -83,27 +83,69 @@ class AperturaView(ctk.CTkFrame):
     # ── Layout ─────────────────────────────────────────────────────────────
 
     def _build_layout(self) -> None:
-        # Header
+        """La pantalla, en el orden en que se usa.
+
+        Los cuatro pasos van numerados de arriba abajo, y la botonera y el
+        resultado abajo y fijos: antes los botones y el log quedaban en medio,
+        así que se rellenaban los datos, se pasaban de largo, se marcaban las
+        opciones y había que volver a subir para pulsar «Procesar pedido».
+        """
         ui.page_header(
             self, "Nuevo pedido",
             "Crea en un clic la estructura de un pedido nuevo: carpetas, plantilla "
             "00 DOCUMENTACIÓN, Planning y VDDL.",
             help_key="apertura")
 
-        # Wrapper scrollable
+        # ─── Pie fijo: resultado + botonera ───────────────────────────────
+        # Se packea ANTES del wrapper para que el scroll no se lo lleve: el
+        # botón de procesar tiene que estar a mano desde cualquier paso.
+        pie = ctk.CTkFrame(self, fg_color="transparent")
+        pie.pack(side="bottom", fill="x", padx=theme.SPACE_5,
+                 pady=(theme.SPACE_2, theme.SPACE_4))
+
+        btn_row = ctk.CTkFrame(pie, fg_color="transparent")
+        btn_row.pack(fill="x", pady=(theme.SPACE_2, 0))
+
+        self.btn_create = ui.button(btn_row, "✦  Procesar pedido", "primary", size="lg",
+                                    command=self._on_create)
+        self.btn_create.pack(side="right")
+
+        self.btn_open = ui.button(btn_row, "Abrir carpeta del pedido", "secondary",
+                                  state="disabled", command=self._on_open)
+        self.btn_open.pack(side="right", padx=(0, theme.SPACE_2))
+
+        ui.button(btn_row, "Limpiar formulario", "ghost",
+                  command=self._on_clear).pack(side="left")
+
+        self.txt_result = ctk.CTkTextbox(
+            pie, height=110, font=theme.FONT_MONO,
+            fg_color=theme.BG_INPUT, text_color=theme.TEXT_MAIN,
+            border_width=1, border_color=theme.BORDER, corner_radius=theme.RADIUS_MD,
+        )
+        self.txt_result.pack(fill="x")
+        self.txt_result.insert("1.0",
+            "1) Mete el código del pedido (p.ej. P-26-020) y pulsa «Localizar pedido»\n"
+            "   para verificar que existe la carpeta y que se rellenan Cliente/Material\n"
+            "   y, desde el ERP, las fechas de entrada y entrega y el S.REF del cliente.\n"
+            "2) Repasa los pasos 2 a 4 y pulsa «Procesar pedido».")
+        self.txt_result.configure(state="disabled")
+
+        # ─── Los pasos, en orden ──────────────────────────────────────────
         wrapper = ScrollFrame(self)
         wrapper.pack(fill="both", expand=True,
-                     padx=theme.SPACE_5, pady=(theme.SPACE_3, theme.SPACE_4))
+                     padx=theme.SPACE_5, pady=(theme.SPACE_3, 0))
 
-        # ─── Card: Datos del pedido ───────────────────────────────────────
-        card = self._card(wrapper, "Datos del pedido")
+        # ── 1 · Datos del pedido ──────────────────────────────────────────
+        card = self._card(wrapper, "1 · Datos del pedido")
+        self.btn_locate = ui.button(card.cabecera, "🔍  Localizar pedido", "secondary",
+                                    size="sm", command=self._on_locate)
+        self.btn_locate.pack(side="right")
 
         grid = ctk.CTkFrame(card, fg_color="transparent")
         grid.pack(fill="x", padx=theme.SPACE_4, pady=(0, theme.SPACE_3))
         for c in range(4):
             grid.grid_columnconfigure(c, weight=1, uniform="apertura")
 
-        # Fila 0
         self.var_pedido = ctk.StringVar(value="P-26-")
         self._field(grid, "Pedido (P-XX-XXX) *", self.var_pedido, row=0, col=0,
                     placeholder="P-26-009")
@@ -116,7 +158,6 @@ class AperturaView(ctk.CTkFrame):
         self._field(grid, "S.REF (PO cliente)", self.var_sref, row=0, col=2, colspan=2,
                     placeholder="lo trae el ERP al localizar  ·  el año sale del código (P-26-… → 2026)")
 
-        # Fila 1 (cliente + material a 2 cols — opcionales, se auto-rellenan)
         self.var_cliente = ctk.StringVar()
         self._field(grid, "Cliente (auto)", self.var_cliente, row=1, col=0, colspan=2,
                     placeholder="se rellena al localizar el pedido")
@@ -125,7 +166,6 @@ class AperturaView(ctk.CTkFrame):
         self._field(grid, "Material (auto)", self.var_material, row=1, col=2, colspan=2,
                     placeholder="se rellena al localizar el pedido")
 
-        # Fila 2 — fechas (las trae el ERP al localizar; editables)
         self.var_f_entrada = ctk.StringVar(value=_today_iso())
         self._field(grid, "Fecha entrada (YYYY-MM-DD) *", self.var_f_entrada,
                     row=2, col=0, colspan=2, placeholder="la trae el ERP al localizar")
@@ -134,47 +174,12 @@ class AperturaView(ctk.CTkFrame):
         self._field(grid, "Fecha prevista entrega *", self.var_f_prevista,
                     row=2, col=2, colspan=2, placeholder="la trae el ERP al localizar")
 
-        # ─── Botonera (Localizar / Procesar) — justo encima de Resultado ──
-        btn_row = ctk.CTkFrame(wrapper, fg_color="transparent")
-        btn_row.pack(fill="x", padx=theme.SPACE_4, pady=(theme.SPACE_2, theme.SPACE_2))
-
-        self.btn_locate = ui.button(btn_row, "🔍  Localizar pedido", "secondary", command=self._on_locate)
-        self.btn_locate.pack(side="left", padx=(0, theme.SPACE_2))
-
-        self.btn_create = ui.button(btn_row, "✦  Procesar pedido", "primary", command=self._on_create)
-        self.btn_create.pack(side="left", padx=(0, theme.SPACE_2))
-
-        ui.button(btn_row, "Limpiar formulario", "ghost",
-                  command=self._on_clear).pack(side="left", padx=(0, theme.SPACE_2))
-
-        self.btn_open = ui.button(btn_row, "Abrir carpeta del pedido", "secondary",
-                                  state="disabled", command=self._on_open)
-        self.btn_open.pack(side="left")
-
-        # ─── Resultado / log ──────────────────────────────────────────────
-        result_card = self._card(wrapper, "Resultado")
-        self.txt_result = ctk.CTkTextbox(
-            result_card, height=160, font=theme.FONT_MONO,
-            fg_color=theme.BG_INPUT, text_color=theme.TEXT_MAIN,
-            border_width=1, border_color=theme.BORDER, corner_radius=theme.RADIUS_MD,
-        )
-        self.txt_result.pack(fill="both", expand=True,
-                             padx=theme.SPACE_4, pady=(0, theme.SPACE_4))
-        self.txt_result.insert("1.0",
-            "1) Mete el código del pedido (p.ej. P-26-020) y pulsa «Localizar pedido»\n"
-            "   para verificar que existe la carpeta y que se rellenan Cliente/Material\n"
-            "   y, desde el ERP, las fechas de entrada y entrega y el S.REF del cliente.\n"
-            "2) Pulsa «Procesar pedido» para crear «00 DOCUMENTACIÓN» dentro de\n"
-            "   «2-Tecnico», copiar la plantilla, generar Planning y VDDL.")
-        self.txt_result.configure(state="disabled")
-
-        # ─── Card: Acciones a ejecutar ────────────────────────────────────
-        actions = self._card(wrapper, "Acciones a ejecutar")
+        # ── 2 · Qué se va a crear ─────────────────────────────────────────
+        actions = self._card(wrapper, "2 · Qué se va a crear")
 
         self.var_copy_template = ctk.BooleanVar(value=True)
         self.var_do_planning = ctk.BooleanVar(value=True)
         self.var_do_vddl = ctk.BooleanVar(value=True)
-        self.var_overwrite = ctk.BooleanVar(value=False)
 
         ck_box = ctk.CTkFrame(actions, fg_color="transparent")
         ck_box.pack(fill="x", padx=theme.SPACE_4, pady=(0, theme.SPACE_3))
@@ -182,34 +187,48 @@ class AperturaView(ctk.CTkFrame):
         self._checkbox(ck_box, "Copiar plantilla 00 DOCUMENTACIÓN", self.var_copy_template)
         self._checkbox(ck_box, "Generar Planning (PLAN ING + GRAF ING)", self.var_do_planning)
         self._checkbox(ck_box, "Generar VDDL inicial", self.var_do_vddl)
-        self._checkbox(ck_box, "Sobrescribir archivos existentes en la plantilla",
-                       self.var_overwrite)
+
+        self.var_do_subfolders = ctk.BooleanVar(value=True)
+        self._checkbox(ck_box, "Crear las subcarpetas de 2-Tecnico marcadas en el paso 3",
+                       self.var_do_subfolders)
+
+        self.var_do_comm_matrix = ctk.BooleanVar(value=True)
+        self._checkbox(ck_box, "Guardar los destinatarios del paso 4",
+                       self.var_do_comm_matrix)
+
+        # Las dos que pueden pisar o inventar cosas, aparte y avisando
+        ctk.CTkLabel(ck_box, text="Con cuidado", font=theme.FONT_LABEL,
+                     text_color=theme.TEXT_MUTED, anchor="w").pack(
+            fill="x", pady=(theme.SPACE_2, 0))
 
         self.var_create_if_missing = ctk.BooleanVar(value=False)
         self._checkbox(ck_box,
                        "Crear carpeta del pedido si no existe (requiere Cliente y Material)",
                        self.var_create_if_missing)
 
-        self.var_do_subfolders = ctk.BooleanVar(value=True)
-        self._checkbox(ck_box, "Crear subcarpetas env. * en 2-Tecnico (selección abajo)",
-                       self.var_do_subfolders)
+        self.var_overwrite = ctk.BooleanVar(value=False)
+        self._checkbox(ck_box, "Sobrescribir archivos existentes en la plantilla",
+                       self.var_overwrite)
 
-        self.var_do_comm_matrix = ctk.BooleanVar(value=True)
-        self._checkbox(ck_box, "Guardar Communication Matrix (TO/CC para reclamaciones)",
-                       self.var_do_comm_matrix)
+        # ── 3 · Subcarpetas de 2-Tecnico ──────────────────────────────────
+        sub_card = self._card(wrapper, "3 · Subcarpetas de 2-Tecnico")
+        ctk.CTkLabel(
+            sub_card,
+            text="Las que marques se crean en 2-Tecnico y son las filas del VDDL.",
+            font=theme.FONT_SMALL, text_color=theme.TEXT_SUB, anchor="w",
+        ).pack(anchor="w", fill="x", padx=theme.SPACE_4, pady=(0, theme.SPACE_2))
 
-        # ─── Card: Subcarpetas env. * + idioma VDDL ───────────────────────
-        sub_card = self._card(
-            wrapper,
-            "Subcarpetas de 2-Tecnico  ·  estas mismas serán las filas del VDDL",
-        )
+        ui.button(sub_card.cabecera, "Ninguna", "ghost", size="sm", width=70,
+                  command=lambda: self._set_all_subfolders(False)).pack(side="right")
+        ui.button(sub_card.cabecera, "Todas", "ghost", size="sm", width=70,
+                  command=lambda: self._set_all_subfolders(True)).pack(
+            side="right", padx=(0, theme.SPACE_1))
 
-        # Selector idioma + atajos
         top_bar = ctk.CTkFrame(sub_card, fg_color="transparent")
         top_bar.pack(fill="x", padx=theme.SPACE_4, pady=(0, theme.SPACE_2))
 
         ctk.CTkLabel(
-            top_bar, text="Idioma del VDDL:", font=theme.FONT_SMALL_BOLD,
+            top_bar, text="Idioma del pedido:", font=theme.FONT_SMALL_BOLD,
             text_color=theme.TEXT_SUB,
         ).pack(side="left", padx=(0, theme.SPACE_2))
 
@@ -222,14 +241,11 @@ class AperturaView(ctk.CTkFrame):
                 border_color=theme.BORDER_STRONG,
                 command=self._refresh_subfolder_labels,
             ).pack(side="left", padx=(0, theme.SPACE_3))
+        ctk.CTkLabel(
+            top_bar, text="manda en el nombre de las carpetas y en los títulos del VDDL",
+            font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED,
+        ).pack(side="left")
 
-        # Spacer + botones Todas / Ninguna
-        ui.button(top_bar, "Todas", "ghost", width=70,
-                  command=lambda: self._set_all_subfolders(True)).pack(side="right", padx=(theme.SPACE_1, 0))
-        ui.button(top_bar, "Ninguna", "ghost", width=70,
-                  command=lambda: self._set_all_subfolders(False)).pack(side="right", padx=(theme.SPACE_1, 0))
-
-        # Grid de checkboxes (3 columnas × ~8 filas)
         ck_grid = ctk.CTkFrame(sub_card, fg_color="transparent")
         ck_grid.pack(fill="x", padx=theme.SPACE_4, pady=(0, theme.SPACE_3))
         for c in range(3):
@@ -258,16 +274,13 @@ class AperturaView(ctk.CTkFrame):
             self.var_subfolders[folder] = var
             self._subfolder_checkboxes[folder] = ck
 
-        # ─── Card: Communication Matrix (reclamaciones) ──────────────────
-        cm_card = self._card(
-            wrapper,
-            "Communication Matrix  ·  destinatarios para reclamaciones",
-        )
+        # ── 4 · Destinatarios de reclamaciones ────────────────────────────
+        cm_card = self._card(wrapper, "4 · Destinatarios de reclamaciones")
         ctk.CTkLabel(
             cm_card,
             text=(
-                "Estos emails se guardan asociados al pedido y se usarán de forma "
-                "canónica cuando envíes reclamaciones desde la sección Reclamaciones.\n"
+                "Se guardan con el pedido y son los que se usan al enviar "
+                "reclamaciones desde la sección Reclamaciones.\n"
                 "Acepta separadores: coma, punto y coma, espacio o salto de línea."
             ),
             font=theme.FONT_SMALL, text_color=theme.TEXT_SUB, justify="left",
@@ -279,13 +292,14 @@ class AperturaView(ctk.CTkFrame):
         cm_grid.grid_columnconfigure(0, weight=1, uniform="cm")
         cm_grid.grid_columnconfigure(1, weight=1, uniform="cm")
 
-        # TO
         to_box = ctk.CTkFrame(cm_grid, fg_color="transparent")
         to_box.grid(row=0, column=0, sticky="ew", padx=(0, theme.SPACE_2))
+        cab_to = ctk.CTkFrame(to_box, fg_color="transparent")
+        cab_to.pack(fill="x")
         ctk.CTkLabel(
-            to_box, text="TO:", font=theme.FONT_LABEL,
+            cab_to, text="TO:", font=theme.FONT_LABEL,
             text_color=theme.TEXT_SUB, anchor="w",
-        ).pack(fill="x")
+        ).pack(side="left")
         self.txt_cm_to = ctk.CTkTextbox(
             to_box, height=80, font=theme.FONT_MONO,
             fg_color=theme.BG_INPUT, text_color=theme.TEXT_MAIN,
@@ -293,14 +307,17 @@ class AperturaView(ctk.CTkFrame):
             corner_radius=theme.RADIUS_SM,
         )
         self.txt_cm_to.pack(fill="x", pady=(2, 0))
+        contactos.boton_contactos(cab_to, self.txt_cm_to, "TO").pack(
+            side="left", padx=(theme.SPACE_2, 0))
 
-        # CC
         cc_box = ctk.CTkFrame(cm_grid, fg_color="transparent")
         cc_box.grid(row=0, column=1, sticky="ew", padx=(theme.SPACE_2, 0))
+        cab_cc = ctk.CTkFrame(cc_box, fg_color="transparent")
+        cab_cc.pack(fill="x")
         ctk.CTkLabel(
-            cc_box, text="CC:", font=theme.FONT_LABEL,
+            cab_cc, text="CC:", font=theme.FONT_LABEL,
             text_color=theme.TEXT_SUB, anchor="w",
-        ).pack(fill="x")
+        ).pack(side="left")
         self.txt_cm_cc = ctk.CTkTextbox(
             cc_box, height=80, font=theme.FONT_MONO,
             fg_color=theme.BG_INPUT, text_color=theme.TEXT_MAIN,
@@ -308,8 +325,9 @@ class AperturaView(ctk.CTkFrame):
             corner_radius=theme.RADIUS_SM,
         )
         self.txt_cm_cc.pack(fill="x", pady=(2, 0))
+        contactos.boton_contactos(cab_cc, self.txt_cm_cc, "CC").pack(
+            side="left", padx=(theme.SPACE_2, 0))
 
-        # Estado actual (live counter)
         self.lbl_cm_status = ctk.CTkLabel(
             cm_card, text="—  ningún email detectado",
             font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED, anchor="w",
@@ -317,7 +335,6 @@ class AperturaView(ctk.CTkFrame):
         self.lbl_cm_status.pack(anchor="w", padx=theme.SPACE_4,
                                 pady=(0, theme.SPACE_3))
 
-        # Live update del contador al editar
         self.txt_cm_to.bind("<KeyRelease>", lambda _e: self._refresh_cm_status())
         self.txt_cm_cc.bind("<KeyRelease>", lambda _e: self._refresh_cm_status())
 
@@ -337,16 +354,22 @@ class AperturaView(ctk.CTkFrame):
     # ── Helpers de UI ──────────────────────────────────────────────────────
 
     def _card(self, parent, title: str) -> ctk.CTkFrame:
+        """Tarjeta de un paso. En `card.cabecera` caben los botones del paso,
+        que es donde se esperan: «Localizar» con los datos, «Todas/Ninguna» con
+        las subcarpetas."""
         card = ctk.CTkFrame(
             parent, fg_color=theme.BG_CARD,
             border_color=theme.BORDER, border_width=1,
             corner_radius=theme.RADIUS_LG,
         )
         card.pack(fill="x", padx=theme.SPACE_4, pady=(theme.SPACE_2, theme.SPACE_3))
+        card.cabecera = ctk.CTkFrame(card, fg_color="transparent")
+        card.cabecera.pack(fill="x", padx=theme.SPACE_4,
+                           pady=(theme.SPACE_3, theme.SPACE_2))
         ctk.CTkLabel(
-            card, text=title, font=theme.FONT_SECTION,
+            card.cabecera, text=title, font=theme.FONT_SECTION,
             text_color=theme.TEXT_MAIN, anchor="w",
-        ).pack(anchor="w", padx=theme.SPACE_4, pady=(theme.SPACE_3, theme.SPACE_2))
+        ).pack(side="left")
         return card
 
     def _field(self, parent, label: str, var: ctk.StringVar, *,
@@ -383,10 +406,14 @@ class AperturaView(ctk.CTkFrame):
 
     @staticmethod
     def _subfolder_label(entry: dict, lang: str) -> str:
-        """'env. Cálculos  →  Cálculos' (ES) o '→ Calculations' (EN)."""
-        title = entry.get("en") if lang == "en" else entry.get("es")
-        title = title or entry["folder"]
-        return f"{entry['folder']}  →  {title}"
+        """Cómo se llamará la carpeta y qué título llevará en el VDDL.
+
+        «env. CÁLCULOS  →  Cálculos» en español, «env. CALCULATIONS  →
+        Calculations» en inglés: el nombre de la carpeta va en mayúsculas y el
+        título del VDDL tal cual.
+        """
+        return (f"{apertura_service.nombre_subcarpeta(entry, lang)}"
+                f"  →  {apertura_service.subfolder_title(entry, lang)}")
 
     def _refresh_subfolder_labels(self) -> None:
         """Re-renderiza los textos de los checkboxes al cambiar idioma."""
