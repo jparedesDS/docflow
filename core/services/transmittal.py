@@ -29,6 +29,7 @@ from core.parsers.base_parser import (
     build_notification_html,
     compute_recipients,
     enrich_missing_from_erp,
+    supp_por_documento,
 )
 from core.services import imap as imap_service
 from core.services import smtp as smtp_service
@@ -321,6 +322,9 @@ def preview_email(uid: str, folder: str = "INBOX") -> dict:
     # Red de seguridad común: si el parser no resolvió pedido/cliente/material/PO
     # /Doc. EIPSA, se intenta por Nº Doc. Cliente contra el ERP (rellena huecos).
     df = enrich_missing_from_erp(df)
+    # Y el suministro, el de cada documento: el parser puede haber puesto a
+    # todos el del primero.
+    df = supp_por_documento(df)
 
     # El Estado que el correo no trae escrito pero se puede averiguar, para no
     # tener que ponerlo a mano antes de mandar el aviso.

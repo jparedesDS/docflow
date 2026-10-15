@@ -199,7 +199,10 @@ def parse(html_body: str, subject: str, received_time: str) -> pd.DataFrame:
         header = erp_header_from_row(hit)
 
     df["Nº Pedido"] = header["n_pedido"]
-    df["Supp."] = header["supp"]
+    # Cada documento, del suministro de SU fila del ERP: un mismo aviso de
+    # SACYR trae documentos del pedido base y de sus suplementos.
+    df["Supp."] = [erp_header_from_row(m)["supp"] if m is not None else header["supp"]
+                   for m in matched]
     df["Cliente"] = header["cliente"]
     df["Material"] = header["material"]
     df["PO"] = header["po"] or po

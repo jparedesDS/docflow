@@ -55,7 +55,7 @@ import zipfile
 import zlib
 from pathlib import Path
 
-from core.parsers.base_parser import es_anulado, norm_doc_code
+from core.parsers.base_parser import es_anulado, norm_doc_code, supp_de_codigo
 
 logger = logging.getLogger(__name__)
 
@@ -143,19 +143,22 @@ def _title_words(title: str) -> set[str]:
 # El suministro viene del ERP en «Supp.» y, si ahí faltara, en el código EIPSA
 # del documento, que empieza por pedido y suministro: 26-001-S10-ESP-0005
 _SUFIJO_SUELTO_RE = re.compile(r"^(S\d{2}[A-Z]?)$", re.I)
-_SUFIJO_DOC_RE = re.compile(r"^\s*\d{2}\s*-\s*\d{3}\s*-\s*(S\d{2}[A-Z]?)\b", re.I)
 
 
 def sufijo_de(doc: dict) -> str:
     """El suministro que dice un documento («S01»), o '' si no lo dice.
 
-    Sale del «Supp.» del ERP y, si ahí faltara, del código EIPSA, que empieza
-    por pedido y suministro: 26-001-S10-ESP-0005.
+    Sale del código EIPSA, que empieza por pedido y suministro
+    (26-001-S10-ESP-0005), y si no lo dice, del «Supp.».
     """
+    # El código manda: dice el suministro del documento, mientras que el
+    # «Supp.» lo puso el parser y en algunos portales es el de toda la
+    # devolución (y así los PDF del S01 de SACYR acababan en el S00).
+    codigo = supp_de_codigo(doc.get("Doc. EIPSA", ""))
+    if codigo:
+        return codigo
     supp = _SUFIJO_SUELTO_RE.match(str(doc.get("Supp.", "") or "").strip())
-    codigo = _SUFIJO_DOC_RE.match(str(doc.get("Doc. EIPSA", "") or ""))
-    m = supp or codigo
-    return m.group(1).upper() if m else ""
+    return supp.group(1).upper() if supp else ""
 
 
 def pedido_con_suministro(pedido: str, docs: list[dict]) -> str:

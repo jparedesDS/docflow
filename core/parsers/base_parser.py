@@ -750,6 +750,33 @@ def erp_header_from_row(row: dict) -> dict:
     return out
 
 
+# El suministro va en el propio código EIPSA del documento: 26-059-S01-CAL-0003.
+# Sin ese tramo, el código es el del pedido base (26-059-CAL-0003).
+_SUPP_DEL_CODIGO = re.compile(r"^\s*\d{2}\s*-\s*\d{3}\s*-\s*(S\d{2}[A-Z]?)\b", re.I)
+
+
+def supp_de_codigo(codigo) -> str:
+    """El suministro que dice un código EIPSA («S01»), o '' si no dice ninguno."""
+    m = _SUPP_DEL_CODIGO.match(str(codigo or ""))
+    return m.group(1).upper() if m else ""
+
+
+def supp_por_documento(df):
+    """Cada documento con el suministro que dice su propio código EIPSA.
+
+    Hay parsers que ponen a toda la devolución el suministro del primer
+    documento que encuentran en el ERP (SACYR, Document Space, AYESA). Con un
+    correo que mezcla suministros, el aviso decía «S00» aunque la mitad fueran
+    del S01, y los PDF del S01 se archivaban en la carpeta del S00. Lo que dice
+    el código manda; si no dice nada, se deja lo que puso el parser.
+    """
+    if df is None or getattr(df, "empty", True) or "Doc. EIPSA" not in df.columns:
+        return df
+    actual = list(df["Supp."]) if "Supp." in df.columns else [""] * len(df)
+    df["Supp."] = [supp_de_codigo(c) or s for c, s in zip(df["Doc. EIPSA"], actual)]
+    return df
+
+
 def _fill_blanks(df, col: str, value: str) -> None:
     """Pone `value` en las celdas vacías de `col` (si la columna existe)."""
     if value and col in df.columns:
@@ -827,9 +854,16 @@ def enrich_missing_from_erp(df):
             ("Cliente", header["cliente"]),
             ("Material", header["material"]),
             ("PO", header["po"]),
-            ("Supp.", header["supp"]),
         ):
             _fill_blanks(df, col, val)
+        # El suministro, en cambio, por fila y de su propia coincidencia: no
+        # todos los documentos de una devolución son del mismo suministro.
+        if "Supp." in df.columns:
+            df["Supp."] = [
+                (erp_header_from_row(m)["supp"] if m is not None else header["supp"])
+                if _is_blank(cur) else cur
+                for cur, m in zip(df["Supp."], matched)
+            ]
 
         # Doc. EIPSA: por fila, de su propia coincidencia exacta.
         if "Doc. EIPSA" in df.columns:
