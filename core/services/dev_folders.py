@@ -59,7 +59,11 @@ from core.parsers.base_parser import es_anulado, norm_doc_code
 
 logger = logging.getLogger(__name__)
 
-_KIND_RE = re.compile(r"^(env|dev)\.?\s+(.+?)\s*$", re.I)
+# `env`/`dev`, y también la palabra entera: hay pedidos —en 2026 todavía— con
+# «ENVÍO CÁLCULOS» o «DEVOLUCIÓN PLANOS». Sin reconocerlas, ese suministro se
+# quedaba sin ninguna carpeta (P-26/027-S02) y no había de dónde sacar ni el
+# nombre de la carpeta dev ni la revisión de la que salió el documento.
+_KIND_RE = re.compile(r"^(env(?:[ií]os?)?|dev(?:ol(?:uci[oó]n(?:es)?)?)?)\.?\s+(.+?)\s*$", re.I)
 # `rev<N>[-<revisión>][ <sufijo>]`. El sufijo se captura libre (AP, com, COM,
 # REJ, «AB - la rechazan»…): si solo se admitieran AP/COM, las carpetas con
 # cualquier otra anotación se ignorarían y no contarían para el correlativo.
@@ -238,7 +242,10 @@ def scan_folders(tecnico: Path) -> list[dict]:
         for d in tecnico.iterdir():
             m = _KIND_RE.match(d.name)
             if d.is_dir() and m:
-                out.append({"kind": m.group(1).lower(), "name": m.group(2), "dotted": "." in d.name[:4], "path": d})
+                # Las tres primeras letras valen para las dos formas de
+                # escribirlo: «env»/«envío», «dev»/«devolución».
+                out.append({"kind": m.group(1)[:3].lower(), "name": m.group(2),
+                            "dotted": "." in d.name[:4], "path": d})
     except OSError:
         pass
     return out
@@ -402,7 +409,7 @@ def _entrada_catalogo(eipsa_doc: str, title: str) -> dict | None:
     return top[0] if len(top) == 1 and best > 0 else None
 
 
-def _dev_folder_for(folders: list[dict], name: str, style_dotted: bool,
+def _dev_folder_for(folders: list[dict], name: str, style_dotted: bool, tecnico: Path,
                     alias: frozenset[str] = frozenset()) -> tuple[Path, bool]:
     """(ruta de la carpeta dev, existe_ya) para el tipo `name`.
 
@@ -410,12 +417,16 @@ def _dev_folder_for(folders: list[dict], name: str, style_dotted: bool,
     la apertura crea hoy «dev. PLANOS DIMENSIONALES», pero el pedido puede
     tener la de siempre, «dev planos», y es esa la que hay que usar en vez de
     abrir una segunda al lado.
+
+    `tecnico` es dónde crearla si no está. Lo dice el llamador y no las carpetas
+    que ya hay: un suministro puede no tener ninguna —el S02 del P-26/027 solo
+    tenía «ENVÍO CÁLCULOS»— y entonces esto reventaba («NoneType / str») y se
+    perdía el reparto del paquete entero.
     """
     conocidos = {_fold(name), *alias}
     for f in folders:
         if f["kind"] == "dev" and _fold(f["name"]) in conocidos:
             return f["path"], True
-    tecnico = folders[0]["path"].parent if folders else None
     return tecnico / (("dev. " if style_dotted else "dev ") + name), False
 
 
@@ -653,6 +664,15 @@ def _rev_folder_for(dev_dir: Path, n: int | None, letter: str, suffix: str,
             num, rev, _sufijo = partes
             cabeza = f"rev{num}-{rev}" if num is not None else f"rev{rev}"
             return carpeta(cabeza), False
+        if partes and partes[0] is not None and rev_text:
+            # La carpeta de envío solo lleva número y el documento viene en otra
+            # revisión: ese número es el orden de envío, no la revisión, y la de
+            # vuelta va con guion. Es como está a mano en los demás suministros
+            # del mismo pedido: «env cál pla\rev 0» → «dev cál pla\rev0-1 COM».
+            # Si coinciden, el número ES la revisión y no hay guion que poner.
+            cabeza = (f"rev{partes[0]}" if str(partes[0]) == rev_text
+                      else f"rev{partes[0]}-{rev_text}")
+            return carpeta(cabeza), False
     if n is None:                    # revisión en letra y sin más pistas
         return carpeta(f"rev{letter}"), False
     return carpeta(f"rev{n}{'-' + letter if letter else ''}"), False
@@ -867,8 +887,8 @@ def _portal_names(docs: list[dict], file_docs: dict[str, dict] | None) -> dict[i
     return out
 
 
-def _destino(doc: dict, folders: list[dict], *, uses_letter: bool, default_dotted: bool,
-             nombres: list[str] | None = None) -> tuple[dict | None, str]:
+def _destino(doc: dict, folders: list[dict], *, tecnico: Path, uses_letter: bool,
+             default_dotted: bool, nombres: list[str] | None = None) -> tuple[dict | None, str]:
     """A qué carpeta dev. va un documento devuelto, y con qué revisión.
 
     Devuelve ({dev_dir, dev_exists, envio, n, letter, estado, how, name, dotted}, "")
@@ -914,7 +934,7 @@ def _destino(doc: dict, folders: list[dict], *, uses_letter: bool, default_dotte
     if name is None:
         return None, f"no sé en qué carpeta va ({doc.get('Tipo de documento') or 'sin tipo'})"
 
-    dev_dir, dev_exists = _dev_folder_for(folders, name, dotted, alias)
+    dev_dir, dev_exists = _dev_folder_for(folders, name, dotted, tecnico, alias)
     # Algunos pedidos agrupan dentro de la carpeta: en P-26/002 los
     # documentos cuelgan de «env Specification Technical Data\FL» y
     # «…\RO» según sean de placas de caudal o de restricción. Ese nivel
@@ -930,6 +950,18 @@ def _destino(doc: dict, folders: list[dict], *, uses_letter: bool, default_dotte
     return {"dev_dir": dev_dir, "dev_exists": dev_exists, "envio": envio, "n": n,
             "letter": letter, "estado": estado, "how": how, "name": name,
             "dotted": dotted, "anulado": anulado, "codes": codes}, ""
+
+
+def _trabajo(doc: dict, suministros: _PorSuministro,
+             nombres: list[str] | None = None) -> tuple[dict | None, dict | None, str]:
+    """(contexto del suministro, destino, motivo) de un documento devuelto."""
+    ctx, motivo = suministros.para(doc)
+    if ctx is None:
+        return None, None, motivo
+    destino, motivo = _destino(doc, ctx["folders"], tecnico=ctx["tecnico"],
+                               uses_letter=ctx["uses_letter"],
+                               default_dotted=ctx["default_dotted"], nombres=nombres)
+    return ctx, destino, motivo
 
 
 class _Fichero:
@@ -1003,14 +1035,15 @@ def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: 
                 res["skipped"].append((fname, "no coincide con ningún documento del correo"))
                 continue
             # Cada documento va a la carpeta de SU suministro, que en un mismo
-            # transmittal no tiene por qué ser la misma para todos.
-            ctx, motivo = suministros.para(doc)
-            if ctx is None:
-                res["skipped"].append((fname, motivo))
-                continue
-            destino, motivo = _destino(doc, ctx["folders"], uses_letter=ctx["uses_letter"],
-                                       default_dotted=ctx["default_dotted"],
-                                       nombres=portal_names.get(id(doc)))
+            # transmittal no tiene por qué ser la misma para todos. Y si uno no
+            # se sabe colocar, se queda él solo sin colocar: el VT-0027 traía
+            # dos y, al reventar el primero, el otro —que estaba bien— se quedó
+            # también en «00 TRANS Y RES».
+            try:
+                ctx, destino, motivo = _trabajo(doc, suministros, portal_names.get(id(doc)))
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Archivo dev: no se pudo calcular la carpeta de %s", fname)
+                destino, motivo = None, f"no se pudo calcular la carpeta ({exc})"
             if destino is None:
                 res["skipped"].append((fname, motivo))
                 continue
@@ -1101,12 +1134,11 @@ def archive_email_only(docs: list[dict], pedido: str, *, email_raw: bytes | None
     for doc in docs:
         etiqueta = str(doc.get("Doc. EIPSA") or doc.get("Doc. Cliente")
                        or doc.get("Título") or "documento")
-        ctx, motivo = suministros.para(doc)
-        if ctx is None:
-            res["skipped"].append((etiqueta, motivo))
-            continue
-        destino, motivo = _destino(doc, ctx["folders"], uses_letter=ctx["uses_letter"],
-                                   default_dotted=ctx["default_dotted"])
+        try:
+            ctx, destino, motivo = _trabajo(doc, suministros)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Archivo dev: no se pudo calcular la carpeta de %s", etiqueta)
+            destino, motivo = None, f"no se pudo calcular la carpeta ({exc})"
         if destino is None:
             res["skipped"].append((etiqueta, motivo))
             continue

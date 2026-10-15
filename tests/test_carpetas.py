@@ -5,6 +5,7 @@ Se ejecuta a mano, sin pytest, con el intérprete de la app:
 
     docflow_env\\Scripts\\python.exe tests\\test_carpetas.py
 """
+import logging
 import shutil
 import sys
 import tempfile
@@ -589,6 +590,76 @@ try:
     ok(len(res["archived"]) == 1 and
        Path(res["archived"][0][1]).parent.name == "rev2-D VOID",
        f"sin revisión archivada, carpeta propia: {res['archived']} / {res['skipped']}")
+finally:
+    D.tecnico_dir = tecnico_real
+    shutil.rmtree(tmp, ignore_errors=True)
+
+# ── Un suministro cuya carpeta se llama «ENVÍO …» ──────────────────────────
+# El VT-0027 de TR traía dos documentos, uno del S02 y otro del S03. La única
+# carpeta del S02 era «ENVÍO CÁLCULOS» y no se reconocía como carpeta de envío:
+# ese suministro se quedaba sin ninguna, el reparto reventaba («NoneType / str»)
+# y con él se perdía también el documento del S03, que estaba bien.
+tmp = Path(tempfile.mkdtemp())
+tecnico_real = D.tecnico_dir
+try:
+    tecnicos = {}
+    for _supp, _envio in (("S02", "ENVÍO CÁLCULOS"), ("S03", "ENV CÁL Y PLA")):
+        t = tmp / f"P-26-027-{_supp} - TR-ADNOC" / "2-Tecnico"
+        (t / _envio / "REV 0").mkdir(parents=True)
+        tecnicos[f"P-26/027-{_supp}"] = t
+    tecnicos["P-26/027"] = tmp / "P-26-027-S00 - TR-ADNOC" / "2-Tecnico"
+    tecnicos["P-26/027"].mkdir(parents=True)
+    D.tecnico_dir = lambda pedido: tecnicos.get(pedido)
+
+    _s02 = D.scan_folders(tecnicos["P-26/027-S02"])
+    ok([(f["kind"], f["name"]) for f in _s02] == [("env", "CÁLCULOS")],
+       f"«ENVÍO CÁLCULOS» es la carpeta de envío de cálculos: {_s02}")
+    ok([f["kind"] for f in D.scan_folders(tmp / "no existe")] == [], "y sin 2-Tecnico, ninguna")
+
+    def calculo(supp, cliente):
+        envio = next(p for p in tecnicos[f"P-26/027-{supp}"].iterdir() if p.is_dir())
+        (envio / "REV 0" / f"{cliente}.pdf").write_bytes(b"enviado")
+        return {"Nº Pedido": "P-26/027", "Doc. EIPSA": f"26-027-{supp}-PLG-0005",
+                "Doc. Cliente": cliente, "Tipo de documento": "", "Rev.": "1",
+                "Título": "DATASHEET, SIZING CALCULATION AND DIMENSIONAL DRAWING",
+                "Estado": "C - REVIEWED WITH MINOR COMMENTS"}
+
+    DOCS = [calculo("S02", "AD-3000-I-50665"), calculo("S03", "AD-3000-I-50666")]
+    paquete = tmp / "1078010910-VT-0027.zip"
+    with zipfile.ZipFile(paquete, "w") as zf:
+        for d in DOCS:
+            zf.writestr(d["Doc. Cliente"] + ".pdf", b"%PDF-" + d["Doc. Cliente"].encode())
+
+    res = D.archive_return(paquete, DOCS, "P-26/027")
+    ok(len(res["archived"]) == 2 and not res["skipped"],
+       f"los dos se colocan: {res['archived']} / {res['skipped']}")
+    caidos = {Path(dest).parts[-5]: f"{Path(dest).parent.parent.name}\\{Path(dest).parent.name}"
+              for _, dest in res["archived"]}
+    # Y el número de la carpeta de envío es el orden, no la revisión: lo enviado
+    # desde «ENVÍO CÁLCULOS\REV 0» en revisión 1 vuelve a «rev0-1 com», que es
+    # como está a mano la del S00 del mismo pedido («dev cál pla\rev0-1 COM»).
+    ok(caidos == {"P-26-027-S02 - TR-ADNOC": "dev CÁLCULOS\\rev0-1 com",
+                  "P-26-027-S03 - TR-ADNOC": "dev CÁL Y PLA\\rev0-1 com"},
+       f"cada uno en la carpeta dev de su envío: {caidos}")
+
+    # Y si calcular la carpeta de uno revienta, los demás se colocan igual
+    _destino_real = D._destino
+
+    def _revienta(doc, folders, **kw):
+        if str(doc.get("Doc. EIPSA", "")).startswith("26-027-S02"):
+            raise TypeError("a propósito, para la prueba")
+        return _destino_real(doc, folders, **kw)
+
+    D._destino = _revienta
+    logging.disable(logging.CRITICAL)
+    try:
+        res = D.archive_return(paquete, DOCS, "P-26/027")
+    finally:
+        logging.disable(logging.NOTSET)
+        D._destino = _destino_real
+    ok(len(res["archived"]) == 1 and len(res["skipped"]) == 1,
+       f"el que falla no se lleva por delante al otro: {res['archived']} / {res['skipped']}")
+    ok("prueba" in res["skipped"][0][1], f"y se dice por qué: {res['skipped'][0]}")
 finally:
     D.tecnico_dir = tecnico_real
     shutil.rmtree(tmp, ignore_errors=True)
