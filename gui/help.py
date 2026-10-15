@@ -29,6 +29,10 @@ HELP: dict[str, dict] = {
         "que": "Todos los documentos de todos los pedidos, con su estado actual frente al cliente.",
         "pasos": [
             "Escribe en «Buscar» un Nº de documento, título o cliente.",
+            "Escribe un tag (1234-FE-0567, da igual con espacios o sin guiones) y sale su ficha: "
+            "de qué pedido es y en qué documentos aparece, con la página y un botón para abrir "
+            "el PDF. La primera vez lee los PDF enviados del pedido y tarda un poco; después es "
+            "inmediato. Los PDF que son imagen no se pueden leer.",
             "Pulsa una tarjeta de arriba (Aprobados, Devoluciones, Críticos…) para filtrar por estado; vuelve a pulsarla para quitar el filtro.",
             "Doble clic en una fila abre la ficha: revisiones, fechas y acciones.",
             "Botón «Filtros» para acotar por pedido, cliente o responsable."

@@ -17,6 +17,7 @@ from gui import cell_format
 from gui import theme
 from gui.widgets import ui
 from gui.widgets.pilltable import PillTable
+from gui.views.documentos_tags import FichaTag
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,8 @@ class DocumentosView(ctk.CTkFrame):
         self._search_after_id = None
         self._fit_after_id = None
         self._detail_doc: dict | None = None
+        # Documentos donde aparece el tag buscado; None = búsqueda normal
+        self._tag_docs: list[dict] | None = None
 
         self._build_layout()
         self._restore_filters()
@@ -183,7 +186,7 @@ class DocumentosView(ctk.CTkFrame):
         filters.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_2, 0))
         self._filters_bar = filters
 
-        self.ent_q = self._make_entry(filters, "Buscar por Nº de documento, título o cliente…")
+        self.ent_q = self._make_entry(filters, "Buscar por Nº de documento, título, cliente o tag…")
         self.ent_q.pack(side="left", fill="x", expand=True, padx=(0, theme.SPACE_2))
         self.ent_q.bind("<KeyRelease>", lambda e: self._debounced_search())
 
@@ -222,6 +225,12 @@ class DocumentosView(ctk.CTkFrame):
         # Status + paginación
         bar = ctk.CTkFrame(self, fg_color="transparent")
         bar.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_3, theme.SPACE_1))
+        self._status_bar = bar
+
+        # Ficha del tag: sale entre los filtros y la tabla cuando lo buscado es
+        # un tag del ERP, con los documentos en los que aparece.
+        self.ficha_tag = FichaTag(self, colocar=self._colocar_ficha, on_docs=self._on_tag_docs,
+                                  on_pick=self.set_query)
 
         self.lbl_status = ctk.CTkLabel(
             bar, text="", font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED, anchor="w",
@@ -362,6 +371,7 @@ class DocumentosView(ctk.CTkFrame):
 
     def _on_loaded(self, docs: list[dict]) -> None:
         self._all_docs = docs
+        self.ficha_tag.reiniciar()          # sus documentos eran los de antes
         self._apply_filters_and_render()
         self._update_kpis(monitoring_service.compute_kpis(docs))
 
@@ -396,6 +406,21 @@ class DocumentosView(ctk.CTkFrame):
         self._apply_filters_and_render()
 
     # ── Filtros + render ──────────────────────────────────────────────────────
+
+    def _colocar_ficha(self, visible: bool) -> None:
+        if visible and not self.ficha_tag.winfo_manager():
+            self.ficha_tag.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_3, 0),
+                                before=self._status_bar)
+        elif not visible and self.ficha_tag.winfo_manager():
+            self.ficha_tag.pack_forget()
+
+    def _on_tag_docs(self, docs: list[dict] | None) -> None:
+        """La ficha del tag dice qué documentos enseñar (None: los de siempre)."""
+        if docs is None and self._tag_docs is None:
+            return
+        self._tag_docs = docs
+        self._page = 0
+        self._apply_filters_and_render()
 
     def _debounced_search(self) -> None:
         if self._search_after_id:
@@ -450,6 +475,8 @@ class DocumentosView(ctk.CTkFrame):
         resp = self.ent_resp.get().strip()
 
         rows = self._all_docs
+        # Si es un tag, la ficha lo busca en segundo plano y avisa con sus documentos.
+        self.ficha_tag.buscar(q, self._all_docs)
 
         if pedido:
             rows = [r for r in rows if pedido.lower() in str(r.get("Nº Pedido", "")).lower()]
@@ -460,7 +487,10 @@ class DocumentosView(ctk.CTkFrame):
             rows = [r for r in rows
                     if rl in str(r.get("Responsable", "")).lower()
                     or rl in str(r.get("Repsonsable", "")).lower()]
-        if q:
+        if self._tag_docs is not None:
+            suyos = {id(d) for d in self._tag_docs}
+            rows = [r for r in rows if id(r) in suyos]
+        elif q:
             ql = q.lower()
             rows = [r for r in rows if any(ql in str(v).lower() for v in r.values())]
 

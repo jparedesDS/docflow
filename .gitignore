@@ -46,3 +46,6 @@ descargas/
 # válida (tan sensible como una contraseña) y lo bajado son documentos del cliente
 state/sacyr_navegador/
 state/sacyr_descargas/
+
+# Texto de los PDF enviados, para buscar tags (contenido de documentos del cliente)
+state/indice_pdf/
