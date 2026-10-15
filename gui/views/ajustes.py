@@ -625,18 +625,28 @@ class AjustesView(OrganizacionMixin, ctk.CTkFrame):
         self.eg_user = self._setting_row(s, "Usuario", "egesdoc_user")
         self.eg_pass, self.eg_pass_state = self._secret_row(s, "Contraseña", "egesdoc_pass", "EGESDOC_PASS")
 
-        ui.section_header(s, "SACYR · Proarc").pack(fill="x", pady=(theme.SPACE_4, theme.SPACE_2))
+        ui.section_header(s, "SACYR · SharePoint").pack(fill="x", pady=(theme.SPACE_4, theme.SPACE_2))
         ctk.CTkLabel(
-            s, text="SACYR no se puede automatizar como Técnicas Reunidas: tanto Proarc como su "
-                    "SharePoint van contra el inicio de sesión de Microsoft de SACYR, sin formulario "
-                    "propio. Cómo se usa: abre el enlace de «Comments» del correo, descarga la "
-                    "carpeta de la devolución y déjala aquí (vale la carpeta o el zip, y da igual "
-                    "cómo lo llame SharePoint: se reconoce por los documentos que trae dentro). "
-                    "Después, «⤓ Descargar devolución» en Devoluciones lo archiva como los demás "
-                    "portales. Si algún día se puede sincronizar esa biblioteca en el equipo, "
-                    "apunta aquí la carpeta sincronizada y va solo.",
+            s, text="La app baja sola cada devolución de SACYR con el enlace de «Comments» del "
+                    "correo. Para eso usa una ventana de Chrome propia en la que inicias sesión una "
+                    "vez, con tu usuario de SACYR y el MFA: la contraseña la escribes tú y la app no "
+                    "la guarda. Cuando Microsoft pregunte «¿Mantener la sesión iniciada?», di que sí; "
+                    "si algún día caduca, vuelve a darle aquí. También sigue valiendo dejar la carpeta "
+                    "de la devolución (o su zip) en la carpeta de abajo: lo que haya ahí se usa antes "
+                    "que bajar nada.",
             font=theme.FONT_SMALL, text_color=theme.TEXT_SUB, anchor="w", justify="left",
             wraplength=720).pack(anchor="w", pady=(0, theme.SPACE_2))
+        fila_sacyr = ctk.CTkFrame(s, fg_color="transparent")
+        fila_sacyr.pack(anchor="w", pady=theme.SPACE_1)
+        self.btn_sacyr_login = ui.button(fila_sacyr, "Iniciar sesión en SharePoint", "outline", size="sm",
+                                         height=36, text_color=theme.TEXT_SUB, command=self._sacyr_login)
+        self.btn_sacyr_login.pack(side="left", padx=(0, theme.SPACE_2))
+        ui.button(fila_sacyr, "Olvidar sesión", "outline", size="sm", height=36,
+                  text_color=theme.TEXT_SUB, command=self._sacyr_logout).pack(side="left",
+                                                                              padx=(0, theme.SPACE_2))
+        self.lbl_sacyr = ctk.CTkLabel(fila_sacyr, text=self._sacyr_estado(), font=theme.FONT_SMALL,
+                                      text_color=theme.TEXT_SUB)
+        self.lbl_sacyr.pack(side="left")
         self.sacyr_dir = self._setting_row(s, "Carpeta", "sacyr_folder")
 
         ui.section_header(s, "Descarga de devoluciones").pack(fill="x", pady=(theme.SPACE_3, theme.SPACE_2))
@@ -700,6 +710,57 @@ class AjustesView(OrganizacionMixin, ctk.CTkFrame):
                 msg = str(exc)
                 ui.en_ui(self, lambda: done([], msg))
         threading.Thread(target=work, daemon=True).start()
+
+    @staticmethod
+    def _sacyr_estado() -> str:
+        from core.services import sacyr_web
+        if not sacyr_web.disponible():
+            return "Falta instalar Playwright"
+        return "Sesión guardada" if sacyr_web.hay_sesion() else "Sin iniciar sesión"
+
+    def _sacyr_login(self) -> None:
+        """Abre Chrome en el SharePoint de SACYR para iniciar sesión a mano."""
+        from core.services import sacyr_web
+        if not sacyr_web.disponible():
+            ui.toast(self, "SACYR", "Falta instalar Playwright (pip install playwright).", kind="error")
+            return
+        enlace = str(pref.get("sacyr_enlace", "") or "").strip()
+        if sacyr_web.carpeta_del_enlace(enlace) is None:
+            dlg = ctk.CTkInputDialog(title="SharePoint de SACYR",
+                                     text="Pega el enlace de «Comments» de un correo de SACYR:")
+            enlace = (dlg.get_input() or "").strip()
+            if sacyr_web.carpeta_del_enlace(enlace) is None:
+                if enlace:
+                    ui.toast(self, "SACYR", "Ese enlace no es de una carpeta de SharePoint.",
+                             kind="error")
+                return
+            pref.set_value("sacyr_enlace", enlace)
+        self.btn_sacyr_login.configure(state="disabled", text="Esperando el inicio de sesión…")
+
+        def work():
+            try:
+                dentro, error = sacyr_web.iniciar_sesion(enlace), ""
+            except Exception as exc:  # noqa: BLE001
+                dentro, error = False, str(exc)
+
+            def fin():
+                self.btn_sacyr_login.configure(state="normal", text="Iniciar sesión en SharePoint")
+                self.lbl_sacyr.configure(text=self._sacyr_estado())
+                if dentro:
+                    ui.toast(self, "SACYR", "Sesión iniciada: las devoluciones de SACYR ya se bajan solas.",
+                             kind="success")
+                else:
+                    ui.toast(self, "SACYR · sin sesión", error or
+                             "No se completó el inicio de sesión (ventana cerrada o tiempo agotado).",
+                             kind="error")
+            ui.en_ui(self, fin)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _sacyr_logout(self) -> None:
+        from core.services import sacyr_web
+        sacyr_web.cerrar_sesion()
+        self.lbl_sacyr.configure(text=self._sacyr_estado())
+        ui.toast(self, "SACYR", "Sesión de SharePoint olvidada.", kind="info")
 
     def _test_egesdoc(self) -> None:
         def work():

@@ -41,3 +41,8 @@ state/logs/
 
 # Descargas de los portales (documentos del cliente)
 descargas/
+
+# SharePoint de SACYR: el perfil de Chrome de la app guarda una sesión
+# válida (tan sensible como una contraseña) y lo bajado son documentos del cliente
+state/sacyr_navegador/
+state/sacyr_descargas/

@@ -16,13 +16,15 @@ del asunto**, cambiando la barra por un guion bajo:
     WF#: 4000079-PRY001-627-J-C.181752/01-SP-OBTS-000005
     →    4000079-PRY001-627-J-C.181752_01-SP-OBTS-000005
 
-Así que basta con que esa carpeta esté accesible en el disco —sincronizada con
-OneDrive («Sincronizar» o «Añadir acceso directo a OneDrive») o descargada a
-mano— y la app hace el resto: la empaqueta en `00 TRANS Y RES\NNN (fecha)`,
-guarda el correo al lado y archiva cada PDF en su `dev <Tipo>\rev<N>`, igual que
-con Técnicas Reunidas.
+Y el aviso trae en «Comments» el enlace a esa carpeta. Con él la app la baja
+sola del SharePoint, con una sesión de Chrome propia en la que JP inicia sesión
+una vez (`sacyr_web.py`). Si se prefiere, sigue valiendo tenerla en el disco
+—sincronizada con OneDrive o descargada a mano— en la carpeta de Ajustes ▸
+Portales; lo que haya ahí se usa antes que bajar nada.
 
-La carpeta donde buscar se configura en Ajustes ▸ Portales.
+Venga de donde venga, la app hace el resto: la empaqueta en
+`00 TRANS Y RES\NNN (fecha)`, guarda el correo al lado y archiva cada PDF en su
+`dev <Tipo>\rev<N>`, igual que con Técnicas Reunidas.
 """
 
 from __future__ import annotations
@@ -145,14 +147,24 @@ def local_root() -> Path | None:
 
 
 def is_configured() -> bool:
-    return local_root() is not None
+    """Si hay de dónde sacar los paquetes: la carpeta local o el SharePoint."""
+    from core.services import sacyr_web
+    return local_root() is not None or sacyr_web.disponible()
 
 
-def _candidatos(root: Path) -> list[Path]:
-    """Carpetas y zips que hay dentro de la carpeta configurada, del más nuevo
-    al más viejo (lo recién descargado primero)."""
+def _raices(root: Path | None = None) -> list[Path]:
+    """Dónde buscar: la carpeta de Ajustes y lo que la app ha bajado del SharePoint."""
+    if root is not None:
+        return [root]
+    from core.services import sacyr_web
+    return [r for r in (local_root(), sacyr_web.cache()) if r is not None and r.is_dir()]
+
+
+def _candidatos(raices: list[Path]) -> list[Path]:
+    """Carpetas y zips que hay dentro de esas carpetas, del más nuevo al más
+    viejo (lo recién descargado primero)."""
     fuera: list[Path] = []
-    pendientes = [(root, 0)]
+    pendientes = [(r, 0) for r in raices]
     while pendientes and len(fuera) < 200:
         carpeta, nivel = pendientes.pop(0)
         try:
@@ -160,6 +172,8 @@ def _candidatos(root: Path) -> list[Path]:
         except OSError:
             continue
         for hijo in hijos:
+            if hijo.name.startswith("."):     # una bajada a medias, o algo oculto
+                continue
             if hijo.is_dir():
                 fuera.append(hijo)
                 if nivel < _MAX_DEPTH:
@@ -198,14 +212,14 @@ def find_package(code: str, docs: list[dict] | None = None,
        contenga alguno de los códigos de documento del correo, así no hay que
        andar renombrando nada.
     """
-    root = root or local_root()
-    if root is None or not code:
+    raices = _raices(root)
+    if not raices or not code:
         return None
 
     objetivo = folder_name(code).lower()
     comprimidos = {objetivo + ext for ext in (".zip", ".7z")}
     zip_encontrado = None
-    for candidato in _candidatos(root):
+    for candidato in _candidatos(raices):
         nombre = candidato.name.lower()
         if candidato.is_dir() and nombre == objetivo:
             return candidato
@@ -224,13 +238,31 @@ def find_package(code: str, docs: list[dict] | None = None,
     # devoluciones seguidas del mismo pedido comparten documentos (el mismo
     # plano en revisiones sucesivas), y con «alguno» el paquete de una se
     # tomaba por el de la otra y se archivaba un zip que no era.
-    for candidato in _candidatos(root):
+    for candidato in _candidatos(raices):
         ficheros = [Path(f).stem for f in _contenido(candidato)]
         if all(any(casa_documento(c, f, r) for f in ficheros) for c, r in codigos):
             logger.info("SACYR: %s reconocido por su contenido como %s (están sus %d documento(s))",
                         candidato.name, code, len(codigos))
             return candidato
     return None
+
+
+def traer(code: str, enlace: str, docs: list[dict] | None = None) -> Path | None:
+    """El paquete de esa devolución: el que ya esté en disco o, si no, bajado
+    ahora del SharePoint con el enlace del correo.
+
+    Tiene que ir ANTES de emparejar ficheros y documentos: el estado de cada
+    documento sale del nombre de su PDF, y sin el paquete no hay nombres.
+    Lanza `sacyr_web.SesionNecesaria` si hay que volver a iniciar sesión.
+    """
+    from core.services import sacyr_web
+
+    paquete = find_package(code, docs)
+    if paquete is not None or not enlace or not sacyr_web.disponible():
+        return paquete
+    # El último enlace es por donde se entra a iniciar sesión (Ajustes ▸ Portales).
+    preferences.set_value("sacyr_enlace", enlace)
+    return sacyr_web.descargar(enlace, folder_name(code))
 
 
 def package_files(paquete: Path) -> list[Path]:
@@ -252,14 +284,13 @@ def collect(code: str, dest_dir: Path | str,
     dest_dir.mkdir(parents=True, exist_ok=True)
     paquete = find_package(code, docs)
     if paquete is None:
-        raiz = local_root()
-        if raiz is None:
+        if not is_configured():
             raise RuntimeError(
                 "Configura en Ajustes ▸ Portales la carpeta donde aparecen las "
-                "devoluciones de SACYR (la biblioteca de SharePoint sincronizada).")
+                "devoluciones de SACYR, o instala Playwright para bajarlas del SharePoint.")
         raise FileNotFoundError(
-            f"No encuentro «{folder_name(code)}» dentro de {raiz}. Sincroniza esa "
-            f"carpeta de SharePoint o descárgala ahí.")
+            f"No encuentro «{folder_name(code)}»: ni en la carpeta de Ajustes ▸ "
+            f"Portales ni en SharePoint (¿el correo no trae el enlace de «Comments»?).")
 
     destino = dest_dir / (folder_name(code) + ".zip")
     if paquete.is_file():

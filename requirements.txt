@@ -18,4 +18,5 @@ requests>=2.31.0
 psycopg2-binary>=2.9.0
 python-calamine>=0.8.0
 truststore>=0.9.0
-
+# SharePoint de SACYR con el Chrome instalado (no hace falta "playwright install")
+playwright>=1.50.0

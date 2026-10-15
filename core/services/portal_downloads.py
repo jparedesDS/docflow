@@ -136,7 +136,7 @@ def portal_ready(portal: str) -> tuple[bool, str]:
         return False, "configura el acceso a eGesDoc en Ajustes ▸ Portales"
     if portal == "sacyr" and not sacyr.is_configured():
         return False, ("indica en Ajustes ▸ Portales dónde aparecen las devoluciones "
-                       "de SACYR (la carpeta de SharePoint sincronizada)")
+                       "de SACYR, o instala Playwright para bajarlas del SharePoint")
     return True, ""
 
 
@@ -495,6 +495,12 @@ def download_for_email(uid: str, folder: str = "INBOX", *, session=None) -> dict
 
     raw = imap_service.fetch_raw(uid, folder)
     code = info["code"]
+    if info["portal"] == "sacyr":
+        # Si el paquete no está en disco se baja ahora del SharePoint, con el
+        # enlace de «Comments»: tiene que estar antes de emparejar ficheros y
+        # documentos, que es de donde sale el estado de cada uno.
+        html = imap_service.get_html_body(email.message_from_bytes(raw)) or ""
+        sacyr.traer(code, sacyr.sharepoint_link(html), docs)
     docs, file_docs = _docs_y_ficheros(info, docs, subject, raw, session=session)
     if info["portal"] == "egesdoc":
         hint = egesdoc.parse_subject(subject)["project"] or None
