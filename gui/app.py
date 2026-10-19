@@ -184,23 +184,16 @@ class DocFlowLiteApp(ctk.CTk):
         pantalla visible (recentra si la posición guardada queda fuera, p.ej.
         un segundo monitor que ahora no existe en sesión remota)."""
         import re
-        sw = self.winfo_screenwidth()
-        sh = self.winfo_screenheight()
+        from gui.widgets import ventanas
         w, h = self.WIDTH, self.HEIGHT
         x = y = None
         m = re.match(r"^(\d+)x(\d+)([+\-]\d+)([+\-]\d+)$", geo or "") if isinstance(geo, str) else None
         if m:
             w, h = int(m.group(1)), int(m.group(2))
             x, y = int(m.group(3)), int(m.group(4))
-        # Tamaño dentro de límites de la pantalla
-        w = min(max(w, 900), sw)
-        h = min(max(h, 600), sh)
-        # Posición: si falta o queda fuera de la pantalla → centrar
-        margin = 80
-        if x is None or x < 0 or y < 0 or x > sw - margin or y > sh - margin:
-            x = max(0, (sw - w) // 2)
-            y = max(0, (sh - h) // 2)
-        self.geometry(f"{w}x{h}+{x}+{y}")
+        # Tamaño dentro del escritorio (sin la barra de tareas); si la posición
+        # falta o se sale, centrada.
+        ventanas.encajar_principal(self, max(w, 900), max(h, 600), x, y)
 
     def save_state(self) -> None:
         """Guarda geometría y sección actual en preferences (llamado al cerrar)."""

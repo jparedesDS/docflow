@@ -49,12 +49,9 @@ class LoginWindow(ctk.CTk):
         self.bind("<KP_Enter>", lambda _e: self._submit())
 
     def _center_on_screen(self) -> None:
+        from gui.widgets import ventanas
         self.update_idletasks()
-        sw = self.winfo_screenwidth()
-        sh = self.winfo_screenheight()
-        x = (sw - self.WIDTH) // 2
-        y = (sh - self.HEIGHT) // 2
-        self.geometry(f"{self.WIDTH}x{self.HEIGHT}+{x}+{y}")
+        ventanas.encajar_principal(self, self.WIDTH, self.HEIGHT)
 
     # ── Layout ───────────────────────────────────────────────────────────────
 

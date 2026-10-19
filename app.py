@@ -120,6 +120,8 @@ def _authenticate():
 
 def main() -> int:
     _configure_ctk_rendering()  # antes de crear la primera ventana (login)
+    from gui.widgets import ventanas
+    ventanas.instalar()         # toda ventana emergente: entera y centrada en el escritorio
     user = _authenticate()
     if user is None:
         logger.info("Login cancelado por el usuario")

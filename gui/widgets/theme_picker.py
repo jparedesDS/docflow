@@ -76,28 +76,12 @@ class ThemePickerDialog(ctk.CTkToplevel):
         # Por cada key guardamos: card frame, ribbon indicador, ribbon label
         self._cards: dict[str, dict] = {}
 
-        self.transient(master)
-        self.after(50, self._center_on_master)
+        self.transient(master)       # el centrado lo hace gui.widgets.ventanas
 
         self._build()
 
         self.grab_set()
         self.focus_force()
-
-    def _center_on_master(self) -> None:
-        try:
-            self.update_idletasks()
-            mx = self.master.winfo_rootx()
-            my = self.master.winfo_rooty()
-            mw = self.master.winfo_width()
-            mh = self.master.winfo_height()
-            w = self.winfo_width()
-            h = self.winfo_height()
-            x = mx + (mw - w) // 2
-            y = my + (mh - h) // 2
-            self.geometry(f"+{x}+{y}")
-        except Exception:
-            pass
 
     def _build(self) -> None:
         # Header
