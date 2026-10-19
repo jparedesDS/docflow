@@ -1,4 +1,4 @@
-"""Vista Portadas — generar las portadas de los documentos de un pedido.
+"""Vista Generar portadas (Pedidos) — las portadas de los documentos de un pedido.
 
 Tres pasos, y los dos primeros solo la primera vez de cada cliente:
 
@@ -55,7 +55,7 @@ class PortadasView(ctk.CTkFrame):
 
     def _build(self) -> None:
         cab = ui.page_header(
-            self, "Portadas", "Rellena la plantilla del cliente con los datos de cada documento",
+            self, "Generar portadas", "Rellena la plantilla del cliente con los datos de cada documento",
             icon="🖹", help_key="portadas")
 
         self.btn_generar = ui.button(cab.actions, "Generar portadas", "primary",

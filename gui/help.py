@@ -119,7 +119,7 @@ HELP: dict[str, dict] = {
         ],
     },
     "portadas": {
-        "titulo": "Portadas",
+        "titulo": "Generar portadas",
         "que": "Genera la portada de cada documento rellenando la plantilla que manda el cliente "
                "(Word o Excel) con los datos del ERP.",
         "pasos": [

@@ -5,25 +5,28 @@ permisos, que así enseña cada sección con el mismo nombre e icono que el men�
 
 La navegación sigue el organigrama de la empresa: cada grupo es un
 departamento, para que cualquiera encuentre lo suyo sin preguntar. Arriba,
-sueltos, lo que usa todo el mundo (Inicio, Agenda, Correo, Pedidos).
+sueltos, lo que usa todo el mundo (Inicio, Agenda, Correo); después, Pedidos
+con lo que se hace con cada uno (su seguimiento, el VPR y sus portadas).
 """
 
 NAV_LAYOUT = [
     {"type": "item", "key": "home", "label": "Inicio", "icon": "⌂"},
     {"type": "item", "key": "agenda", "label": "Agenda", "icon": "▣"},
     {"type": "item", "key": "inbox", "label": "Correo", "icon": "✦"},
-    {"type": "item", "key": "pedidos", "label": "Pedidos", "icon": "▦"},
+    {"type": "group", "id": "pedidos", "label": "Pedidos", "items": [
+        {"key": "pedidos",  "label": "Seguimiento",      "icon": "▦"},
+        {"key": "vpr",      "label": "VPR",              "icon": "📈"},
+        {"key": "portadas", "label": "Generar portadas", "icon": "🖹"},
+    ]},
     {"type": "group", "id": "documentacion", "label": "Documentación", "items": [
         {"key": "apertura",      "label": "Nuevo pedido",  "icon": "✚"},
         {"key": "documentos",    "label": "Documentos",    "icon": "◫"},
         {"key": "devoluciones",  "label": "Devoluciones",  "icon": "↩"},
-        {"key": "portadas",      "label": "Portadas",      "icon": "🖹"},
-        {"key": "vpr",           "label": "VPR",           "icon": "📈"},
         {"key": "reclamaciones", "label": "Reclamaciones", "icon": "⚠"},
-        {"key": "docusign",      "label": "DocuSign",      "icon": "✒"},
     ]},
     {"type": "group", "id": "comercial", "label": "Comercial", "items": [
-        {"key": "ofertas", "label": "Ofertas", "icon": "✉"},
+        {"key": "ofertas",  "label": "Ofertas",  "icon": "✉"},
+        {"key": "docusign", "label": "DocuSign", "icon": "✒"},
     ]},
     {"type": "group", "id": "compras", "label": "Compras", "items": [
         {"key": "compras", "label": "Material pendiente", "icon": "🛒"},
