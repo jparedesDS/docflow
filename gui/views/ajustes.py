@@ -1,7 +1,7 @@
 """Vista Ajustes (solo admin) — configuración y credenciales seguras.
 
-Pestañas: General · Fuentes de datos · Correo · Ofertas · DocuSign · IA · Portales · Organización.
-Las cuentas y sus permisos están en su propia sección (gui/views/usuarios.py).
+Pestañas: General · Fuentes de datos · Correo · Ofertas · DocuSign · IA · Portales · Organización ·
+Usuarios y permisos (gui/views/usuarios.py).
 Secretos → core.credentials (keyring/cifrado). Ajustes no secretos → preferences.
 Los cambios de conexión se aplican al reiniciar (botón en la cabecera).
 """
@@ -75,7 +75,12 @@ class AjustesView(OrganizacionMixin, ctk.CTkFrame):
             "IA": lazy(self._build_ia),
             "Portales": lazy(self._build_portales),
             "Organización": lazy(self._build_organizacion),
+            "Usuarios y permisos": self._build_usuarios,
         })
+
+    def _build_usuarios(self, parent) -> None:
+        from gui.views.usuarios import UsuariosView
+        UsuariosView(parent).pack(fill="both", expand=True)
 
     def _restart(self) -> None:
         if self._on_restart and ui.confirm(self, "Reiniciar", "¿Reiniciar la aplicación para aplicar los cambios?"):

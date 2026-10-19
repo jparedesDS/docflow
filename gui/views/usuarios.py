@@ -1,4 +1,4 @@
-"""Vista Usuarios y permisos — solo para el administrador.
+"""Usuarios y permisos — pestaña de Ajustes, solo para el administrador.
 
 A la izquierda las cuentas; a la derecha la ficha de la elegida, con cada
 sección del menú (mismo nombre e icono, agrupadas por departamento) y su
@@ -13,6 +13,7 @@ pulsar «Guardar cambios»; la persona ve el menú nuevo la próxima vez que ent
 from __future__ import annotations
 
 import logging
+import tkinter as tk
 from datetime import datetime
 
 import customtkinter as ctk
@@ -72,6 +73,45 @@ def _entry(parent, value="", placeholder="", show=None):
     return e
 
 
+class Selector(tk.Frame):
+    """«Sin acceso | Ver | Gestionar» en tk puro.
+
+    Hace lo mismo que un CTkSegmentedButton, pero con tres etiquetas nativas:
+    la ficha lleva una veintena y con los de CustomTkinter tardaba casi medio
+    segundo en abrirse (18 ms cada uno, frente a ~1 ms)."""
+
+    def __init__(self, master, accion, pequeno: bool = False, fondo: str = theme.BG_PAGE):
+        super().__init__(master, bg=theme.BORDER, padx=1, pady=1)
+        self._accion = accion
+        self._valor: str | None = None
+        self._ops: dict[str, tk.Label] = {}
+        fuente = theme.font(10 if pequeno else 11, "bold")
+        for i, (clave, texto) in enumerate(NIVELES):
+            op = tk.Label(self, text=texto, font=fuente, bg=theme.BG_INPUT, fg=theme.TEXT_SUB,
+                          padx=8 if pequeno else 10, pady=1 if pequeno else 3, cursor="hand2")
+            op.pack(side="left", padx=(0 if i == 0 else 1, 0))
+            op.bind("<Button-1>", lambda _e, c=clave: self._accion(_TEXTO[c]))
+            op.bind("<Enter>", lambda _e, c=clave: self._encima(c, True))
+            op.bind("<Leave>", lambda _e, c=clave: self._encima(c, False))
+            self._ops[clave] = op
+
+    def _encima(self, clave: str, dentro: bool) -> None:
+        if clave != self._valor:
+            self._ops[clave].configure(bg=theme.BORDER if dentro else theme.BG_INPUT)
+
+    def set(self, texto: str) -> None:
+        """Marca la opción con ese texto ("" = ninguna, cuando dentro hay de todo)."""
+        self._valor = _NIVEL.get(texto)
+        for clave, op in self._ops.items():
+            if clave == self._valor:
+                op.configure(bg=_COLOR[clave], fg=theme.TEXT_ON_ACCENT)
+            else:
+                op.configure(bg=theme.BG_INPUT, fg=theme.TEXT_SUB)
+
+    def get(self) -> str:
+        return _TEXTO[self._valor] if self._valor else ""
+
+
 def _clic(widget, accion) -> None:
     """Toda la tarjeta (y lo que lleva dentro) responde al clic."""
     widget.bind("<Button-1>", lambda _e: accion(), add="+")
@@ -86,20 +126,21 @@ class UsuariosView(ctk.CTkFrame):
         self._sel: str | None = None          # iniciales de la cuenta abierta
         self._nueva = False                   # la ficha es la de una cuenta nueva
         self._borrador: dict = {}             # permisos tal como están en pantalla
-        self._segs: dict[str, ctk.CTkSegmentedButton] = {}
-        self._segs_grupo: list[tuple[ctk.CTkSegmentedButton, list[str]]] = []
+        self._segs: dict[str, Selector] = {}
+        self._segs_grupo: list[tuple[Selector, list[str]]] = []
 
-        cab = ui.page_header(self, "Usuarios y permisos",
-                             "Quién entra en DocFlow y qué secciones ve cada cuenta",
-                             icon="👥", help_key="usuarios")
         if not session.is_admin():
             ui.empty_state(self, "Solo el administrador gestiona las cuentas", icon="🔒")
             return
-        ui.button(cab.actions, "+ Nueva cuenta", "primary", size="sm",
+        barra = ctk.CTkFrame(self, fg_color="transparent")
+        barra.pack(fill="x", pady=(theme.SPACE_2, theme.SPACE_3))
+        ctk.CTkLabel(barra, text="Quién entra en DocFlow y qué secciones del menú ve cada cuenta.",
+                     font=theme.FONT_SMALL, text_color=theme.TEXT_SUB, anchor="w").pack(side="left")
+        ui.button(barra, "+ Nueva cuenta", "primary", size="sm",
                   command=self._nueva_cuenta).pack(side="right")
 
         cuerpo = ctk.CTkFrame(self, fg_color="transparent")
-        cuerpo.pack(fill="both", expand=True, padx=theme.SPACE_6, pady=(theme.SPACE_3, theme.SPACE_5))
+        cuerpo.pack(fill="both", expand=True, pady=(0, theme.SPACE_2))
         cuerpo.grid_columnconfigure(1, weight=1)
         cuerpo.grid_rowconfigure(0, weight=1)
 
@@ -340,26 +381,21 @@ class UsuariosView(ctk.CTkFrame):
             filas = [self._fila_seccion(caja, it) for it in items if it["key"] in claves]
             filas[-1].pack_configure(pady=(2, theme.SPACE_2))
 
-    def _fila_seccion(self, caja, it: dict) -> ctk.CTkFrame:
-        fila = ctk.CTkFrame(caja, fg_color="transparent")
+    def _fila_seccion(self, caja, it: dict) -> tk.Frame:
+        # tk puro: son una veintena de filas y con CTk la ficha tardaba en abrirse
+        fila = tk.Frame(caja, bg=theme.BG_PAGE)
         fila.pack(fill="x", padx=theme.SPACE_3, pady=2)
-        ctk.CTkLabel(fila, text=it.get("icon", "•"), width=24, font=theme.FONT_BODY,
-                     text_color=theme.TEXT_SUB).pack(side="left")
-        ctk.CTkLabel(fila, text=it["label"], font=theme.FONT_BODY, text_color=theme.TEXT_MAIN,
-                     anchor="w").pack(side="left", padx=(theme.SPACE_1, 0))
+        tk.Label(fila, text=it.get("icon", "•"), width=2, font=theme.FONT_BODY, bg=theme.BG_PAGE,
+                 fg=theme.TEXT_SUB).pack(side="left")
+        tk.Label(fila, text=it["label"], font=theme.FONT_BODY, bg=theme.BG_PAGE, fg=theme.TEXT_MAIN,
+                 anchor="w").pack(side="left", padx=(theme.SPACE_1, 0))
         seg = self._selector(fila, lambda texto, k=it["key"]: self._poner([k], _NIVEL[texto]))
         seg.pack(side="right")
         self._segs[it["key"]] = seg
         return fila
 
-    def _selector(self, parent, accion, pequeno: bool = False) -> ctk.CTkSegmentedButton:
-        return ctk.CTkSegmentedButton(
-            parent, values=[t for _, t in NIVELES], command=accion,
-            height=24 if pequeno else 28, font=theme.FONT_TINY if pequeno else theme.FONT_SMALL,
-            corner_radius=theme.RADIUS_SM, fg_color=theme.BG_INPUT,
-            selected_color=theme.ACCENT, selected_hover_color=theme.ACCENT_HOVER,
-            unselected_color=theme.BG_INPUT, unselected_hover_color=theme.BORDER,
-            text_color=theme.TEXT_MAIN)
+    def _selector(self, parent, accion, pequeno: bool = False) -> Selector:
+        return Selector(parent, accion, pequeno=pequeno)
 
     def _pintar_pie(self, pie, u: dict | None) -> None:
         # Los botones primero: con la ventana estrecha encoge el aviso, no ellos
@@ -389,15 +425,11 @@ class UsuariosView(ctk.CTkFrame):
     def _refrescar(self) -> None:
         """Pone cada selector como está el borrador y avisa de lo pendiente."""
         for k, seg in self._segs.items():
-            nivel = self._borrador.get(k, "none")
-            seg.set(_TEXTO[nivel])
-            seg.configure(selected_color=_COLOR[nivel], selected_hover_color=_COLOR[nivel])
+            seg.set(_TEXTO[self._borrador.get(k, "none")])
         for seg, claves in self._segs_grupo:
             niveles = {self._borrador.get(k, "none") for k in claves}
             nivel = niveles.pop() if len(niveles) == 1 else None
             seg.set(_TEXTO[nivel] if nivel else "")
-            if nivel:
-                seg.configure(selected_color=_COLOR[nivel], selected_hover_color=_COLOR[nivel])
         if getattr(self, "lbl_resumen", None) is not None and self._segs:
             try:
                 self.lbl_resumen.configure(text=resumen(self._borrador))

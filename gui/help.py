@@ -285,7 +285,7 @@ HELP: dict[str, dict] = {
     },
     "ajustes": {
         "titulo": "Ajustes",
-        "que": "Conexiones, fuentes de datos y credenciales. Solo administradores.",
+        "que": "Conexiones, fuentes de datos, credenciales y las cuentas con sus permisos. Solo administradores.",
         "pasos": [
             "Cada pestaña tiene su botón «Guardar»; los cambios de conexión se aplican al reiniciar.",
             "Las contraseñas se guardan cifradas (nunca en texto plano).",
@@ -295,26 +295,15 @@ HELP: dict[str, dict] = {
             "lleva cada pedido, lo que manda cada portal y a quién se escribe. Se guarda en tu máquina "
             "(state/organizacion.json).",
             "«Portales»: usuario y contraseña de eGesDoc (Técnicas Reunidas) y la descarga automática de "
-            "devoluciones (eGesDoc y AYESA)."
+            "devoluciones (eGesDoc y AYESA).",
+            "«Usuarios y permisos»: elige una cuenta y, en cada sección del menú, «Sin acceso» (no le sale), "
+            "«Ver» (entra y consulta) o «Gestionar» (además envía, procesa y modifica). Se puede cambiar un "
+            "departamento entero, todas a la vez o copiar los permisos de otra cuenta; nada se guarda hasta "
+            "«Guardar cambios» y la persona ve su menú nuevo la próxima vez que entra.",
         ],
         "atajos": ["«↻ Reiniciar app» aplica los cambios de conexión",
-                   "Las cuentas y sus permisos están en la sección «Usuarios y permisos»"],
-    },
-    "usuarios": {
-        "titulo": "Usuarios y permisos",
-        "que": "Las cuentas que entran en DocFlow y qué secciones del menú ve cada una. Solo el administrador.",
-        "pasos": [
-            "Elige una cuenta a la izquierda; a la derecha salen todas las secciones del menú, por departamento.",
-            "En cada sección: «Sin acceso» (no le sale en el menú), «Ver» (entra y consulta) o «Gestionar» "
-            "(además envía, procesa y modifica).",
-            "El selector de cada departamento cambia todas sus secciones a la vez; «Todas» cambia el menú entero.",
-            "«Copiar de otra cuenta…» pone los permisos de alguien que hace el mismo trabajo.",
-            "Nada se guarda hasta pulsar «Guardar cambios». La persona ve su menú nuevo la próxima vez que entra.",
-            "«+ Nueva cuenta» crea una cuenta sin acceso a nada: dale las secciones que necesite. Si dejas la "
-            "contraseña vacía, entra con la de por defecto y tiene que cambiarla.",
-        ],
-        "atajos": ["«Restablecer contraseña» le pone una nueva y le obliga a cambiarla al entrar",
-                   "Una sección nueva del programa llega cerrada a las cuentas que ya existen"],
+                   "Una cuenta nueva empieza sin acceso a nada; una sección nueva del programa llega "
+                   "cerrada a las cuentas que ya existen"],
     },
 }
 

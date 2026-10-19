@@ -1,6 +1,6 @@
 """Las secciones del programa, tal como salen en el menú lateral.
 
-Una sola lista para el menú, la paleta (Ctrl+K) y la sección Usuarios y
+Una sola lista para el menú, la paleta (Ctrl+K) y Ajustes ▸ Usuarios y
 permisos, que así enseña cada sección con el mismo nombre e icono que el menú.
 
 La navegación sigue el organigrama de la empresa: cada grupo es un
@@ -46,9 +46,9 @@ NAV_LAYOUT = [
     ]},
 ]
 
-# Solo para el administrador: van sueltas al final del menú, sin permisos que dar.
+# Solo para el administrador: va suelta al final del menú, sin permisos que dar
+# (las cuentas y sus permisos están dentro, en Ajustes ▸ Usuarios y permisos).
 SOLO_ADMIN = [
-    {"type": "item", "key": "usuarios", "label": "Usuarios y permisos", "icon": "👥"},
     {"type": "item", "key": "ajustes", "label": "Ajustes", "icon": "⚙"},
 ]
 
