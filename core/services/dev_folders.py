@@ -747,17 +747,19 @@ def _rev_por_estados(dev_dir: Path, n: int | None, letter: str) -> Path | None:
     el TL-2401HG04A-VDC-6699, un plano con comentarios mayores que abrió
     «dev. Planos\\rev1 COM» cuando su sitio era «rev0\\com. mayores».
 
-    Solo cuentan las carpetas de revisión SIN sufijo —en «rev0 com» la
-    resolución ya va en el nombre— y que tengan dentro alguna subcarpeta con
-    nombre de resolución, mayúsculas y acentos aparte. Así se reconoce lo que
-    la propia app archiva y cómo está a mano, sin tocar los pedidos que usan
-    otra forma («rev0\\ap rev 0»), que siguen por el correlativo de siempre.
+    Cuenta la carpeta de esa revisión que tenga dentro alguna subcarpeta con
+    nombre de resolución, mayúsculas y acentos aparte, lleve sufijo o no: a
+    mano también se reparte una «rev0 com» en «com. mayores» y «com. menores»
+    (P-26/062), y el TL-2401HG04A-VDC-6844 —un plano con comentarios menores—
+    se quedó suelto en «rev0 com» en vez de entrar en su «com. menores». Una
+    «rev0 com» sin subcarpetas no cuenta: ahí la resolución va en el nombre y
+    se sigue usando tal cual. Así se reconoce lo que la propia app archiva y
+    cómo está a mano, sin tocar los pedidos que usan otra forma
+    («rev0\\ap rev 0»), que siguen por el correlativo de siempre.
     """
     conocidas = {_fold(v) for v in SUBCARPETA_ESTADO.values()}
     rev_text = (letter or (str(n) if n is not None else "")).upper()
-    for sub, num, rev, sufijo in _rev_subfolders(dev_dir):
-        if sufijo:
-            continue
+    for sub, num, rev, _sufijo in _rev_subfolders(dev_dir):
         de_esta = (rev == rev_text) if (rev and rev_text) else (n is not None and num == n)
         if not de_esta:
             continue
@@ -809,15 +811,15 @@ class _CarpetasDeRevision:
 
     def _abrir(self, destino: dict, rev: tuple, sufijo: str) -> tuple[Path, bool]:
         dev_dir, n, letter = destino["dev_dir"], destino["n"], destino["letter"]
-        if rev in self._mezcladas:
+        # Si esa revisión ya está repartida por resolución, el documento va con
+        # los suyos y no abre correlativo, traiga el paquete una resolución o
+        # varias.
+        padre = _rev_por_estados(dev_dir, n, letter)
+        if padre is None:
+            if rev not in self._mezcladas:
+                return _rev_folder_for(dev_dir, n, letter, sufijo, envio=destino["envio"])
             # El paquete trae varias resoluciones: la revisión va sin sufijo.
             padre, _existe = _rev_folder_for(dev_dir, n, letter, "", envio=destino["envio"])
-        else:
-            # Una sola, pero si esa revisión ya está repartida por resolución,
-            # el documento va con los suyos y no abre correlativo.
-            padre = _rev_por_estados(dev_dir, n, letter)
-            if padre is None:
-                return _rev_folder_for(dev_dir, n, letter, sufijo, envio=destino["envio"])
         return _subcarpeta(padre, SUBCARPETA_ESTADO.get(sufijo, sufijo))
 
 

@@ -470,6 +470,40 @@ try:
     ok(not list((tecnico / "dev. Cálculos").glob("rev1*")),
        "sin abrir «rev1 COM» al lado")
 
+    # Repartida A MANO dentro de una carpeta con sufijo: «dev. Planos\rev0 com»
+    # con «com. mayores» y «com. menores» dentro (así está el P-26/062). El
+    # TL-2401HG04A-VDC-6844, un plano con comentarios menores, se quedó suelto
+    # en «rev0 com» en vez de entrar en su «com. menores».
+    planos = tecnico / "dev. Planos" / "rev0 com"
+    for sub in ("com. mayores", "com. menores"):
+        (planos / sub).mkdir(parents=True)
+    (tecnico / "env. Planos" / "rev0").mkdir(parents=True)
+
+    def plano(num, estado):
+        codigo = f"V-2401HG04A-2206-300-OUFE-{num:04d}-DWG-001"
+        (tecnico / "env. Planos" / "rev0" / f"{codigo}.PDF").write_bytes(b"enviado")
+        return {"Nº Pedido": "P-26/062", "Supp.": "S00", "Doc. EIPSA": f"26-062-DWG-{num:04d}",
+                "Doc. Cliente": codigo, "Título": "OVERALL DRAWING", "Rev.": "0",
+                "Estado": estado, "Tipo de documento": ""}
+
+    def archivar(nombre, docs):
+        zipp = tmp / nombre
+        with zipfile.ZipFile(zipp, "w") as zf:
+            for doc in docs:
+                zf.writestr(doc["Doc. Cliente"] + ".PDF", b"%PDF-" + doc["Doc. Cliente"].encode())
+        return D.archive_return(zipp, docs, "P-26/062")
+
+    res = archivar("TL-2401HG04A-VDC-6844.zip", [plano(45, "Com. Menores")])
+    destino = Path(res["archived"][0][1])
+    ok(destino.parent == planos / "com. menores",
+       f"el plano de comentarios menores entra en rev0 com\\com. menores: {destino.parent}")
+    res = archivar("mezcla.zip", [plano(46, "Com. Menores"), plano(47, "Com. Mayores")])
+    donde = {Path(dest).parent for _f, dest in res["archived"]}
+    ok(donde == {planos / "com. menores", planos / "com. mayores"},
+       f"y un paquete con las dos resoluciones, cada una a la suya: {donde}")
+    ok(sorted(p.name for p in (tecnico / "dev. Planos").iterdir()) == ["rev0 com"],
+       "sin abrir «rev0» ni «rev1» al lado")
+
     # Con una sola resolución se respeta el nombre de siempre
     solo = tmp / "solo-menores.zip"
     otros = [calculo(n, "Com. Menores") for n in (7, 8)]
