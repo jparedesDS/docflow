@@ -306,8 +306,11 @@ class Sidebar(ctk.CTkFrame):
     # ── Selección ──────────────────────────────────────────────────────────────
 
     def _handle_click(self, key: str) -> None:
-        self.set_active(key)
+        # Primero se navega (la app marca el ítem dentro del cambio de sección,
+        # con el pintado congelado, y todo cambia a la vez); si quien escucha no
+        # lo marcó, se marca aquí.
         self._on_select(key)
+        self.set_active(key)
 
     def set_active(self, key: str) -> None:
         # Asegurar visible el grupo que contiene la sección activa
@@ -318,18 +321,18 @@ class Sidebar(ctk.CTkFrame):
         if self._active_key == key:
             self.after_idle(lambda: self._asegura_visible(key))
             return
-        self._active_key = key
+        anterior, self._active_key = self._active_key, key
         self.after_idle(lambda: self._asegura_visible(key))
-        for k, item in self._items.items():
-            if k == key:
-                item["bar"].configure(fg_color=theme.ACCENT)
-                item["btn"].configure(
-                    fg_color=theme.ACCENT_SOFT, text_color=theme.TEXT_MAIN,
-                    hover_color=theme.ACCENT_SOFT,
-                )
-            else:
-                item["bar"].configure(fg_color="transparent")
-                item["btn"].configure(
-                    fg_color="transparent", text_color=theme.TEXT_SUB,
-                    hover_color=theme.BG_INPUT,
-                )
+        # Solo cambian dos: la que se apaga y la que se enciende. Reconfigurar las
+        # veinte (cada una redibuja su lienzo) se llevaba ~200 ms de cada cambio
+        # de sección.
+        item = self._items.get(anterior)
+        if item is not None:
+            item["bar"].configure(fg_color="transparent")
+            item["btn"].configure(fg_color="transparent", text_color=theme.TEXT_SUB,
+                                  hover_color=theme.BG_INPUT)
+        item = self._items.get(key)
+        if item is not None:
+            item["bar"].configure(fg_color=theme.ACCENT)
+            item["btn"].configure(fg_color=theme.ACCENT_SOFT, text_color=theme.TEXT_MAIN,
+                                  hover_color=theme.ACCENT_SOFT)

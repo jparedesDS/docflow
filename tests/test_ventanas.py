@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Toda ventana emergente sale entera y centrada en el escritorio.
+"""Toda ventana emergente sale entera y centrada en el escritorio, y aparece
+sin saltos: oculta mientras se construye, ya colocada y con un fundido.
 
     .venv\\Scripts\\python.exe tests\\test_ventanas.py
 """
@@ -31,6 +32,7 @@ IZQ, ARRIBA, DER, ABAJO = AREA
 root = ctk.CTk()
 root.geometry("400x300+0+0")
 ventanas_abiertas = {}
+nada_mas_crear = {}
 
 
 def abrir():
@@ -49,7 +51,11 @@ def abrir():
     globo = ctk.CTkToplevel(root)
     globo.overrideredirect(True)
     globo.geometry("120x40+5+5")
-    ventanas_abiertas.update(alta=alta, llena=llena, natural=natural, globo=globo)
+    # La que se oculta a propósito (quien la creó la quiere oculta) no se enseña
+    oculta = ctk.CTkToplevel(root)
+    oculta.withdraw()
+    ventanas_abiertas.update(alta=alta, llena=llena, natural=natural, globo=globo, oculta=oculta)
+    nada_mas_crear["estado"] = alta.state()
     root.after(800, comprobar)
 
 
@@ -75,6 +81,28 @@ def comprobar():
     w, h = dentro(v["natural"], "natural")
     ok(not getattr(v["natural"], "_encaje_tamano", False), "la natural no se congela a un tamaño fijo")
     ok((v["globo"].winfo_x(), v["globo"].winfo_y()) == (5, 5), "el globo sin marco no se mueve")
+    ok(nada_mas_crear.get("estado") == "withdrawn", f"nace oculta: {nada_mas_crear}")
+    for nombre in ("alta", "llena", "natural", "globo"):
+        win = v[nombre]
+        ok(win.state() == "normal" and float(win.attributes("-alpha")) >= 0.99,
+           f"{nombre}: a la vista y opaca tras el fundido ({win.state()}, {win.attributes('-alpha')})")
+    ok(v["oculta"].state() == "withdrawn", "la que se ocultó a propósito sigue oculta")
+    v["oculta"].deiconify()
+    ok(v["oculta"].state() == "normal", "y se enseña cuando quien la usa lo pide")
+
+    # Cambio de sección: lo de dentro cambia y no queda ninguna capa encima
+    marco = ctk.CTkFrame(root)
+    marco.pack(fill="both", expand=True)
+    hecho = []
+    ventanas.transicion(root, marco, lambda: hecho.append(1))
+    ok(hecho == [1], "la transición hace el cambio")
+    root.after(400, lambda: fin_transicion(len(root.winfo_children())))
+
+
+def fin_transicion(antes):
+    capas = [w for w in root.winfo_children() if w.winfo_class() == "Toplevel" and w.overrideredirect()
+             and not isinstance(w, ctk.CTkToplevel)]
+    ok(not capas, f"y la foto del fundido se va sola: {capas}")
     root.quit()
 
 

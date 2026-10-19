@@ -37,6 +37,8 @@ class LoginWindow(ctk.CTk):
 
         super().__init__(fg_color=theme.BG_PAGE)
         self.title(f"{APP_NAME} — Iniciar sesión")
+        from gui.widgets import ventanas
+        ventanas.suave(self)
         self.geometry(f"{self.WIDTH}x{self.HEIGHT}")
         self.resizable(False, False)
         self._center_on_screen()

@@ -36,6 +36,8 @@ class DocFlowLiteApp(ctk.CTk):
 
         super().__init__(fg_color=theme.BG_PAGE)
         self.title(self.TITLE)
+        from gui.widgets import ventanas
+        ventanas.suave(self)        # aparece con un fundido, no pintándose a trozos
 
         # Restaurar geometría previa (tamaño/posición) garantizando que la
         # ventana cae dentro de la pantalla visible (si la posición guardada
@@ -101,6 +103,9 @@ class DocFlowLiteApp(ctk.CTk):
     _PREWARM_ORDER = ["documentos", "pedidos", "informes", "agenda", "home",
                       "reportes", "apertura", "ajustes"]
 
+    # Sin tocar ratón ni teclado durante este tiempo, la app se da por libre
+    _PREWARM_QUIETO_S = 1.2
+
     def _prewarm_views(self) -> None:
         """Construye las vistas restantes en idle, una cada 600ms.
 
@@ -108,13 +113,31 @@ class DocFlowLiteApp(ctk.CTk):
         un thread: se escalona con after() para que cada construcción (~20-550ms)
         caiga en huecos de inactividad y el primer clic en cualquier sección sea
         instantáneo (la vista ya está cacheada en self._views).
+
+        Y solo mientras no se está usando la app: construir una vista congela la
+        ventana lo que tarda (hasta medio segundo), y en los primeros segundos
+        tras abrirla eso se notaba como tirones al mover el ratón o hacer clic.
+        Si hay actividad, espera a que se quede quieta.
         """
+        import time as _t
+        self._ultima_actividad = _t.monotonic()
+
+        def actividad(_e=None):
+            self._ultima_actividad = _t.monotonic()
+
+        for secuencia in ("<Motion>", "<ButtonPress>", "<KeyPress>"):
+            self.bind_all(secuencia, actividad, add="+")
         self._prewarm_queue = [k for k in self._PREWARM_ORDER
                                if k in self._nav_keys and k not in self._views]
         self._prewarm_next()
 
     def _prewarm_next(self) -> None:
         if not getattr(self, "_prewarm_queue", None):
+            return
+        import time as _t
+        quieto = _t.monotonic() - getattr(self, "_ultima_actividad", 0)
+        if quieto < self._PREWARM_QUIETO_S:
+            self.after(400, self._prewarm_next)        # se está usando: luego
             return
         key = self._prewarm_queue.pop(0)
         try:
@@ -296,6 +319,11 @@ class DocFlowLiteApp(ctk.CTk):
     def navigate(self, key: str) -> None:
         if key == self._current:
             return
+        if getattr(self, "_en_transicion", False):
+            # La transición atiende eventos mientras pinta: un segundo clic llega
+            # aquí dentro. Se hace al terminar la que está en marcha.
+            self.after(30, lambda: self.navigate(key))
+            return
         view = self._views.get(key) or self._make_view(key)
         if view is None:
             return
@@ -306,13 +334,25 @@ class DocFlowLiteApp(ctk.CTk):
         # Importante: se ocultan TODAS las demás (no solo la previa) y se eleva la
         # actual con tkraise — las vistas prewarmeadas quedaron al fondo del
         # z-order (lower) y, sin re-elevarlas, podían quedar ocultas tras otra.
-        for k, v in self._views.items():
-            if k != key and v.winfo_manager():
-                v.grid_remove()
-        view.grid(row=0, column=0, sticky="nsew")  # re-mapea (grid recuerda opciones)
-        view.tkraise()                              # garantiza que queda visible
+        # Con un fundido cruzado (gui/widgets/ventanas.py): la sección de antes
+        # se desvanece sobre la nueva ya pintada entera, sin el fondo vacío ni la
+        # vista montándose a trozos entre medias.
+        from gui.widgets import ventanas
+
+        def cambiar():
+            view.grid(row=0, column=0, sticky="nsew")  # re-mapea (grid recuerda opciones)
+            view.tkraise()                              # garantiza que queda visible
+            for k, v in self._views.items():
+                if k != key and v.winfo_manager():
+                    v.grid_remove()
+            self.sidebar.set_active(key)
+
+        self._en_transicion = True
+        try:
+            ventanas.transicion(self, self.content, cambiar)
+        finally:
+            self._en_transicion = False
         self._current = key
-        self.sidebar.set_active(key)
         try:
             from core import preferences as _pref
             _pref.set_value("last_section", key)
@@ -371,9 +411,6 @@ class DocFlowLiteApp(ctk.CTk):
         elif key == "ajustes":
             from gui.views.ajustes import AjustesView
             view = AjustesView(self.content, on_restart=self._restart_app)
-        elif key == "usuarios":
-            from gui.views.usuarios import UsuariosView
-            view = UsuariosView(self.content)
         elif key == "reportes":
             from gui.views.reportes import ReportesView
             view = ReportesView(self.content)
