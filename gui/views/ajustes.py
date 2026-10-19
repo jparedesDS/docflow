@@ -1,6 +1,7 @@
-"""Vista Ajustes (solo admin) — configuración y credenciales seguras + usuarios.
+"""Vista Ajustes (solo admin) — configuración y credenciales seguras.
 
-Pestañas: General · Fuentes de datos · Correo · Ofertas · DocuSign · IA · Usuarios.
+Pestañas: General · Fuentes de datos · Correo · Ofertas · DocuSign · IA · Portales · Organización.
+Las cuentas y sus permisos están en su propia sección (gui/views/usuarios.py).
 Secretos → core.credentials (keyring/cifrado). Ajustes no secretos → preferences.
 Los cambios de conexión se aplican al reiniciar (botón en la cabecera).
 """
@@ -11,7 +12,7 @@ import threading
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
 
-from core import auth, credentials, preferences as pref
+from core import credentials, preferences as pref
 from core import data_source
 from core.config import OFERTAS_ACCOUNTS, SECRET_ENV_MAP
 from core.services import docusign as ds
@@ -74,7 +75,6 @@ class AjustesView(OrganizacionMixin, ctk.CTkFrame):
             "IA": lazy(self._build_ia),
             "Portales": lazy(self._build_portales),
             "Organización": lazy(self._build_organizacion),
-            "Usuarios": lazy(self._build_usuarios),
         })
 
     def _restart(self) -> None:
@@ -769,179 +769,3 @@ class AjustesView(OrganizacionMixin, ctk.CTkFrame):
             ui.en_ui(self, lambda: ui.toast(self, "eGesDoc" if ok else "eGesDoc · error", msg,
                                            kind="success" if ok else "error"))
         threading.Thread(target=work, daemon=True).start()
-
-    # ════════════════════════════════════════════════════════════════════════
-    #  USUARIOS
-    # ════════════════════════════════════════════════════════════════════════
-
-    def _build_usuarios(self, parent) -> None:
-        bar = ctk.CTkFrame(parent, fg_color="transparent")
-        bar.pack(fill="x", pady=(theme.SPACE_2, theme.SPACE_1))
-        ctk.CTkLabel(bar, text="Cuentas y permisos por sección", font=theme.FONT_SMALL_BOLD,
-                     text_color=theme.TEXT_MAIN).pack(side="left")
-        ui.button(bar, "+ Nuevo usuario", "primary", size="sm", height=32,
-                  command=lambda: self._edit_user(None)).pack(side="right")
-        self.users_scroll = self._scroll(parent)
-        self._render_users()
-
-    def _render_users(self) -> None:
-        for w in self.users_scroll.winfo_children():
-            w.destroy()
-        for u in auth.list_users():
-            self._user_card(u)
-
-    def _user_card(self, u: dict) -> None:
-        card = ctk.CTkFrame(self.users_scroll, fg_color=theme.BG_CARD, corner_radius=10,
-                            border_width=1, border_color=theme.BORDER)
-        card.pack(fill="x", pady=(0, theme.SPACE_2))
-        top = ctk.CTkFrame(card, fg_color="transparent")
-        top.pack(fill="x", padx=theme.SPACE_3, pady=theme.SPACE_2)
-        col = ui.avatar_color(u["initials"])
-        av = ctk.CTkFrame(top, width=32, height=32, corner_radius=16, fg_color=col)
-        av.pack(side="left", padx=(0, theme.SPACE_2)); av.pack_propagate(False)
-        ctk.CTkLabel(av, text=u["initials"], font=theme.font(11, "bold"), text_color=theme.TEXT_ON_ACCENT).pack(expand=True)
-        info = ctk.CTkFrame(top, fg_color="transparent")
-        info.pack(side="left", fill="x", expand=True)
-        admin = u.get("is_admin")
-        ctk.CTkLabel(info, text=u["nombre"] + ("  · admin" if admin else ""),
-                     font=theme.FONT_SMALL_BOLD, text_color=theme.TEXT_MAIN, anchor="w").pack(anchor="w")
-        if not admin:
-            gestion = [k for k, v in (u.get("permisos") or {}).items() if v == "gestionar"]
-            ver = [k for k, v in (u.get("permisos") or {}).items() if v == "ver"]
-            ctk.CTkLabel(info, text=f"Gestiona {len(gestion)} · Ve {len(ver)} sección(es)",
-                         font=theme.FONT_TINY, text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w")
-        if not admin:
-            ui.button(top, "Editar", "chip", size="xs", width=70, font=theme.FONT_TINY, border_width=0,
-                      text_color=theme.TEXT_SUB, command=lambda: self._edit_user(u)).pack(side="right", padx=(4, 0))
-            ui.button(top, "Reset clave", "chip", size="xs", width=90, font=theme.FONT_TINY, border_width=0,
-                      text_color=theme.TEXT_SUB, command=lambda: self._reset_pwd(u)).pack(side="right", padx=(4, 0))
-            ui.button(top, "Eliminar", "outline", size="xs", width=80, font=theme.FONT_TINY,
-                      text_color=theme.RED, border_color=theme.RED,
-                      command=lambda: self._delete_user(u)).pack(side="right", padx=(4, 0))
-
-    def _reset_pwd(self, u: dict) -> None:
-        UserPasswordDialog(self, u, on_done=self._render_users)
-
-    def _delete_user(self, u: dict) -> None:
-        if ui.confirm(self, "Eliminar usuario", f"¿Eliminar la cuenta de {u['nombre']} ({u['initials']})?"):
-            ok, err = auth.delete_user(u["initials"])
-            if ok:
-                ui.toast(self, "Eliminado", u["initials"], kind="success")
-                self._render_users()
-            else:
-                messagebox.showerror("Error", err, parent=self)
-
-    def _edit_user(self, u):
-        UserEditDialog(self, u, on_done=self._render_users)
-
-
-# ════════════════════════════════════════════════════════════════════════════
-#  Diálogos de usuario
-# ════════════════════════════════════════════════════════════════════════════
-
-class UserEditDialog(ctk.CTkToplevel):
-    def __init__(self, master, user, on_done=None):
-        super().__init__(master, fg_color=theme.BG_PAGE)
-        self._user = user
-        self._on_done = on_done
-        self._new = user is None
-        self.title("Nuevo usuario" if self._new else f"Editar {user['initials']}")
-        self.geometry("520x640")
-        self.transient(master); self.grab_set()
-        self._build()
-
-    def _build(self) -> None:
-        pad = 20
-        ctk.CTkLabel(self, text="Nuevo usuario" if self._new else f"Editar · {self._user['initials']}",
-                     font=theme.font(16, "bold"), text_color=theme.TEXT_MAIN).pack(anchor="w", padx=pad, pady=(18, 8))
-
-        form = ctk.CTkFrame(self, fg_color="transparent")
-        form.pack(fill="x", padx=pad)
-        self.e_ini = _entry(form, value="" if self._new else self._user["initials"], placeholder="Iniciales (ej: AC)")
-        self.e_nombre = _entry(form, value="" if self._new else self._user.get("nombre", ""), placeholder="Nombre")
-        self.e_email = _entry(form, value="" if self._new else self._user.get("email", ""), placeholder="Email (opcional)")
-        for lbl, e in [("Iniciales", self.e_ini), ("Nombre", self.e_nombre), ("Email", self.e_email)]:
-            r = ctk.CTkFrame(form, fg_color="transparent"); r.pack(fill="x", pady=2)
-            ctk.CTkLabel(r, text=lbl, width=90, anchor="w", font=theme.FONT_SMALL,
-                         text_color=theme.TEXT_SUB).pack(side="left")
-            e.pack(side="left", fill="x", expand=True)
-        if self._new:
-            self.e_ini.configure(state="normal")
-            r = ctk.CTkFrame(form, fg_color="transparent"); r.pack(fill="x", pady=2)
-            ctk.CTkLabel(r, text="Contraseña", width=90, anchor="w", font=theme.FONT_SMALL,
-                         text_color=theme.TEXT_SUB).pack(side="left")
-            self.e_pwd = _entry(r, placeholder="(por defecto Aa123456)", show="•")
-            self.e_pwd.pack(side="left", fill="x", expand=True)
-        else:
-            self.e_ini.configure(state="disabled")
-
-        ui.section_header(self, "Permisos por sección").pack(fill="x", padx=pad, pady=(theme.SPACE_3, theme.SPACE_1))
-        grid = ScrollFrame(self, height=300)
-        grid.pack(fill="both", expand=True, padx=pad, pady=(0, 8))
-        self._perm_vars = {}
-        cur = (self._user or {}).get("permisos") or {}
-        for key in auth.SECTION_KEYS:
-            row = ctk.CTkFrame(grid, fg_color="transparent")
-            row.pack(fill="x", pady=2)
-            ctk.CTkLabel(row, text=key.capitalize(), width=160, anchor="w", font=theme.FONT_SMALL,
-                         text_color=theme.TEXT_MAIN).pack(side="left")
-            var = ctk.StringVar(value=cur.get(key, "ver"))
-            ctk.CTkOptionMenu(row, values=["none", "ver", "gestionar"], variable=var, width=130,
-                              height=28, font=theme.FONT_TINY, fg_color=theme.BG_INPUT,
-                              button_color=theme.BORDER_STRONG, button_hover_color=theme.TEXT_MUTED,
-                              text_color=theme.TEXT_MAIN).pack(side="right")
-            self._perm_vars[key] = var
-
-        foot = ctk.CTkFrame(self, fg_color="transparent")
-        foot.pack(fill="x", padx=pad, pady=(0, 14))
-        ui.button(foot, "Cancelar", "secondary", size="lg", font=None, text_color=theme.TEXT_SUB,
-                  command=self.destroy).pack(side="right", padx=(8, 0))
-        ui.button(foot, "Guardar", "primary", size="lg", font=theme.FONT_SMALL_BOLD,
-                  command=self._save).pack(side="right")
-
-    def _save(self) -> None:
-        permisos = {k: v.get() for k, v in self._perm_vars.items()}
-        if self._new:
-            ok, err = auth.create_user(self.e_ini.get(), self.e_nombre.get(), self.e_email.get(),
-                                       password=self.e_pwd.get().strip() or None, permisos=permisos)
-        else:
-            ok, err = auth.update_user(self._user["initials"], nombre=self.e_nombre.get(),
-                                       email=self.e_email.get(), permisos=permisos)
-        if not ok:
-            messagebox.showerror("Error", err, parent=self)
-            return
-        ui.toast(self.master, "Guardado", "Usuario actualizado.", kind="success")
-        if self._on_done:
-            self._on_done()
-        self.destroy()
-
-
-class UserPasswordDialog(ctk.CTkToplevel):
-    def __init__(self, master, user, on_done=None):
-        super().__init__(master, fg_color=theme.BG_PAGE)
-        self._user = user
-        self._on_done = on_done
-        self.title(f"Reset contraseña · {user['initials']}")
-        self.geometry("420x200")
-        self.transient(master); self.grab_set()
-        ctk.CTkLabel(self, text=f"Nueva contraseña para {user['nombre']}", font=theme.font(14, "bold"),
-                     text_color=theme.TEXT_MAIN).pack(anchor="w", padx=20, pady=(20, 10))
-        self.e = _entry(self, placeholder="mínimo 6 caracteres", show="•")
-        self.e.pack(fill="x", padx=20)
-        foot = ctk.CTkFrame(self, fg_color="transparent")
-        foot.pack(fill="x", padx=20, pady=20)
-        ui.button(foot, "Cancelar", "secondary", size="lg", font=None, text_color=theme.TEXT_SUB,
-                  command=self.destroy).pack(side="right", padx=(8, 0))
-        ui.button(foot, "Guardar", "primary", size="lg", font=theme.FONT_SMALL_BOLD,
-                  command=self._save).pack(side="right")
-
-    def _save(self) -> None:
-        ok, err = auth.reset_password(self._user["initials"], self.e.get().strip())
-        if not ok:
-            messagebox.showerror("Error", err, parent=self)
-            return
-        ui.toast(self.master, "Contraseña actualizada",
-                 f"{self._user['initials']} deberá cambiarla al entrar.", kind="success")
-        if self._on_done:
-            self._on_done()
-        self.destroy()

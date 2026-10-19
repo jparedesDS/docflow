@@ -36,10 +36,13 @@ ADMIN_INITIALS: set[str] = {"JP"}
 
 # Secciones gobernables por permisos (claves de navegación del sidebar).
 # 'home' siempre es visible; 'ajustes' es exclusivo del admin.
+# Tienen que estar todas las del menú (gui/navegacion.py): una que falte aquí no
+# la puede ver nadie más que el admin, ni se le puede dar permiso.
 SECTION_KEYS: list[str] = [
     "apertura", "agenda", "inbox", "ofertas", "documentos", "pedidos",
     "almacen", "compras", "calidad", "produccion", "administracion",
     "devoluciones", "reclamaciones", "docusign", "informes", "reportes",
+    "portadas", "vpr",
 ]
 PERM_LEVELS = ("none", "ver", "gestionar")
 
@@ -97,7 +100,7 @@ def _seed_if_empty() -> None:
     """Asegura que existe el admin (JP) y migra registros antiguos.
 
     - Primer arranque: crea la cuenta JP (admin, gestiona todo).
-    - Arranques posteriores: NO borra cuentas (las crea el admin desde Ajustes);
+    - Arranques posteriores: NO borra cuentas (las crea el admin en Usuarios y permisos);
       solo garantiza que JP existe y rellena campos nuevos (permisos/is_admin).
     """
     data = _load()
@@ -126,10 +129,11 @@ def _seed_if_empty() -> None:
             u["permisos"] = _all_perms("gestionar" if u.get("is_admin") else "ver")
             changed = True
         else:
-            # añadir claves de sección que falten
+            # Una sección nueva llega cerrada a las cuentas que ya existen: el
+            # admin decide quién la ve (Usuarios y permisos), no la actualización.
             for k in SECTION_KEYS:
                 if k not in u["permisos"]:
-                    u["permisos"][k] = "gestionar" if u.get("is_admin") else "ver"
+                    u["permisos"][k] = "gestionar" if u.get("is_admin") else "none"
                     changed = True
     if changed:
         _save(data)

@@ -71,6 +71,7 @@ VISTAS = [
     ("informes", "gui.views.informes", "InformesView", {}),
     ("reportes", "gui.views.reportes", "ReportesView", {}),
     ("ajustes", "gui.views.ajustes", "AjustesView", {"on_restart": noop}),
+    ("usuarios", "gui.views.usuarios", "UsuariosView", {}),
 ]
 
 # Diálogos que viven aparte de su vista y que nadie construiría en el recorrido

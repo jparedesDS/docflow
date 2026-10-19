@@ -101,7 +101,8 @@ class CommandPalette(ctk.CTkToplevel):
     def _load_items(self) -> None:
         app = self._app
         allowed = getattr(app, "_nav_keys", set())
-        entries = list(app.NAV_LAYOUT) + [{"type": "item", "key": "ajustes", "label": "Ajustes", "icon": "⚙"}]
+        from gui import navegacion
+        entries = list(app.NAV_LAYOUT) + navegacion.SOLO_ADMIN      # se filtran por `allowed`
         for entry in entries:
             for it in (entry["items"] if entry.get("type") == "group" else [entry]):
                 if it["key"] not in allowed:

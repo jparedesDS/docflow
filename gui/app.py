@@ -5,7 +5,7 @@ import logging
 import customtkinter as ctk
 
 from core.config import APP_NAME, startup_warnings
-from gui import theme
+from gui import navegacion, theme
 from gui.widgets import ui
 from gui.widgets.sidebar import Sidebar
 
@@ -17,47 +17,8 @@ class DocFlowLiteApp(ctk.CTk):
     WIDTH = 1280
     HEIGHT = 820
 
-    # La navegación sigue el organigrama de la empresa: cada grupo es un
-    # departamento, para que cualquiera encuentre lo suyo sin preguntar. Arriba,
-    # sueltos, lo que usa todo el mundo (Inicio, Agenda, Correo, Pedidos).
-    # Se navega con el ratón o con la paleta (Ctrl+K); no hay atajos por letra.
-    NAV_LAYOUT = [
-        {"type": "item", "key": "home", "label": "Inicio", "icon": "⌂"},
-        {"type": "item", "key": "agenda", "label": "Agenda", "icon": "▣"},
-        {"type": "item", "key": "inbox", "label": "Correo", "icon": "✦"},
-        {"type": "item", "key": "pedidos", "label": "Pedidos", "icon": "▦"},
-        {"type": "group", "id": "documentacion", "label": "Documentación", "items": [
-            {"key": "apertura",      "label": "Nuevo pedido",  "icon": "✚"},
-            {"key": "documentos",    "label": "Documentos",    "icon": "◫"},
-            {"key": "devoluciones",  "label": "Devoluciones",  "icon": "↩"},
-            {"key": "portadas",      "label": "Portadas",      "icon": "🖹"},
-            {"key": "vpr",           "label": "VPR",           "icon": "📈"},
-            {"key": "reclamaciones", "label": "Reclamaciones", "icon": "⚠"},
-            {"key": "docusign",      "label": "DocuSign",      "icon": "✒"},
-        ]},
-        {"type": "group", "id": "comercial", "label": "Comercial", "items": [
-            {"key": "ofertas", "label": "Ofertas", "icon": "✉"},
-        ]},
-        {"type": "group", "id": "compras", "label": "Compras", "items": [
-            {"key": "compras", "label": "Material pendiente", "icon": "🛒"},
-        ]},
-        {"type": "group", "id": "produccion", "label": "Producción", "items": [
-            {"key": "produccion", "label": "Taller", "icon": "⚙"},
-        ]},
-        {"type": "group", "id": "calidad", "label": "Calidad", "items": [
-            {"key": "calidad", "label": "No conformidades", "icon": "✔"},
-        ]},
-        {"type": "group", "id": "administracion", "label": "Administración", "items": [
-            {"key": "administracion", "label": "Facturas y avales", "icon": "€"},
-        ]},
-        {"type": "group", "id": "logistica", "label": "Almacén y transporte", "items": [
-            {"key": "almacen", "label": "Expediciones", "icon": "📦"},
-        ]},
-        {"type": "group", "id": "informes", "label": "Informes", "items": [
-            {"key": "informes", "label": "Analítica",          "icon": "▤"},
-            {"key": "reportes", "label": "Centro de Reportes", "icon": "📊"},
-        ]},
-    ]
+    # Las secciones del menú (y su orden) están en gui/navegacion.py.
+    NAV_LAYOUT = navegacion.NAV_LAYOUT
 
     def __init__(self, current_user: dict | None = None):
         # Aplicar tema según preferencia persistida
@@ -291,7 +252,7 @@ class DocFlowLiteApp(ctk.CTk):
         self.grid_rowconfigure(0, weight=1)
 
         # Sidebar — layout agrupado, filtrado por permisos del usuario.
-        # Grupos sin ítems visibles se descartan; Ajustes (admin) va suelto al final.
+        # Grupos sin ítems visibles se descartan; lo del admin va suelto al final.
         from core import auth
         layout: list[dict] = []
         keys: set[str] = set()
@@ -306,8 +267,9 @@ class DocFlowLiteApp(ctk.CTk):
                 layout.append(entry)
                 keys.add(entry["key"])
         if auth.is_admin(self.current_user):
-            layout.append({"type": "item", "key": "ajustes", "label": "Ajustes", "icon": "⚙"})
-            keys.add("ajustes")
+            for entry in navegacion.SOLO_ADMIN:
+                layout.append(entry)
+                keys.add(entry["key"])
         self._nav_keys = keys
 
         nombre = self.current_user.get("nombre") or "Usuario"
@@ -409,6 +371,9 @@ class DocFlowLiteApp(ctk.CTk):
         elif key == "ajustes":
             from gui.views.ajustes import AjustesView
             view = AjustesView(self.content, on_restart=self._restart_app)
+        elif key == "usuarios":
+            from gui.views.usuarios import UsuariosView
+            view = UsuariosView(self.content)
         elif key == "reportes":
             from gui.views.reportes import ReportesView
             view = ReportesView(self.content)
