@@ -3,10 +3,11 @@
 Una sola lista para el menú, la paleta (Ctrl+K) y Ajustes ▸ Usuarios y
 permisos, que así enseña cada sección con el mismo nombre e icono que el menú.
 
-La navegación sigue el organigrama de la empresa: cada grupo es un
-departamento, para que cualquiera encuentre lo suyo sin preguntar. Arriba,
-sueltos, lo que usa todo el mundo (Inicio, Agenda, Correo); después, Pedidos
-con lo que se hace con cada uno (su seguimiento, el VPR y sus portadas).
+Arriba, sueltos, lo que usa todo el mundo (Inicio, Agenda, Correo); después,
+Pedidos con lo que se hace con cada uno (abrirlo, seguirlo, el VPR y sus
+portadas), Documentación, Comercial y, juntos en Departamentos, los que solo
+tienen una pantalla cada uno (antes eran cinco grupos de una sola entrada:
+cinco cabeceras que abrir para llegar a una pantalla).
 """
 
 NAV_LAYOUT = [
@@ -15,11 +16,11 @@ NAV_LAYOUT = [
     {"type": "item", "key": "inbox", "label": "Correo", "icon": "✦"},
     {"type": "group", "id": "pedidos", "label": "Pedidos", "items": [
         {"key": "pedidos",  "label": "Seguimiento",      "icon": "▦"},
+        {"key": "apertura", "label": "Nuevo pedido",     "icon": "✚"},
         {"key": "vpr",      "label": "VPR",              "icon": "📈"},
         {"key": "portadas", "label": "Generar portadas", "icon": "🖹"},
     ]},
     {"type": "group", "id": "documentacion", "label": "Documentación", "items": [
-        {"key": "apertura",      "label": "Nuevo pedido",  "icon": "✚"},
         {"key": "documentos",    "label": "Documentos",    "icon": "◫"},
         {"key": "devoluciones",  "label": "Devoluciones",  "icon": "↩"},
         {"key": "reclamaciones", "label": "Reclamaciones", "icon": "⚠"},
@@ -28,20 +29,12 @@ NAV_LAYOUT = [
         {"key": "ofertas",  "label": "Ofertas",  "icon": "✉"},
         {"key": "docusign", "label": "DocuSign", "icon": "✒"},
     ]},
-    {"type": "group", "id": "compras", "label": "Compras", "items": [
-        {"key": "compras", "label": "Material pendiente", "icon": "🛒"},
-    ]},
-    {"type": "group", "id": "produccion", "label": "Producción", "items": [
-        {"key": "produccion", "label": "Taller", "icon": "⚙"},
-    ]},
-    {"type": "group", "id": "calidad", "label": "Calidad", "items": [
-        {"key": "calidad", "label": "No conformidades", "icon": "✔"},
-    ]},
-    {"type": "group", "id": "administracion", "label": "Administración", "items": [
-        {"key": "administracion", "label": "Facturas y avales", "icon": "€"},
-    ]},
-    {"type": "group", "id": "logistica", "label": "Almacén y transporte", "items": [
-        {"key": "almacen", "label": "Expediciones", "icon": "📦"},
+    {"type": "group", "id": "departamentos", "label": "Departamentos", "items": [
+        {"key": "compras",        "label": "Compras",        "icon": "🛒"},
+        {"key": "produccion",     "label": "Producción",     "icon": "⚙"},
+        {"key": "calidad",        "label": "Calidad",        "icon": "✔"},
+        {"key": "administracion", "label": "Administración", "icon": "€"},
+        {"key": "almacen",        "label": "Almacén",        "icon": "📦"},
     ]},
     {"type": "group", "id": "informes", "label": "Informes", "items": [
         {"key": "informes", "label": "Analítica",          "icon": "▤"},
