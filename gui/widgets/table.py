@@ -7,6 +7,9 @@ Mejoras de legibilidad:
 - Resalte de la fila bajo el cursor (hover).
 - Selección destacada con el color de acento.
 - Filas más altas para respirar.
+- Anchos que se adaptan: cada vez que cambia el hueco, las columnas se reparten
+  entre su ancho preferido y su suelo (gui/widgets/columnas.py); solo si ni así
+  caben aparece el scroll horizontal.
 """
 
 import tkinter as tk
@@ -15,6 +18,8 @@ from tkinter import ttk
 import customtkinter as ctk
 
 from gui import theme
+from gui.widgets import columnas
+from gui.widgets.globo import Globo
 
 # Estilo único por proceso — un contador para que cada DataTable tenga su
 # propio nombre de estilo y no se pisen configuraciones entre instancias.
@@ -46,16 +51,23 @@ class DataTable(ctk.CTkFrame):
         self._hover_iid: str | None = None
         self._ctx_builder = None      # builder(iid, col_idx) -> items | None
         self._sb_visible: dict[str, bool | None] = {"v": None, "h": None}
+        self._preferidos: dict[str, int] = {}   # ancho de diseño de cada columna
+        self._suelos_fijos: dict[str, int] = {}  # suelos puestos a mano
+        self._contenido: dict[str, int] | None = None   # caché: lo que mide lo más largo
+        self._ajuste_pendiente = None
+        self._ultimo_ancho = 0
+        self._globo = Globo(self)               # el texto entero de una celda recortada
 
         _STYLE_SEQ[0] += 1
         self._style_name = f"DocFlow{_STYLE_SEQ[0]}.Treeview"
 
         # ── Estilo ttk ──────────────────────────────────────────────────
         style = ttk.Style()
-        try:
-            style.theme_use("clam")
-        except tk.TclError:
-            pass
+        if style.theme_use() != "clam":      # cambiarlo rehace TODOS los ttk: una vez
+            try:
+                style.theme_use("clam")
+            except tk.TclError:
+                pass
 
         style.configure(
             self._style_name,
@@ -151,8 +163,10 @@ class DataTable(ctk.CTkFrame):
         # Hover por fila
         self.tree.bind("<Motion>", self._on_motion)
         self.tree.bind("<Leave>", self._on_leave)
-        # Al cambiar el ancho, lo que antes cabía puede dejar de caber
-        self.tree.bind("<Configure>", self._pedir_recorte, add="+")
+        # Al cambiar el ancho se vuelven a repartir las columnas (y a recortar), y
+        # al volver a verse: lo que se cargó con la vista oculta aún no se repartió
+        self.tree.bind("<Configure>", self._on_configure, add="+")
+        self.tree.bind("<Map>", lambda _e: self._pedir_ajuste(), add="+")
 
         # ── Tags base ───────────────────────────────────────────────────
         # Zebra: dos bandas. 'oddrow' = BG_CARD (igual que el fondo) para que
@@ -173,6 +187,7 @@ class DataTable(ctk.CTkFrame):
 
     def _on_motion(self, event):
         iid = self.tree.identify_row(event.y)
+        self._globo_celda(iid, event)
         if iid == self._hover_iid:
             return
         # Restaurar la fila anterior
@@ -184,7 +199,25 @@ class DataTable(ctk.CTkFrame):
             self.tree.item(iid, tags=base + ("rowhover",))
         self._hover_iid = iid
 
+    def _globo_celda(self, iid, event) -> None:
+        """Si la celda bajo el ratón sale recortada, su texto entero en un globo."""
+        col = self.tree.identify_column(event.x)
+        try:
+            idx = int(col[1:]) - 1
+            completo = str(self._valores.get(iid, ())[idx])
+            visto = str(self.tree.set(iid, self._columns[idx]))
+        except (ValueError, IndexError, tk.TclError):
+            self._globo.quitar()
+            return
+        if not completo or visto == completo:
+            self._globo.quitar()
+            return
+        x0, y0, _w, alto = self.tree.bbox(iid, self._columns[idx]) or (event.x, event.y, 0, 20)
+        self._globo.pedir((iid, idx), completo, self.tree.winfo_rootx() + x0,
+                          self.tree.winfo_rooty() + y0 + alto + 2)
+
     def _on_leave(self, _event):
+        self._globo.quitar()
         if self._hover_iid and self._hover_iid in self._base_tags:
             self.tree.item(self._hover_iid, tags=self._base_tags[self._hover_iid])
         self._hover_iid = None
@@ -192,6 +225,7 @@ class DataTable(ctk.CTkFrame):
     # ── Rueda del ratón ─────────────────────────────────────────────────────
 
     def _on_wheel(self, event):
+        self._globo.quitar()
         self.tree.yview_scroll(int(-event.delta / 120), "units")
         return "break"
 
@@ -297,8 +331,10 @@ class DataTable(ctk.CTkFrame):
     # ── API ─────────────────────────────────────────────────────────────────
 
     def clear(self) -> None:
-        for iid in self.tree.get_children():
-            self.tree.delete(iid)
+        hijos = self.tree.get_children()
+        if hijos:
+            self.tree.delete(*hijos)            # de una vez: fila a fila es O(n) llamadas a Tk
+        self._contenido = None
         self._row_count = 0
         self._base_tags.clear()
         self._valores.clear()
@@ -316,6 +352,9 @@ class DataTable(ctk.CTkFrame):
         new_iid = self.tree.insert("", "end", iid=iid, values=values, tags=final_tags)
         self._base_tags[new_iid] = final_tags
         self._valores[new_iid] = tuple(values)
+        self._contenido = None
+        if self._row_count == 1:
+            self._pedir_ajuste()     # con datos, el reparto ya puede tener en cuenta su largo
         return new_iid
 
     def set_values(self, iid: str, values, tags: tuple | None = None) -> None:
@@ -333,9 +372,19 @@ class DataTable(ctk.CTkFrame):
         self._recortar_fila(iid, *self._medidas())
 
     def set_columns_width(self, widths: dict[str, int]) -> None:
+        """Anchos de diseño: con menos sitio encogen hasta su suelo."""
         for col, w in widths.items():
             if col in self._columns:
+                self._preferidos[col] = int(w)
                 self.tree.column(col, width=w)
+        self._pedir_ajuste()
+
+    def set_columns_floor(self, floors: dict[str, int]) -> None:
+        """Lo mínimo que puede encoger cada columna (por defecto, su contenido)."""
+        for col, w in floors.items():
+            if col in self._columns:
+                self._suelos_fijos[col] = int(w)
+        self._pedir_ajuste()
 
     def set_columns_anchor(self, anchors: dict[str, str]) -> None:
         """Establece alineación por columna ('w', 'center', 'e').
@@ -352,6 +401,8 @@ class DataTable(ctk.CTkFrame):
         """Desactiva el auto-stretch de columnas para que aparezca scroll horizontal."""
         for col in self._columns:
             self.tree.column(col, stretch=False)
+        self._suelos_fijos = {c: self._preferidos.get(c, int(self.tree.column(c, "width")))
+                              for c in self._columns}
 
     def set_columns_stretch(self, mapping: dict[str, bool]) -> None:
         """Activa/desactiva stretch por columna (la que estira absorbe el hueco)."""
@@ -392,6 +443,15 @@ class DataTable(ctk.CTkFrame):
             cap = max_per.get(col, max_w)
             widths[col] = max(min_w, min(cap, w))
 
+        # Esos son los anchos de diseño; el reparto los adapta al hueco que haya
+        # ahora y cada vez que cambie (maximizar, restaurar, la vista se muestra).
+        self._preferidos.update(widths)
+        if self.tree.winfo_ismapped() and self.tree.winfo_width() > 50:
+            for col in self._columns:
+                self.tree.column(col, stretch=True)
+            self._ajustar()
+            return
+
         total = sum(widths.values()) or 1
 
         # Ancho disponible real de la tabla. Si la tabla aún no está mapeada
@@ -415,6 +475,76 @@ class DataTable(ctk.CTkFrame):
 
         for col, w in widths.items():
             self.tree.column(col, width=w, stretch=True)
+        self.recortar_celdas()
+
+    # ── Reparto del ancho ───────────────────────────────────────────────────
+
+    def _on_configure(self, event) -> None:
+        if event.width != self._ultimo_ancho:
+            self._ultimo_ancho = event.width
+            self._pedir_ajuste()
+
+    def _pedir_ajuste(self) -> None:
+        """Agrupa los reajustes: redimensionar dispara decenas de eventos."""
+        if self._ajuste_pendiente is not None:
+            return
+        try:
+            self._ajuste_pendiente = self.after_idle(self._ajustar)
+        except tk.TclError:          # la ventana se está cerrando
+            self._ajuste_pendiente = None
+
+    def _medir_contenido(self, fuente) -> dict[str, int]:
+        """Lo que mide el valor más largo de cada columna (de las primeras filas)."""
+        if self._contenido is not None:
+            return self._contenido
+        medida = {c: 0 for c in self._columns}
+        for valores in list(self._valores.values())[:300]:
+            for col, valor in zip(self._columns, valores):
+                texto = str(valor)
+                if texto and len(texto) * 4 < columnas.LARGO + 40:   # los largos ya topan en LARGO
+                    medida[col] = max(medida[col], fuente.measure(texto) + 26)
+                elif texto:
+                    medida[col] = columnas.LARGO
+        self._contenido = medida
+        return medida
+
+    def _ajustar(self) -> None:
+        """Reparte el ancho del árbol entre las columnas (ver gui/widgets/columnas.py)."""
+        self._ajuste_pendiente = None
+        try:
+            # Sin verse, el árbol mide lo que suman sus columnas: repartir con eso
+            # las encogería a su propio ancho. Ya se repartirá al aparecer (<Map>).
+            if not self.tree.winfo_ismapped():
+                return
+            disponible = self.tree.winfo_width()
+        except tk.TclError:
+            return
+        if disponible <= 50:                 # aún sin pintar: ya llegará el <Configure>
+            return
+        import tkinter.font as tkfont
+        try:
+            fuente = tkfont.Font(font=theme.FONT_BODY)
+            cabecera = tkfont.Font(font=theme.font(10, "bold"))
+        except Exception:  # noqa: BLE001
+            return
+        contenido = self._medir_contenido(fuente)
+        preferidos, suelos = [], []
+        for col in self._columns:
+            pref = self._preferidos.get(col) or int(self.tree.column(col, "width"))
+            fijo = self._suelos_fijos.get(col)
+            if fijo is None and not self.tree.column(col, "stretch"):
+                fijo = pref                  # una columna que no estira (una casilla) no encoge
+            try:
+                titulo = str(self.tree.heading(col).get("text", col))
+            except Exception:  # noqa: BLE001
+                titulo = col
+            pref, suelo = columnas.medidas(pref, cabecera.measure(titulo) + 24, contenido.get(col, 0), fijo)
+            preferidos.append(pref)
+            suelos.append(suelo)
+        anchos = columnas.repartir(preferidos, suelos, disponible - 2)
+        for col, ancho in zip(self._columns, anchos):
+            if int(self.tree.column(col, "width")) != ancho:
+                self.tree.column(col, width=ancho)
         self.recortar_celdas()
 
     # ── Texto que no cabe ───────────────────────────────────────────────────

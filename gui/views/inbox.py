@@ -95,6 +95,7 @@ class InboxView(ctk.CTkFrame):
             "": 28, "Asunto": 340, "Remitente": 200, "Fecha": 110,
         })
         self.table.tree.column("", anchor="center", stretch=False)
+        self.table.set_columns_floor({"Asunto": 120, "Remitente": 100})
         self.table.tree.tag_configure("unread", foreground=theme.TEXT_MAIN, font=theme.font(11, "bold"))
         self.table.tree.tag_configure("read", foreground=theme.TEXT_SUB)
         self.table.tree.bind("<<TreeviewSelect>>", self._on_select)

@@ -32,12 +32,13 @@ from gui.views.devoluciones.manual import (
 )
 
 logger = logging.getLogger(__name__)
-# Columnas de la lista (key · cabecera · ancho mínimo · estira · alineación),
+# Columnas de la lista (key · cabecera · ancho preferido · estira · alineación ·
+# hasta dónde puede encoger con poco sitio),
 # con el mismo formato por celda que Documentos, Pedidos y Reclamaciones.
 COLUMNS = [
     {"key": "Plataforma", "label": "Portal",    "min": 156, "anchor": "center"},
-    {"key": "Asunto",     "label": "Asunto",    "min": 360, "anchor": "w", "stretch": True},
-    {"key": "Remitente",  "label": "Remitente", "min": 214, "anchor": "w"},
+    {"key": "Asunto",     "label": "Asunto",    "min": 360, "anchor": "w", "stretch": True, "floor": 130},
+    {"key": "Remitente",  "label": "Remitente", "min": 214, "anchor": "w", "floor": 110},
     {"key": "Fecha",      "label": "Recibido",  "min": 128, "anchor": "center"},
     {"key": "Descarga",   "label": "Descarga",  "min": 126, "anchor": "center"},
     {"key": "Enviado",    "label": "Enviado",   "min": 126, "anchor": "center"},

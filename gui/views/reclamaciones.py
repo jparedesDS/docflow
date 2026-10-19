@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # con el mismo formato por celda que Documentos y Pedidos.
 COLUMNS = [
     {"key": "Pedido",       "label": "Pedido",     "min": 118, "anchor": "w"},
-    {"key": "Cliente",      "label": "Cliente",    "min": 220, "anchor": "w", "stretch": True},
+    {"key": "Cliente",      "label": "Cliente",    "min": 220, "anchor": "w", "stretch": True, "floor": 100},
     {"key": "Docs",         "label": "Docs",       "min": 70,  "anchor": "center"},
     {"key": "Días",         "label": "Días",       "min": 84,  "anchor": "center"},
     {"key": "Urgencia",     "label": "Urgencia",   "min": 112, "anchor": "center"},
