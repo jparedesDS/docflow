@@ -233,7 +233,8 @@ def buscar_dos(texto, days, carpetas, saltar, imap_user=None, imap_pass=None):
 res = av.revisar(owner="JP", docs=[], buscar=buscar_dos, cuentas=DOS)
 ok(leidos == [BUZON, "yo@ejemplo.test"] and len(res["nuevas"]) == 1,
    f"mira los dos buzones; el mismo correo en los dos cuenta una vez: {leidos} {res['nuevas']}")
-ok("lculo" in av.BUSQUEDA and "plano" in av.BUSQUEDA, "busca cálculos y planos en el asunto")
+ok(av.BUSQUEDA("RE: p-99/027-S03 - Cálculos realizados") and av.BUSQUEDA("P-99/007 - Planos realizados")
+   and not av.BUSQUEDA("P-99/007 - Envío de documentación"), "qué asuntos se buscan: cálculos y planos")
 
 
 def buscar_falla(texto, days, carpetas, saltar, imap_user=None, imap_pass=None):
@@ -250,6 +251,23 @@ try:
     ok(False, "si fallan todos, se avisa")
 except RuntimeError:
     pass
+
+# ── Un texto de ejemplo guardado en Ajustes no tapa el .env ──────────────────
+import os  # noqa: E402
+
+from core import config  # noqa: E402
+
+ok(config.es_ejemplo("imap.tuservidor.com") and config.es_ejemplo("tu-buzon@tuempresa.com")
+   and not config.es_ejemplo("imap.ejemplo.test"), "reconoce los textos de ejemplo")
+_get = config._pref.get
+config._pref.get = lambda k, d=None: {"x_host": "imap.tuservidor.com", "x_user": "otro@ejemplo.test"}.get(k, d)
+os.environ["X_HOST"] = "imap.ejemplo.test"
+try:
+    ok(config._cfg("x_host", "X_HOST", "") == "imap.ejemplo.test", "el ejemplo guardado se ignora: manda el .env")
+    ok(config._cfg("x_user", "X_USER", "") == "otro@ejemplo.test", "un valor de verdad guardado sigue mandando")
+finally:
+    config._pref.get = _get
+    del os.environ["X_HOST"]
 
 # ── Sincronizar con Documentos no pierde las tareas nuevas ───────────────────
 agenda.AGENDA_FILE = str(tmp / "agenda_sync.json")

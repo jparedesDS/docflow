@@ -489,24 +489,32 @@ def fetch_raw(uid, folder="INBOX", imap_user=None, imap_pass=None) -> bytes:
 
 
 def buscar_asunto(texto, days=14, carpetas="INBOX", saltar=(), imap_user=None, imap_pass=None):
-    """Correos de los últimos `days` días con `texto` en el asunto, con cuerpo.
+    """Correos de los últimos `days` días cuyo asunto encaja, con cuerpo.
 
-    `texto` puede ser una lista: vale cualquiera de ellos (OR en el servidor).
+    `texto` es lo que se le pide al servidor (SUBJECT; una lista = cualquiera,
+    OR) o una función asunto → bool que se aplica aquí, con el asunto ya
+    descodificado. Lo segundo es lo fiable: el servidor busca sobre la cabecera
+    tal cual, y Outlook a veces codifica en base64 solo la palabra con acento
+    («RE: p-26/027 - =?utf-8?b?Q8OhbGN1bG9z?= realizados»): ni «lculo» ni
+    «Cálculos» la encuentran.
+
     `carpetas` es una carpeta, una lista, o una función que recibe todas las
     del buzón y devuelve las que mirar (los avisos que se van archivando por
-    pedido siguen ahí). Los Message-ID de `saltar` ya se conocen: de ésos solo
-    se leen las cabeceras. Solo lectura: EXAMINE y BODY.PEEK, no marca nada
-    como leído. `texto` va en ASCII (la búsqueda del servidor no siempre
-    entiende acentos: «lculo» encuentra «Cálculos» y «Calculos»).
+    pedido siguen ahí). Los Message-ID de `saltar` ya se conocen: de ésos no
+    se baja el cuerpo. Solo lectura: EXAMINE y BODY.PEEK, no marca nada como
+    leído.
     """
     from datetime import datetime, timedelta
     d = datetime.now() - timedelta(days=max(1, days))
     since = f"{d.day:02d}-{_IMAP_MONTHS[d.month - 1]}-{d.year}"
     saltar = set(saltar or ())
-    textos = [texto] if isinstance(texto, str) else list(texto)
-    criterio = ["SUBJECT", textos[-1]]
-    for t in reversed(textos[:-1]):          # OR a OR b c → (a o (b o c))
-        criterio = ["OR", "SUBJECT", t] + criterio
+    filtro = texto if callable(texto) else None
+    criterio = []
+    if filtro is None:
+        textos = [texto] if isinstance(texto, str) else list(texto)
+        criterio = ["SUBJECT", textos[-1]]
+        for t in reversed(textos[:-1]):          # OR a OR b c → (a o (b o c))
+            criterio = ["OR", "SUBJECT", t] + criterio
 
     conn = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT)
     conn.login(imap_user or IMAP_USER, imap_pass or IMAP_PASS)
@@ -525,30 +533,43 @@ def buscar_asunto(texto, days=14, carpetas="INBOX", saltar=(), imap_user=None, i
                     continue
                 typ, data = conn.uid("SEARCH", None, "SINCE", since, *criterio)
                 uids = data[0].split() if typ == "OK" and data and data[0] else []
-                for uid in uids:
-                    _, md = conn.uid("FETCH", uid, "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
-                    cab = md[0][1] if md and isinstance(md[0], tuple) else b""
-                    msgid = (email.message_from_bytes(cab).get("Message-ID") or "").strip()
-                    if msgid and msgid in saltar:
-                        continue
-                    _, md = conn.uid("FETCH", uid, "(BODY.PEEK[])")
-                    if not md or not isinstance(md[0], tuple):
-                        continue
-                    msg = email.message_from_bytes(md[0][1])
-                    try:
-                        fecha = parsedate_to_datetime(msg.get("Date", "")).isoformat()
-                    except Exception:
-                        fecha = ""
-                    out.append({
-                        "carpeta": carpeta,
-                        "message_id": msgid,
-                        "subject": _decode_header_value(msg.get("Subject", "")),
-                        "from": _decode_header_value(msg.get("From", "")),
-                        "date": fecha,
-                        "msg": msg,
-                    })
-                    if msgid:
-                        saltar.add(msgid)         # el mismo correo en dos carpetas
+                # Cabeceras en lote; el cuerpo, solo de lo que encaja y es nuevo
+                for i in range(0, len(uids), 200):
+                    _, md = conn.uid("FETCH", b",".join(uids[i:i + 200]),
+                                     "(BODY.PEEK[HEADER.FIELDS (SUBJECT MESSAGE-ID)])")
+                    for item in md or ():
+                        if not isinstance(item, tuple) or len(item) < 2:
+                            continue
+                        info = item[0].decode(errors="replace") if isinstance(item[0], bytes) else str(item[0])
+                        # El nº de secuencia va delante; el UID, según el
+                        # servidor, llega detrás del bloque y en otro elemento
+                        m_seq = re.match(r"\s*(\d+)", info)
+                        if not m_seq:
+                            continue
+                        cab = email.message_from_bytes(item[1] or b"")
+                        msgid = (cab.get("Message-ID") or "").strip()
+                        if msgid and msgid in saltar:
+                            continue
+                        if filtro is not None and not filtro(_decode_header_value(cab.get("Subject", ""))):
+                            continue
+                        _, cuerpo = conn.fetch(m_seq.group(1), "(BODY.PEEK[])")
+                        if not cuerpo or not isinstance(cuerpo[0], tuple):
+                            continue
+                        msg = email.message_from_bytes(cuerpo[0][1])
+                        try:
+                            fecha = parsedate_to_datetime(msg.get("Date", "")).isoformat()
+                        except Exception:
+                            fecha = ""
+                        out.append({
+                            "carpeta": carpeta,
+                            "message_id": msgid,
+                            "subject": _decode_header_value(msg.get("Subject", "")),
+                            "from": _decode_header_value(msg.get("From", "")),
+                            "date": fecha,
+                            "msg": msg,
+                        })
+                        if msgid:
+                            saltar.add(msgid)         # el mismo correo en dos carpetas
             except Exception as exc:  # noqa: BLE001 — una carpeta rara no corta el resto
                 logger.debug("buscar_asunto %s: %s", carpeta, exc)
             finally:

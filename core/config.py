@@ -31,10 +31,20 @@ APP_VERSION = "0.1"
 APP_FIRMA = f"{APP_NAME} v{APP_VERSION}"
 
 
+# Los textos de ejemplo de Ajustes («imap.tuservidor.com», «tu-buzon@tuempresa.com»).
+# Hubo una versión que los ponía como valor del campo y no como ejemplo: al pulsar
+# Guardar acababan en preferences y tapaban el .env (el correo dejaba de conectar).
+_EJEMPLOS = ("tuservidor.com", "tuempresa.com")
+
+
+def es_ejemplo(valor) -> bool:
+    return str(valor or "").strip().lower().endswith(_EJEMPLOS)
+
+
 def _cfg(pref_key: str, env_key: str, default: str) -> str:
     """Ajuste no secreto: preferences → .env → default."""
     v = _pref.get(pref_key)
-    if v:
+    if v and not es_ejemplo(v):
         return str(v)
     return os.getenv(env_key, default)
 

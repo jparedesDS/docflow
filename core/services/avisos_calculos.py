@@ -36,9 +36,6 @@ REGISTRO_FILE = str(state_dir() / "avisos_calculos.json")
 # Cuántos días atrás se mira el buzón. La primera vez trae lo de estas dos
 # semanas que siga sin enviarse; luego solo lo que no se haya visto.
 DIAS_ATRAS = 14
-# Lo que se le pide al servidor, cualquiera de los dos en el asunto (ASCII:
-# «lculo» vale para Cálculos y Calculos). El filtro de verdad son los _RE_ASUNTO.
-BUSQUEDA = ("lculo", "plano")
 # Se olvidan los Message-ID de hace más de esto (ya no entran en la búsqueda)
 _OLVIDAR_DIAS = 120
 
@@ -65,6 +62,21 @@ _RE_FIRMA = re.compile(r"^\s*(tl?f\w*\.?\s*:|tel\w*\.?\s*:|www\.|https?://|techn
 # Lo que no es una nota: saludo, la frase del aviso, la línea que llevan todos
 _RE_RELLENO = re.compile(r"^\s*(hola\b|buen[oa]s\b)|siguiente carpeta|^\s*ya est[aá]n .*c[aá]lculo"
                          r"|^\s*erp actualizado con los datos\.?\s*$|^\s*actualizaci[oó]n\W*$", re.I)
+
+
+
+
+def es_asunto_de_aviso(asunto: str) -> bool:
+    """¿Este asunto (ya descodificado) es de un aviso de cálculos o de planos?"""
+    limpio = asunto or ""
+    while _RE_PREFIJO.match(limpio):
+        limpio = _RE_PREFIJO.sub("", limpio, count=1)
+    return bool(_RE_ASUNTO.search(limpio) or _RE_ASUNTO_PLANOS.search(limpio))
+
+
+# Qué asuntos se buscan. Se filtra aquí y no en el servidor: éste busca sobre la
+# cabecera sin descodificar, y si Outlook pone «Cálculos» en base64 no la encuentra.
+BUSQUEDA = es_asunto_de_aviso
 
 
 # ── Leer un aviso ─────────────────────────────────────────────────────────────

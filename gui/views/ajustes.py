@@ -7,12 +7,13 @@ Los cambios de conexión se aplican al reiniciar (botón en la cabecera).
 """
 
 import logging
+import os
 import threading
 
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
 
-from core import credentials, preferences as pref
+from core import config, credentials, preferences as pref
 from core import data_source
 from core.config import OFERTAS_ACCOUNTS, SECRET_ENV_MAP
 from core.services import docusign as ds
@@ -93,12 +94,19 @@ class AjustesView(OrganizacionMixin, ctk.CTkFrame):
 
     # ── reusables ────────────────────────────────────────────────────────────
 
-    def _setting_row(self, parent, label, pref_key, default="", width=260):
+    def _setting_row(self, parent, label, pref_key, default="", width=260, ejemplo="", env_key=None):
+        """`default` es un valor de verdad (un puerto); `ejemplo` solo se ve en
+        gris mientras el campo está vacío. Si el ajuste viene del .env, se
+        enseña ese valor: es el que la app está usando."""
         row = ctk.CTkFrame(parent, fg_color="transparent")
         row.pack(fill="x", pady=theme.SPACE_1)
         ctk.CTkLabel(row, text=label, font=theme.FONT_SMALL, text_color=theme.TEXT_SUB,
                      anchor="w", width=170).pack(side="left")
-        e = _entry(row, value=str(pref.get(pref_key) or default), width=width)
+        guardado = pref.get(pref_key)
+        if config.es_ejemplo(guardado):
+            guardado = ""
+        actual = guardado or (os.getenv(env_key, "") if env_key else "") or default
+        e = _entry(row, value=str(actual or ""), placeholder=ejemplo, width=width)
         e.pack(side="left", fill="x", expand=True)
         return e
 
@@ -425,15 +433,19 @@ class AjustesView(OrganizacionMixin, ctk.CTkFrame):
     def _build_correo(self, parent) -> None:
         s = self._scroll(parent)
         ui.section_header(s, "IMAP (lectura)").pack(fill="x", pady=(theme.SPACE_2, theme.SPACE_2))
-        self.imap_host = self._setting_row(s, "Host", "imap_host", "imap.tuservidor.com")
-        self.imap_port = self._setting_row(s, "Puerto", "imap_port", "993", width=80)
-        self.imap_user = self._setting_row(s, "Usuario", "imap_user", "tu-buzon@tuempresa.com")
+        self.imap_host = self._setting_row(s, "Host", "imap_host", ejemplo="imap.tuservidor.com",
+                                           env_key="IMAP_HOST")
+        self.imap_port = self._setting_row(s, "Puerto", "imap_port", "993", width=80, env_key="IMAP_PORT")
+        self.imap_user = self._setting_row(s, "Usuario", "imap_user", ejemplo="tu-buzon@tuempresa.com",
+                                           env_key="IMAP_USER")
         self.imap_pass, self.imap_pass_state = self._secret_row(s, "Contraseña", "imap_pass", "IMAP_PASS")
 
         ui.section_header(s, "SMTP (envío)").pack(fill="x", pady=(theme.SPACE_3, theme.SPACE_2))
-        self.smtp_host = self._setting_row(s, "Host", "smtp_host", "smtp.tuservidor.com")
-        self.smtp_port = self._setting_row(s, "Puerto", "smtp_port", "465", width=80)
-        self.smtp_user = self._setting_row(s, "Usuario", "smtp_user", "tu-buzon@tuempresa.com")
+        self.smtp_host = self._setting_row(s, "Host", "smtp_host", ejemplo="smtp.tuservidor.com",
+                                           env_key="SMTP_HOST")
+        self.smtp_port = self._setting_row(s, "Puerto", "smtp_port", "465", width=80, env_key="SMTP_PORT")
+        self.smtp_user = self._setting_row(s, "Usuario", "smtp_user", ejemplo="tu-buzon@tuempresa.com",
+                                           env_key="SMTP_USER")
         self.smtp_pass, self.smtp_pass_state = self._secret_row(s, "Contraseña", "smtp_pass", "SMTP_PASS")
 
         ui.section_header(s, "Buzón personal · avisos de Técnico (opcional)").pack(
@@ -444,7 +456,8 @@ class AjustesView(OrganizacionMixin, ctk.CTkFrame):
                      "Mismo servidor que el IMAP de arriba."),
             font=theme.FONT_TINY, text_color=theme.TEXT_MUTED, anchor="w", justify="left").pack(
             anchor="w", pady=(0, theme.SPACE_2))
-        self.avisos_user = self._setting_row(s, "Usuario", "avisos_user", "tu-correo@tuempresa.com")
+        self.avisos_user = self._setting_row(s, "Usuario", "avisos_user", ejemplo="tu-correo@tuempresa.com",
+                                             env_key="AVISOS_USER")
         self.avisos_pass, self.avisos_pass_state = self._secret_row(s, "Contraseña", "avisos_pass",
                                                                     "AVISOS_PASS")
 
@@ -465,7 +478,12 @@ class AjustesView(OrganizacionMixin, ctk.CTkFrame):
                          ("imap_user", self.imap_user), ("smtp_host", self.smtp_host),
                          ("smtp_port", self.smtp_port), ("smtp_user", self.smtp_user),
                          ("avisos_user", self.avisos_user)]:
-            pref.set_value(key, ent.get().strip())
+            valor = ent.get().strip()
+            # Lo que ya dice el .env se queda allí (vacío = «usa el .env»), y un
+            # texto de ejemplo no es un ajuste
+            if config.es_ejemplo(valor) or valor == os.getenv(key.upper(), ""):
+                valor = ""
+            pref.set_value(key, valor)
         self._save_secret(self.imap_pass, self.imap_pass_state, "imap_pass")
         self._save_secret(self.smtp_pass, self.smtp_pass_state, "smtp_pass")
         self._save_secret(self.avisos_pass, self.avisos_pass_state, "avisos_pass")
