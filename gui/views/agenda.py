@@ -64,7 +64,7 @@ class AgendaView(ctk.CTkFrame):
                   command=self._sync_tareas).pack(side="right", padx=(theme.SPACE_2, 0))
         app = self.winfo_toplevel()
         if hasattr(app, "revisar_avisos"):
-            ui.button(hdr.actions, "✉  Buscar avisos de cálculos", "outline", size="sm",
+            ui.button(hdr.actions, "✉  Buscar avisos de Técnico", "outline", size="sm",
                       command=lambda: app.revisar_avisos(manual=True)).pack(
                 side="right", padx=(theme.SPACE_2, 0))
 
@@ -310,8 +310,8 @@ class AgendaView(ctk.CTkFrame):
         pie = []
         if t.get("auto_generated"):
             pie.append("⚙ de Documentos")
-        if t.get("origen") == "calculos":
-            de = "✉ Cálculos listos"
+        if t.get("origen") in ("calculos", "planos"):
+            de = "✉ Planos listos" if t["origen"] == "planos" else "✉ Cálculos listos"
             if t.get("remitente"):
                 de += f" · {t['remitente']}"
             if t.get("cerrada_sola"):
@@ -320,7 +320,7 @@ class AgendaView(ctk.CTkFrame):
         desc = (t.get("descripcion") or "").strip()
         # Las notas de un aviso son lo que hay que tener en cuenta al subirlo:
         # se ven enteras (o casi), no en 150 caracteres
-        tope = 420 if t.get("origen") == "calculos" else 150
+        tope = 420 if t.get("origen") in ("calculos", "planos") else 150
         if desc and not is_done:
             pie.append(desc if len(desc) <= tope else desc[:tope] + "…")
         lineas = ["  ·  ".join(pie)] if pie else []

@@ -491,6 +491,7 @@ def fetch_raw(uid, folder="INBOX", imap_user=None, imap_pass=None) -> bytes:
 def buscar_asunto(texto, days=14, carpetas="INBOX", saltar=(), imap_user=None, imap_pass=None):
     """Correos de los últimos `days` días con `texto` en el asunto, con cuerpo.
 
+    `texto` puede ser una lista: vale cualquiera de ellos (OR en el servidor).
     `carpetas` es una carpeta, una lista, o una función que recibe todas las
     del buzón y devuelve las que mirar (los avisos que se van archivando por
     pedido siguen ahí). Los Message-ID de `saltar` ya se conocen: de ésos solo
@@ -502,6 +503,10 @@ def buscar_asunto(texto, days=14, carpetas="INBOX", saltar=(), imap_user=None, i
     d = datetime.now() - timedelta(days=max(1, days))
     since = f"{d.day:02d}-{_IMAP_MONTHS[d.month - 1]}-{d.year}"
     saltar = set(saltar or ())
+    textos = [texto] if isinstance(texto, str) else list(texto)
+    criterio = ["SUBJECT", textos[-1]]
+    for t in reversed(textos[:-1]):          # OR a OR b c → (a o (b o c))
+        criterio = ["OR", "SUBJECT", t] + criterio
 
     conn = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT)
     conn.login(imap_user or IMAP_USER, imap_pass or IMAP_PASS)
@@ -518,7 +523,7 @@ def buscar_asunto(texto, days=14, carpetas="INBOX", saltar=(), imap_user=None, i
                 typ, _ = conn.select(_nombre_carpeta(carpeta), readonly=True)
                 if typ != "OK":
                     continue
-                typ, data = conn.uid("SEARCH", None, "SINCE", since, "SUBJECT", texto)
+                typ, data = conn.uid("SEARCH", None, "SINCE", since, *criterio)
                 uids = data[0].split() if typ == "OK" and data and data[0] else []
                 for uid in uids:
                     _, md = conn.uid("FETCH", uid, "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")

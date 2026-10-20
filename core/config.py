@@ -52,6 +52,10 @@ IMAP_HOST = _cfg("imap_host", "IMAP_HOST", "")
 IMAP_PORT = int(_cfg("imap_port", "IMAP_PORT", "993"))
 IMAP_USER = _cfg("imap_user", "IMAP_USER", "")
 IMAP_PASS = credentials.get("imap_pass", env_fallback="IMAP_PASS")
+# Buzón personal, opcional: solo para los avisos de Técnico (cálculos y planos)
+# que no llegan al de la app. Solo lectura, mismo servidor.
+AVISOS_USER = _cfg("avisos_user", "AVISOS_USER", "")
+AVISOS_PASS = credentials.get("avisos_pass", env_fallback="AVISOS_PASS")
 
 # ── SMTP ──────────────────────────────────────────────────────────────────────
 SMTP_HOST = _cfg("smtp_host", "SMTP_HOST", "")
@@ -90,7 +94,7 @@ DOCUSIGN_RSA_PRIVATE_KEY_PATH = _cfg(
 
 # Mapa de claves de secreto ↔ variable .env (para la migración desde Ajustes)
 SECRET_ENV_MAP = {
-    "imap_pass": "IMAP_PASS", "smtp_pass": "SMTP_PASS",
+    "imap_pass": "IMAP_PASS", "smtp_pass": "SMTP_PASS", "avisos_pass": "AVISOS_PASS",
     "anthropic_api_key": "ANTHROPIC_API_KEY",
     "ofertas_comercial_pass": "OFERTAS_COMERCIAL_PASS",
     "ofertas_dpto_pass": "OFERTAS_DPTO_PASS",

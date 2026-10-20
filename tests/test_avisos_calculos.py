@@ -113,7 +113,10 @@ BUZON_FALSO = [
 llamadas = []
 
 
-def buscar(texto, days, carpetas, saltar):
+CUENTAS = [{"user": BUZON}]
+
+
+def buscar(texto, days, carpetas, saltar, imap_user=None, imap_pass=None):
     llamadas.append(carpetas)
     return [c for c in BUZON_FALSO if c["message_id"] not in saltar]
 
@@ -127,7 +130,7 @@ DOCS = [
     {"Nº Pedido": "P-99/001-S02", "Tipo Doc.": "Planos", "Fecha Env. Doc.": hoy.strftime("%d/%m/%Y")},
 ]
 
-res = av.revisar(completo=False, owner="JP", docs=DOCS, buscar=buscar, buzon=BUZON)
+res = av.revisar(completo=False, owner="JP", docs=DOCS, buscar=buscar, cuentas=CUENTAS)
 ok(llamadas[-1] == "INBOX", f"pasada rápida: solo la bandeja: {llamadas[-1]}")
 ok([x["titulo"] for x in res["nuevas"]] == ["Subir cálculos P-99/001-S02 · rev 1-2"],
    f"solo una tarea nueva (ni lo enviado, ni un cliente, ni lo propio): {[x['titulo'] for x in res['nuevas']]}")
@@ -138,30 +141,115 @@ ok(len(tareas) == 1 and tareas[0]["actualizaciones"][0]["texto"] == "Añadido el
 ok(tareas[0]["carpeta"].endswith("rev 1-2") and tareas[0]["source_msgid"] == "<a@x>", "con carpeta y Message-ID")
 ok(res["cerradas"] == [], "nada que cerrar todavía")
 
-res = av.revisar(completo=True, owner="JP", docs=DOCS, buscar=buscar, buzon=BUZON)
+res = av.revisar(completo=True, owner="JP", docs=DOCS, buscar=buscar, cuentas=CUENTAS)
 ok(callable(llamadas[-1]), "pasada completa: también las carpetas de los pedidos")
 ok(not res["nuevas"] and not res["actualizadas"], f"lo visto no se repite: {res}")
 
 agenda.delete("tareas", tareas[0]["id"])
-res = av.revisar(completo=True, owner="JP", docs=DOCS, buscar=buscar, buzon=BUZON)
+res = av.revisar(completo=True, owner="JP", docs=DOCS, buscar=buscar, cuentas=CUENTAS)
 ok(not res["nuevas"] and agenda.get_tareas("JP") == [], "una tarea borrada no vuelve")
 
 # Llega otro aviso; luego sus cálculos salen al cliente → se cierra sola
 BUZON_FALSO.append(correo("<e@x>", "P-99/006 - Cálculos realizados",
                           "M:/pedidos/P-99-006-S01 - X - Y/2-Tecnico/rev 0\n"))
-res = av.revisar(owner="JP", docs=DOCS, buscar=buscar, buzon=BUZON)
+res = av.revisar(owner="JP", docs=DOCS, buscar=buscar, cuentas=CUENTAS)
 ok(len(res["nuevas"]) == 1 and res["nuevas"][0]["supp"] == "S01", f"aviso nuevo: {res['nuevas']}")
 DOCS.append({"Nº Pedido": "P-99/006-S01", "Tipo Doc.": "Cálculos",
              "Fecha Env. Doc.": hoy.strftime("%d/%m/%Y")})
-res = av.revisar(owner="JP", docs=DOCS, buscar=buscar, buzon=BUZON)
+res = av.revisar(owner="JP", docs=DOCS, buscar=buscar, cuentas=CUENTAS)
 ok(len(res["cerradas"]) == 1, f"enviados al cliente: tarea cerrada: {res['cerradas']}")
 t6 = agenda.get_tareas("JP")[0]
 ok(t6["estado"] == "completada" and t6.get("cerrada_sola"), f"completada y se sabe por qué: {t6}")
 
 # Sin seguimiento de documentos (docs=None) se crea igual, y no se cierra nada
 BUZON_FALSO.append(correo("<f@x>", "P-99/003 - Cálculos realizados", "", cuando=hoy))
-res = av.revisar(owner="JP", docs=None, buscar=buscar, buzon=BUZON)
+res = av.revisar(owner="JP", docs=None, buscar=buscar, cuentas=CUENTAS)
 ok(len(res["nuevas"]) == 1 and res["cerradas"] == [], f"sin seguimiento: {res}")
+
+# ── Planos ────────────────────────────────────────────────────────────────────
+JEFE = '"pedro-gil pedro-gil" <pedro-gil@ejemplo.test>'
+pl = av.analizar("RE: P-99/001-s02- Cálculos realizados",
+                 "Ya están hechos los planos y adjuntado al documento de cálculo y plano\n"
+                 "Se puede enviar para aprobación\nPedro Gil\nJefe Dpto. Técnico\ntlf.: 000", JEFE)
+ok(pl and pl["tipo"] == "planos" and pl["respuesta"], f"respuesta de planos: {pl}")
+ok(pl["notas"] == ["Ya están hechos los planos y adjuntado al documento de cálculo y plano",
+                   "Se puede enviar para aprobación"], f"la frase de los planos es la nota: {pl['notas']}")
+pl = av.analizar("RE: PA-99/103 - Cálculos realizados",
+                 "RE: PA-99/103 - Cálculos realizados\n"
+                 "Ya están hechos los planos del pedido de almacén PA-99/103, se pueden enviar", JEFE)
+ok(pl["tipo"] == "planos" and pl["notas"] == [
+    "Ya están hechos los planos del pedido de almacén PA-99/103, se pueden enviar"],
+   f"sin el asunto repetido en el cuerpo: {pl['notas']}")
+ok(av.analizar("RE: P-99/001 - Cálculos realizados", "Buenos días,\nYa están revisados los planos",
+               JEFE)["tipo"] == "planos", "«revisados los planos» también")
+ok(av.analizar("P-99/007 - Planos realizados", "Hola", JEFE)["tipo"] == "planos", "asunto de planos")
+ok(av.analizar("P-99/001 - Cálculos realizados", "Le he dado al botón de los planos.\n"
+               "Los planos los tiene Pedro en:\nM:\\x\\env planos", TECNICO)["tipo"] == "aviso",
+   "un aviso de cálculos que solo menciona los planos sigue siendo de cálculos")
+
+agenda.AGENDA_FILE = str(tmp / "agenda_planos.json")
+av.REGISTRO_FILE = str(tmp / "registro_planos.json")
+BUZON_FALSO[:] = [
+    correo("<c10@x>", "P-99/010 - Cálculos realizados",
+           "Ya están hechos los cálculos para el pedido P-99/010 y se encuentran en la siguiente carpeta:\n"
+           "M:/pedidos/P-99-010-S01 - CLIENTE - CAUDAL/2-Tecnico/env cal/rev 1\n"),
+    correo("<p10@x>", "RE: P-99/010 - Cálculos realizados",
+           "Ya están hechos los planos\nSe puede enviar para aprobación\nSaludos.", de=JEFE,
+           cuando=hoy + timedelta(hours=1)),
+]
+res = av.revisar(owner="JP", docs=[], buscar=buscar, cuentas=CUENTAS)
+titulos = [x["titulo"] for x in res["nuevas"]]
+ok(titulos == ["Subir cálculos P-99/010-S01 · rev 1", "Subir planos P-99/010-S01 · rev 1"],
+   f"cálculos y planos, con el suministro y la revisión de los cálculos: {titulos}")
+planos = res["nuevas"][1]
+ok(planos["origen"] == "planos" and planos["carpeta"].endswith("env cal\\rev 1")
+   and planos["remitente"] == "Pedro Gil", f"planos con la carpeta de los cálculos: {planos}")
+calc = next(x for x in agenda.get_tareas("JP") if x["origen"] == "calculos")
+ok([n["texto"] for n in calc["actualizaciones"]] == ["Ya están hechos los planos · Se puede enviar para aprobación"],
+   f"y la de cálculos lo anota: {calc['actualizaciones']}")
+ok(res["actualizadas"] == [], "sin un segundo aviso por lo mismo")
+
+# Un plano enviado cierra los planos, no los cálculos; «Cálculo y plano» cierra los dos
+envio = {"Nº Pedido": "P-99/010-S01", "Tipo Doc.": "Planos", "Fecha Env. Doc.": hoy.strftime("%d/%m/%Y")}
+res = av.revisar(owner="JP", docs=[envio], buscar=buscar, cuentas=CUENTAS)
+ok([x["origen"] for x in res["cerradas"]] == ["planos"], f"plano enviado: {res['cerradas']}")
+envio["Tipo Doc."] = "Cálculo y plano"
+res = av.revisar(owner="JP", docs=[envio], buscar=buscar, cuentas=CUENTAS)
+ok([x["origen"] for x in res["cerradas"]] == ["calculos"], f"cálculo y plano enviado: {res['cerradas']}")
+
+# ── Dos buzones ───────────────────────────────────────────────────────────────
+agenda.AGENDA_FILE = str(tmp / "agenda_dos.json")
+av.REGISTRO_FILE = str(tmp / "registro_dos.json")
+BUZON_FALSO[:] = [correo("<d1@x>", "P-99/020 - Cálculos realizados", "")]
+DOS = [{"user": BUZON}, {"user": "yo@ejemplo.test", "password": "x"}]
+leidos = []
+
+
+def buscar_dos(texto, days, carpetas, saltar, imap_user=None, imap_pass=None):
+    leidos.append(imap_user)
+    return [dict(c) for c in BUZON_FALSO if c["message_id"] not in saltar]
+
+
+res = av.revisar(owner="JP", docs=[], buscar=buscar_dos, cuentas=DOS)
+ok(leidos == [BUZON, "yo@ejemplo.test"] and len(res["nuevas"]) == 1,
+   f"mira los dos buzones; el mismo correo en los dos cuenta una vez: {leidos} {res['nuevas']}")
+ok("lculo" in av.BUSQUEDA and "plano" in av.BUSQUEDA, "busca cálculos y planos en el asunto")
+
+
+def buscar_falla(texto, days, carpetas, saltar, imap_user=None, imap_pass=None):
+    if imap_user == "yo@ejemplo.test":
+        raise OSError("contraseña mal")
+    return []
+
+
+res = av.revisar(owner="JP", docs=[], buscar=buscar_falla, cuentas=DOS)
+ok(len(res["errores"]) == 1, f"si falla uno, el otro se lee igual: {res['errores']}")
+try:
+    av.revisar(owner="JP", docs=[], buscar=lambda *a, **k: (_ for _ in ()).throw(OSError("sin red")),
+               cuentas=DOS)
+    ok(False, "si fallan todos, se avisa")
+except RuntimeError:
+    pass
 
 # ── Sincronizar con Documentos no pierde las tareas nuevas ───────────────────
 agenda.AGENDA_FILE = str(tmp / "agenda_sync.json")

@@ -436,10 +436,25 @@ class AjustesView(OrganizacionMixin, ctk.CTkFrame):
         self.smtp_user = self._setting_row(s, "Usuario", "smtp_user", "tu-buzon@tuempresa.com")
         self.smtp_pass, self.smtp_pass_state = self._secret_row(s, "Contraseña", "smtp_pass", "SMTP_PASS")
 
+        ui.section_header(s, "Buzón personal · avisos de Técnico (opcional)").pack(
+            fill="x", pady=(theme.SPACE_3, theme.SPACE_1))
+        ctk.CTkLabel(
+            s, text=("Además del buzón de arriba, la app busca aquí los avisos de «Cálculos realizados» "
+                     "y de planos que solo te llegan a ti.\nSOLO LECTURA: no marca, mueve ni borra nada. "
+                     "Mismo servidor que el IMAP de arriba."),
+            font=theme.FONT_TINY, text_color=theme.TEXT_MUTED, anchor="w", justify="left").pack(
+            anchor="w", pady=(0, theme.SPACE_2))
+        self.avisos_user = self._setting_row(s, "Usuario", "avisos_user", "tu-correo@tuempresa.com")
+        self.avisos_pass, self.avisos_pass_state = self._secret_row(s, "Contraseña", "avisos_pass",
+                                                                    "AVISOS_PASS")
+
         btns = ctk.CTkFrame(s, fg_color="transparent")
         btns.pack(anchor="w", pady=theme.SPACE_3)
         ui.button(btns, "Guardar correo", "primary", size="sm", height=36,
                   command=self._save_correo).pack(side="left", padx=(0, theme.SPACE_2))
+        ui.button(btns, "Probar buzón personal", "outline", size="sm", height=36,
+                  text_color=theme.TEXT_SUB, command=self._test_avisos).pack(
+            side="left", padx=(0, theme.SPACE_2))
         ui.button(btns, "Probar IMAP", "outline", size="sm", height=36, text_color=theme.TEXT_SUB,
                   command=self._test_imap).pack(side="left", padx=(0, theme.SPACE_2))
         ui.button(btns, "Probar SMTP", "outline", size="sm", height=36, text_color=theme.TEXT_SUB,
@@ -448,10 +463,12 @@ class AjustesView(OrganizacionMixin, ctk.CTkFrame):
     def _save_correo(self) -> None:
         for key, ent in [("imap_host", self.imap_host), ("imap_port", self.imap_port),
                          ("imap_user", self.imap_user), ("smtp_host", self.smtp_host),
-                         ("smtp_port", self.smtp_port), ("smtp_user", self.smtp_user)]:
+                         ("smtp_port", self.smtp_port), ("smtp_user", self.smtp_user),
+                         ("avisos_user", self.avisos_user)]:
             pref.set_value(key, ent.get().strip())
         self._save_secret(self.imap_pass, self.imap_pass_state, "imap_pass")
         self._save_secret(self.smtp_pass, self.smtp_pass_state, "smtp_pass")
+        self._save_secret(self.avisos_pass, self.avisos_pass_state, "avisos_pass")
         ui.toast(self, "Guardado", "Correo configurado. Reinicia para aplicar.", kind="success")
 
     def _test_imap(self) -> None:
@@ -467,6 +484,27 @@ class AjustesView(OrganizacionMixin, ctk.CTkFrame):
             except Exception as exc:
                 msg = str(exc)
                 ui.en_ui(self, lambda: ui.toast(self, "IMAP error", msg, kind="error"))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _test_avisos(self) -> None:
+        host = self.imap_host.get().strip(); port = int(self.imap_port.get().strip() or "993")
+        user = self.avisos_user.get().strip()
+        pw = self.avisos_pass.get().strip() or credentials.get("avisos_pass", "AVISOS_PASS")
+        if not user or not pw:
+            ui.toast(self, "Buzón personal", "Indica usuario y contraseña.", kind="warn")
+            return
+
+        def work():
+            try:
+                import imaplib
+                c = imaplib.IMAP4_SSL(host, port); c.login(user, pw)
+                c.select("INBOX", readonly=True); c.close(); c.logout()
+                ui.en_ui(self, lambda: ui.toast(self, "Buzón personal OK",
+                                                f"Conexión correcta con {user} (solo lectura)",
+                                                kind="success"))
+            except Exception as exc:
+                msg = str(exc)
+                ui.en_ui(self, lambda: ui.toast(self, "Buzón personal: error", msg, kind="error"))
         threading.Thread(target=work, daemon=True).start()
 
     def _test_smtp(self) -> None:

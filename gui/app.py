@@ -318,6 +318,8 @@ class DocFlowLiteApp(ctk.CTk):
                 logger.info("Avisos de cálculos: %s", exc)
                 error = str(exc)
             ui.en_ui(self, lambda: self._avisos_hecho(res, completo, manual, error))
+            if res and res.get("errores"):
+                logger.info("Avisos: %s", "; ".join(res["errores"]))
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -343,7 +345,7 @@ class DocFlowLiteApp(ctk.CTk):
         ir = lambda: self.navigate("agenda")  # noqa: E731
         if len(nuevas) > 3:
             self.notifier.notify(
-                f"{len(nuevas)} avisos de cálculos",
+                f"{len(nuevas)} avisos de Técnico",
                 "Ya se puede subir su documentación. Están en la Agenda: "
                 + ", ".join(t.get("pedido", "") + (f"-{t['supp']}" if t.get("supp") else "")
                             for t in nuevas[:6]) + ("…" if len(nuevas) > 6 else ""),
@@ -351,8 +353,9 @@ class DocFlowLiteApp(ctk.CTk):
         else:
             for t in nuevas:
                 quien = t.get("remitente") or "Técnico"
+                que = "Planos" if t.get("origen") == "planos" else "Cálculos"
                 self.notifier.notify(
-                    f"Cálculos listos · {t['titulo'].replace('Subir cálculos ', '')}",
+                    f"{que} listos · {t['titulo'].split(' ', 2)[-1]}",
                     f"{quien}: ya se puede subir la documentación. Tarea añadida a la Agenda.",
                     kind="info", duration_ms=12_000, on_click=ir)
         for t in actualizadas:
@@ -361,12 +364,12 @@ class DocFlowLiteApp(ctk.CTk):
                                  kind="info", duration_ms=10_000, on_click=ir)
         if cerradas:
             self.notifier.notify(
-                "Cálculos enviados",
+                "Documentación enviada",
                 "Cerrada en la Agenda: " + ", ".join(t["titulo"] for t in cerradas[:4]),
                 kind="success", native=False, on_click=ir)
         if manual and not (nuevas or actualizadas or cerradas):
             self.notifier.notify("Sin avisos nuevos",
-                                 "No hay correos de «Cálculos realizados» por pasar a la Agenda.",
+                                 "No hay avisos de cálculos ni de planos por pasar a la Agenda.",
                                  kind="info", native=False)
 
     # ── Layout ────────────────────────────────────────────────────────────────

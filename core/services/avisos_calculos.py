@@ -1,4 +1,4 @@
-"""Avisos de «Cálculos realizados»: del correo a una tarea en la Agenda.
+"""Avisos de «Cálculos realizados» (y de planos): del correo a la Agenda.
 
 El departamento técnico avisa por correo cuando termina los cálculos de un
 pedido («P-26/123 - Cálculos realizados»): en qué carpeta están, qué revisión
@@ -10,6 +10,10 @@ uno sale una tarea con el pedido, la carpeta y las notas. Una respuesta al aviso
 («RE: … ACTUALIZACIÓN. He incluido…») no es tarea nueva: se anota en la que ya
 hay. Y la tarea se cierra sola cuando el seguimiento de documentos dice que los
 cálculos de ese pedido salieron al cliente después del aviso.
+
+Los planos suelen llegar como respuesta a ese mismo correo («RE: … Cálculos
+realizados — Ya están hechos los planos… Se puede enviar para aprobación»):
+eso es otra tarea, «Subir planos», con la carpeta y la revisión de los cálculos.
 
 Los correos ya vistos se recuerdan por su Message-ID: una tarea que se borra a
 mano no vuelve a aparecer en la siguiente pasada.
@@ -32,13 +36,20 @@ REGISTRO_FILE = str(state_dir() / "avisos_calculos.json")
 # Cuántos días atrás se mira el buzón. La primera vez trae lo de estas dos
 # semanas que siga sin enviarse; luego solo lo que no se haya visto.
 DIAS_ATRAS = 14
-# Lo que se le pide al servidor (ASCII: «lculo» vale para Cálculos y Calculos).
-# El filtro de verdad es _RE_ASUNTO.
-BUSQUEDA = "lculo"
+# Lo que se le pide al servidor, cualquiera de los dos en el asunto (ASCII:
+# «lculo» vale para Cálculos y Calculos). El filtro de verdad son los _RE_ASUNTO.
+BUSQUEDA = ("lculo", "plano")
 # Se olvidan los Message-ID de hace más de esto (ya no entran en la búsqueda)
 _OLVIDAR_DIAS = 120
 
 _RE_ASUNTO = re.compile(r"c[aá]lculos?\b.*\b(realizad|revisad|hech|terminad|list)", re.I)
+_RE_ASUNTO_PLANOS = re.compile(r"\bplanos?\b.*\b(realizad|revisad|hech|terminad|list)", re.I)
+# Los planos suelen llegar como respuesta al aviso de cálculos: «Ya están hechos
+# los planos y adjuntado al documento de cálculo y plano. Se puede enviar…»
+_RE_PLANOS_LISTOS = re.compile(
+    r"\bya\s+est[aá]n\s+(?:\w+\s+){0,2}?(hech|revisad|terminad|acabad|list)\w*\s+(?:\w+\s+){0,2}?planos\b"
+    r"|\bplanos\s+(?:\w+\s+){0,3}?(?:ya\s+)?est[aá]n\s+(hech|revisad|terminad|acabad|list)", re.I)
+_RE_SALUDO = re.compile(r"^\s*(hola\b|buen[oa]s\b)", re.I)
 _RE_PREFIJO = re.compile(r"^\s*(?:re|rv|fw|fwd|tr|reenv\w*)\s*:\s*", re.I)
 _RE_PEDIDO = re.compile(r"\b(PA?)\s*-\s*(\d{2})\s*/\s*(\d{3})(?:\s*-\s*S\s*(\d{2}))?", re.I)
 # En la carpeta el pedido va con guiones: «P-26-123-S00 - CLIENTE - PRODUCTO»
@@ -68,7 +79,8 @@ def analizar(asunto: str, texto: str, remitente: str = "", fecha_iso: str = "",
     limpio, respuesta = asunto, False
     while _RE_PREFIJO.match(limpio):
         limpio, respuesta = _RE_PREFIJO.sub("", limpio, count=1), True
-    if not _RE_ASUNTO.search(limpio):
+    de_calculos = bool(_RE_ASUNTO.search(limpio))
+    if not de_calculos and not _RE_ASUNTO_PLANOS.search(limpio):
         return None
     m = _RE_PEDIDO.search(limpio) or _RE_PEDIDO.search(texto or "")
     if not m:
@@ -83,6 +95,10 @@ def analizar(asunto: str, texto: str, remitente: str = "", fecha_iso: str = "",
     if not nombre or "-" in nombre or "@" in nombre:
         nombre = del_correo or nombre
     lineas = _lineas_propias(texto or "", nombre, del_correo)
+    propio = " ".join(lineas)
+    # Planos: lo dice el texto («ya están hechos los planos…») o un asunto de planos
+    planos = bool(_RE_PLANOS_LISTOS.search(propio)) or not de_calculos
+    eco = _comparable(limpio)
     rutas: list[str] = []
     notas: list[str] = []
     for ln in lineas:
@@ -91,7 +107,10 @@ def analizar(asunto: str, texto: str, remitente: str = "", fecha_iso: str = "",
         if encontradas:
             rutas.extend(r for r in encontradas if r and r not in rutas)
             continue
-        if not sin_enlace or _RE_RELLENO.search(sin_enlace):
+        if not sin_enlace or eco in _comparable(sin_enlace):
+            continue                          # vacía, o el asunto repetido en el cuerpo
+        # En los de planos la frase «Ya están hechos los planos…» ES el mensaje
+        if (_RE_SALUDO.search(sin_enlace) if planos else _RE_RELLENO.search(sin_enlace)):
             continue
         notas.append(sin_enlace if len(sin_enlace) <= 220 else sin_enlace[:219] + "…")
     notas = notas[:8]
@@ -111,7 +130,8 @@ def analizar(asunto: str, texto: str, remitente: str = "", fecha_iso: str = "",
         rev = re.sub(r"\s+", "", revs[-1]) if revs else ""
 
     return {
-        "tipo": "actualizacion" if respuesta else "aviso",
+        "tipo": "planos" if planos else ("actualizacion" if respuesta else "aviso"),
+        "respuesta": respuesta,
         "pedido": pedido,
         "supp": supp,
         "pedido_completo": f"{pedido}-{supp}" if supp else pedido,
@@ -198,11 +218,22 @@ def texto_del_correo(msg) -> str:
 
 # ── La tarea ──────────────────────────────────────────────────────────────────
 
-def tarea_de(aviso: dict, owner: str = agenda.DEFAULT_OWNER) -> dict:
-    titulo = f"Subir cálculos {aviso['pedido_completo']}"
-    if aviso.get("rev"):
-        titulo += f" · rev {aviso['rev']}"
-    partes = [aviso["cliente"]] if aviso.get("cliente") else []
+# Origen de la tarea → qué tipo de documento la cierra al enviarse
+ORIGENES = {"calculos": "lculo", "planos": "plano"}
+
+
+def tarea_de(aviso: dict, owner: str = agenda.DEFAULT_OWNER, base: dict | None = None) -> dict:
+    """La tarea de un aviso. Para los planos, `base` es la tarea de cálculos
+    del mismo pedido: la respuesta de planos no trae carpeta ni revisión, y son
+    las de los cálculos (los planos van adjuntos al documento de cálculo)."""
+    base = base or {}
+    planos = aviso.get("tipo") == "planos"
+    rev = aviso.get("rev") or (base.get("rev", "") if planos else "")
+    cliente = aviso.get("cliente") or (base.get("cliente", "") if planos else "")
+    titulo = f"Subir {'planos' if planos else 'cálculos'} {aviso['pedido_completo']}"
+    if rev:
+        titulo += f" · rev {rev}"
+    partes = [cliente] if cliente else []
     partes += aviso.get("notas") or []
     return {
         "titulo": titulo,
@@ -212,14 +243,14 @@ def tarea_de(aviso: dict, owner: str = agenda.DEFAULT_OWNER) -> dict:
         # Ya se puede subir: toca desde el día que llega el aviso
         "fecha_limite": aviso.get("fecha", ""),
         "asignado": owner,
-        "origen": "calculos",
+        "origen": "planos" if planos else "calculos",
         "source_msgid": aviso.get("message_id", ""),
         "pedido": aviso["pedido"],
         "supp": aviso.get("supp", ""),
-        "carpeta": aviso.get("carpeta", ""),
+        "carpeta": aviso.get("carpeta") or (base.get("carpeta", "") if planos else ""),
         "otras_carpetas": aviso.get("otras_carpetas") or [],
-        "rev": aviso.get("rev", ""),
-        "cliente": aviso.get("cliente", ""),
+        "rev": rev,
+        "cliente": cliente,
         "notas": aviso.get("notas") or [],
         "remitente": aviso.get("remitente", ""),
         "recibido": aviso.get("recibido", ""),
@@ -234,16 +265,18 @@ def _mismo_pedido(doc_pedido: str, pedido: str, supp: str) -> bool:
     return np == pedido.upper() or np.startswith(pedido.upper() + "-")
 
 
-def ya_enviado(pedido: str, supp: str, recibido, docs: list[dict]) -> bool:
-    """¿Salieron cálculos de ese pedido al cliente el día del aviso o después?
+def ya_enviado(pedido: str, supp: str, recibido, docs: list[dict], origen: str = "calculos") -> bool:
+    """¿Salieron cálculos (o planos) de ese pedido al cliente el día del aviso o después?
 
-    Lo dice el seguimiento de documentos: un documento de tipo cálculo de ese
-    pedido (y suministro, si se sabe) con fecha de envío no anterior al aviso."""
+    Lo dice el seguimiento de documentos: un documento de ese tipo («Cálculo y
+    plano» vale para los dos) de ese pedido —y suministro, si se sabe— con
+    fecha de envío no anterior al aviso."""
     desde = _a_fecha(recibido)
+    clave = ORIGENES.get(origen, "lculo")
     if desde is None:
         return False
     for d in docs or ():
-        if "lculo" not in str(d.get("Tipo Doc.", "") or "").lower():
+        if clave not in str(d.get("Tipo Doc.", "") or "").lower():
             continue
         if not _mismo_pedido(d.get("Nº Pedido", ""), pedido, supp):
             continue
@@ -254,12 +287,12 @@ def ya_enviado(pedido: str, supp: str, recibido, docs: list[dict]) -> bool:
 
 
 def cerrar_enviados(owner: str, docs: list[dict]) -> list[dict]:
-    """Completa las tareas de aviso cuyos cálculos ya salieron al cliente."""
+    """Completa las tareas de aviso cuyos documentos ya salieron al cliente."""
     cerradas = []
     for t in agenda.get_tareas(owner):
-        if t.get("origen") != "calculos" or t.get("estado") == "completada":
+        if t.get("origen") not in ORIGENES or t.get("estado") == "completada":
             continue
-        if ya_enviado(t.get("pedido", ""), t.get("supp", ""), t.get("recibido"), docs):
+        if ya_enviado(t.get("pedido", ""), t.get("supp", ""), t.get("recibido"), docs, t["origen"]):
             hecha = agenda.update("tareas", t["id"], {
                 "estado": "completada",
                 "cerrada_sola": date.today().strftime("%d-%m-%Y"),
@@ -269,14 +302,18 @@ def cerrar_enviados(owner: str, docs: list[dict]) -> list[dict]:
     return cerradas
 
 
+def _de_calculos(owner: str, pedido: str, supp: str, abiertas: bool = True) -> list[dict]:
+    return [t for t in agenda.get_tareas(owner)
+            if t.get("origen") == "calculos" and t.get("pedido") == pedido
+            and (not abiertas or t.get("estado") != "completada")
+            and (not supp or t.get("supp") in ("", supp))]
+
+
 def _anotar(owner: str, aviso: dict) -> dict | None:
     """Una respuesta al aviso: se añade a la tarea abierta de ese pedido."""
     if not aviso.get("notas"):
         return None
-    abiertas = [t for t in agenda.get_tareas(owner)
-                if t.get("origen") == "calculos" and t.get("estado") != "completada"
-                and t.get("pedido") == aviso["pedido"]
-                and (not aviso.get("supp") or t.get("supp") in ("", aviso["supp"]))]
+    abiertas = _de_calculos(owner, aviso["pedido"], aviso.get("supp", ""))
     if not abiertas:
         return None
     t = max(abiertas, key=lambda x: x.get("recibido") or "")
@@ -316,33 +353,55 @@ def _dominio(correo: str) -> str:
     return correo.rsplit("@", 1)[-1].lower() if "@" in (correo or "") else ""
 
 
+def buzones() -> list[dict]:
+    """Los buzones donde mirar: el de la app y, si se configuró en Ajustes ▸
+    Correo, el personal (hay avisos que solo llegan ahí: una respuesta de
+    planos a la que no se puso al buzón compartido)."""
+    from core import config
+    out = [{"user": config.IMAP_USER or "", "password": None}]
+    extra = (getattr(config, "AVISOS_USER", "") or "").strip()
+    if extra and extra.lower() != (config.IMAP_USER or "").lower() and config.AVISOS_PASS:
+        out.append({"user": extra, "password": config.AVISOS_PASS})
+    return out
+
+
 def revisar(completo: bool = False, owner: str = agenda.DEFAULT_OWNER,
-            docs: list[dict] | None = None, buscar=None, buzon: str | None = None) -> dict:
-    """Busca avisos nuevos y los pasa a la Agenda.
+            docs: list[dict] | None = None, buscar=None, cuentas: list[dict] | None = None) -> dict:
+    """Busca avisos nuevos (cálculos y planos) y los pasa a la Agenda.
 
     completo=False mira solo la bandeja de entrada (rápido); True también las
     carpetas de los pedidos. Con `docs` (el seguimiento de documentos) no se
     crea tarea de lo que ya se envió y se cierran las que ya están enviadas.
-    `buscar` y `buzon` existen para las pruebas.
+    Un correo que llega a los dos buzones tiene el mismo Message-ID: cuenta una
+    vez. `buscar` y `cuentas` existen para las pruebas.
     """
     if buscar is None:
         from core.services import imap as imap_service
         buscar = imap_service.buscar_asunto
-    if buzon is None:
-        from core.config import IMAP_USER
-        buzon = IMAP_USER or ""
-    propio = buzon.lower()
-    interno = _dominio(propio)
+    if cuentas is None:
+        cuentas = buzones()
+    propios = {(c.get("user") or "").lower() for c in cuentas} - {""}
+    interno = next((_dominio(u) for u in propios if _dominio(u)), "")
 
     reg = _cargar_registro()
     vistos: dict = reg["vistos"]
     ya_en_agenda = {t.get("source_msgid") for t in agenda.get_tareas(owner)
-                    if t.get("origen") == "calculos" and t.get("source_msgid")}
+                    if t.get("origen") in ORIGENES and t.get("source_msgid")}
     conocidos = set(vistos) | ya_en_agenda
 
-    correos = buscar(BUSQUEDA, days=DIAS_ATRAS,
-                     carpetas=carpetas_de_pedidos if completo else "INBOX",
-                     saltar=conocidos)
+    correos, errores = [], []
+    for cuenta in cuentas:
+        try:
+            correos += buscar(BUSQUEDA, days=DIAS_ATRAS,
+                              carpetas=carpetas_de_pedidos if completo else "INBOX",
+                              saltar=conocidos | {c.get("message_id") for c in correos},
+                              imap_user=cuenta.get("user") or None,
+                              imap_pass=cuenta.get("password") or None)
+        except Exception as exc:  # noqa: BLE001 — un buzón que falla no para el otro
+            logger.info("Avisos: no se pudo leer %s: %s", cuenta.get("user"), exc)
+            errores.append(f"{cuenta.get('user')}: {exc}")
+    if errores and len(errores) == len(cuentas):
+        raise RuntimeError("; ".join(errores))
     # El aviso antes que sus respuestas
     correos = sorted(correos, key=lambda c: c.get("date") or "")
 
@@ -363,21 +422,32 @@ def revisar(completo: bool = False, owner: str = agenda.DEFAULT_OWNER,
             continue
         de = aviso["remitente_correo"]
         # Solo compañeros: ni un cliente que conteste con ese asunto, ni lo propio
-        if (interno and _dominio(de) != interno) or (propio and de == propio):
+        if (interno and _dominio(de) != interno) or de in propios:
             continue
         if aviso["tipo"] == "actualizacion":
             t = _anotar(owner, aviso)
             if t:
                 actualizadas.append(t)
             continue
-        if docs is not None and ya_enviado(aviso["pedido"], aviso["supp"], aviso["recibido"], docs):
+        base = None
+        if aviso["tipo"] == "planos":
+            todas = _de_calculos(owner, aviso["pedido"], aviso["supp"], abiertas=False)
+            base = max(todas, key=lambda x: x.get("recibido") or "") if todas else None
+            if base and not aviso["supp"] and base.get("supp"):
+                aviso["supp"] = base["supp"]
+                aviso["pedido_completo"] = f"{aviso['pedido']}-{base['supp']}"
+            if aviso["respuesta"]:
+                _anotar(owner, aviso)         # que la de cálculos también lo diga
+        origen = "planos" if aviso["tipo"] == "planos" else "calculos"
+        if docs is not None and ya_enviado(aviso["pedido"], aviso["supp"], aviso["recibido"], docs, origen):
             continue
         aviso["message_id"] = clave
-        nuevas.append(agenda.create_tarea(owner, tarea_de(aviso, owner)))
-        logger.info("Aviso de cálculos %s → tarea en la Agenda", aviso["pedido_completo"])
+        nuevas.append(agenda.create_tarea(owner, tarea_de(aviso, owner, base)))
+        logger.info("Aviso de %s %s → tarea en la Agenda", origen, aviso["pedido_completo"])
 
     if completo:
         reg["ultimo_completo"] = datetime.now().isoformat(timespec="seconds")
     _guardar_registro(reg)
     cerradas = cerrar_enviados(owner, docs) if docs is not None else []
-    return {"nuevas": nuevas, "actualizadas": actualizadas, "cerradas": cerradas}
+    return {"nuevas": nuevas, "actualizadas": actualizadas, "cerradas": cerradas,
+            "errores": errores}

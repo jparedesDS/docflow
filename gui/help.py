@@ -251,7 +251,11 @@ HELP: dict[str, dict] = {
             "«Sincronizar con Documentos» crea tareas a partir de los documentos pendientes.",
             "Cuando Técnico manda «P-26/123 - Cálculos realizados», la app lo ve sola (cada 5 min) "
             "y crea la tarea «Subir cálculos» con la carpeta (📁), la revisión y sus notas. "
-            "«Buscar avisos de cálculos» lo mira ahora mismo.",
+            "Lo mismo con los planos: la respuesta «Ya están hechos los planos…» crea "
+            "«Subir planos» con la carpeta y la revisión de los cálculos. "
+            "«Buscar avisos de Técnico» lo mira ahora mismo.",
+            "Si hay avisos que solo te llegan a ti, pon tu buzón en Ajustes ▸ Correo ▸ "
+            "Buzón personal (solo lectura).",
             "Las respuestas a ese correo se añaden a la tarea; y la tarea se cierra sola cuando el "
             "seguimiento de documentos muestra los cálculos enviados al cliente.",
             "Las notas y reuniones van a la derecha."
