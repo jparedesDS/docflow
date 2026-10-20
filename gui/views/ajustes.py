@@ -183,6 +183,16 @@ class AjustesView(OrganizacionMixin, ctk.CTkFrame):
         self.sw_notif = ctk.CTkSwitch(nrow, text="", onvalue=True, offvalue=False)
         self.sw_notif.pack(side="left")
         (self.sw_notif.select if pref.get("notifications", True) else self.sw_notif.deselect)()
+        arow = ctk.CTkFrame(s, fg_color="transparent")
+        arow.pack(fill="x", pady=theme.SPACE_1)
+        ctk.CTkLabel(arow, text="Avisos de cálculos", font=theme.FONT_SMALL,
+                     text_color=theme.TEXT_SUB, anchor="w", width=170).pack(side="left")
+        self.sw_avisos = ctk.CTkSwitch(arow, text="", onvalue=True, offvalue=False)
+        self.sw_avisos.pack(side="left")
+        (self.sw_avisos.select if pref.get("avisos_calculos", True) else self.sw_avisos.deselect)()
+        ctk.CTkLabel(arow, text="Los correos de «Cálculos realizados» crean una tarea en la Agenda",
+                     font=theme.FONT_TINY, text_color=theme.TEXT_MUTED, anchor="w").pack(
+            side="left", padx=(theme.SPACE_2, 0))
 
         ui.section_header(s, "Reclamaciones — Escalado").pack(fill="x", pady=(theme.SPACE_3, theme.SPACE_2))
         ctk.CTkLabel(s, text="Vacío = sin escalado: todas las reclamaciones salen como Recordatorio "
@@ -215,6 +225,7 @@ class AjustesView(OrganizacionMixin, ctk.CTkFrame):
             mins = 5
         pref.set_value("autorefresh_min", max(0, mins))
         pref.set_value("notifications", bool(self.sw_notif.get()))
+        pref.set_value("avisos_calculos", bool(self.sw_avisos.get()))
         # Umbrales de escalado de reclamaciones (vacío = desactivado → Nivel 1)
         for ent, key in ((self.ent_claims_l2, "claims_level2_days"),
                          (self.ent_claims_l3, "claims_level3_days")):

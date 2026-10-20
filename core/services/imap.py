@@ -488,6 +488,77 @@ def fetch_raw(uid, folder="INBOX", imap_user=None, imap_pass=None) -> bytes:
         conn.logout()
 
 
+def buscar_asunto(texto, days=14, carpetas="INBOX", saltar=(), imap_user=None, imap_pass=None):
+    """Correos de los últimos `days` días con `texto` en el asunto, con cuerpo.
+
+    `carpetas` es una carpeta, una lista, o una función que recibe todas las
+    del buzón y devuelve las que mirar (los avisos que se van archivando por
+    pedido siguen ahí). Los Message-ID de `saltar` ya se conocen: de ésos solo
+    se leen las cabeceras. Solo lectura: EXAMINE y BODY.PEEK, no marca nada
+    como leído. `texto` va en ASCII (la búsqueda del servidor no siempre
+    entiende acentos: «lculo» encuentra «Cálculos» y «Calculos»).
+    """
+    from datetime import datetime, timedelta
+    d = datetime.now() - timedelta(days=max(1, days))
+    since = f"{d.day:02d}-{_IMAP_MONTHS[d.month - 1]}-{d.year}"
+    saltar = set(saltar or ())
+
+    conn = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT)
+    conn.login(imap_user or IMAP_USER, imap_pass or IMAP_PASS)
+    try:
+        if callable(carpetas):
+            nombres = carpetas(_all_folders(conn))
+        elif isinstance(carpetas, str):
+            nombres = [carpetas]
+        else:
+            nombres = list(carpetas)
+        out = []
+        for carpeta in nombres:
+            try:
+                typ, _ = conn.select(_nombre_carpeta(carpeta), readonly=True)
+                if typ != "OK":
+                    continue
+                typ, data = conn.uid("SEARCH", None, "SINCE", since, "SUBJECT", texto)
+                uids = data[0].split() if typ == "OK" and data and data[0] else []
+                for uid in uids:
+                    _, md = conn.uid("FETCH", uid, "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
+                    cab = md[0][1] if md and isinstance(md[0], tuple) else b""
+                    msgid = (email.message_from_bytes(cab).get("Message-ID") or "").strip()
+                    if msgid and msgid in saltar:
+                        continue
+                    _, md = conn.uid("FETCH", uid, "(BODY.PEEK[])")
+                    if not md or not isinstance(md[0], tuple):
+                        continue
+                    msg = email.message_from_bytes(md[0][1])
+                    try:
+                        fecha = parsedate_to_datetime(msg.get("Date", "")).isoformat()
+                    except Exception:
+                        fecha = ""
+                    out.append({
+                        "carpeta": carpeta,
+                        "message_id": msgid,
+                        "subject": _decode_header_value(msg.get("Subject", "")),
+                        "from": _decode_header_value(msg.get("From", "")),
+                        "date": fecha,
+                        "msg": msg,
+                    })
+                    if msgid:
+                        saltar.add(msgid)         # el mismo correo en dos carpetas
+            except Exception as exc:  # noqa: BLE001 — una carpeta rara no corta el resto
+                logger.debug("buscar_asunto %s: %s", carpeta, exc)
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+        return out
+    finally:
+        try:
+            conn.logout()
+        except Exception:
+            pass
+
+
 def mark_as_read(uid, folder="INBOX", imap_user=None, imap_pass=None):
     conn = _connect(folder, imap_user, imap_pass)
     try:

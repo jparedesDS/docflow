@@ -5,6 +5,7 @@ Las tareas pueden sincronizarse con los docs pendientes del Monitoring.
 """
 
 import logging
+import threading
 import uuid
 from datetime import datetime, timezone
 
@@ -21,13 +22,20 @@ _DEFAULT = {"notas": [], "reuniones": [], "tareas": []}
 ESTADOS_PENDIENTES = {"sin enviar", "", "com. menores", "com. mayores", "comentado", "rechazado"}
 DEFAULT_OWNER = "JP"
 
+# Leer, cambiar y guardar va de una pieza: la pantalla y los avisos que llegan
+# por correo (en otro hilo) escriben el mismo fichero, y sin esto uno pisaba
+# lo que acababa de guardar el otro.
+_mutex = threading.RLock()
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
 def _load() -> dict:
-    data = read_json(AGENDA_FILE, default=dict(_DEFAULT))
+    # Listas nuevas cada vez: con dict(_DEFAULT) eran las mismas de la plantilla,
+    # y lo primero que se guardaba sin fichero se quedaba en ella para siempre.
+    data = read_json(AGENDA_FILE, default={k: [] for k in _DEFAULT})
     if not isinstance(data, dict):
         return {k: [] for k in TIPOS}
     for k in TIPOS:
@@ -50,51 +58,55 @@ def get_all(tipo: str) -> list[dict]:
 def create(tipo: str, item: dict) -> dict:
     if tipo not in TIPOS:
         raise ValueError(f"Tipo inválido: {tipo}")
-    data = _load()
-    now = _now()
-    item = {**item, "id": str(uuid.uuid4()), "createdAt": now, "updatedAt": now}
-    data[tipo].append(item)
-    _save(data)
+    with _mutex:
+        data = _load()
+        now = _now()
+        item = {**item, "id": str(uuid.uuid4()), "createdAt": now, "updatedAt": now}
+        data[tipo].append(item)
+        _save(data)
     return item
 
 
 def update(tipo: str, item_id: str, changes: dict) -> dict | None:
     if tipo not in TIPOS:
         raise ValueError(f"Tipo inválido: {tipo}")
-    data = _load()
-    for i, it in enumerate(data[tipo]):
-        if it.get("id") == item_id:
-            updated = {**it, **changes, "id": item_id, "updatedAt": _now()}
-            data[tipo][i] = updated
-            _save(data)
-            return updated
+    with _mutex:
+        data = _load()
+        for i, it in enumerate(data[tipo]):
+            if it.get("id") == item_id:
+                updated = {**it, **changes, "id": item_id, "updatedAt": _now()}
+                data[tipo][i] = updated
+                _save(data)
+                return updated
     return None
 
 
 def delete(tipo: str, item_id: str) -> bool:
     if tipo not in TIPOS:
         raise ValueError(f"Tipo inválido: {tipo}")
-    data = _load()
-    before = len(data[tipo])
-    data[tipo] = [it for it in data[tipo] if it.get("id") != item_id]
-    if len(data[tipo]) < before:
-        _save(data)
-        return True
+    with _mutex:
+        data = _load()
+        before = len(data[tipo])
+        data[tipo] = [it for it in data[tipo] if it.get("id") != item_id]
+        if len(data[tipo]) < before:
+            _save(data)
+            return True
     return False
 
 
 # ── Tareas (con owner) ────────────────────────────────────────────────────────
 
 def get_tareas(owner: str = DEFAULT_OWNER) -> list[dict]:
-    data = _load()
-    changed = False
-    for tarea in data["tareas"]:
-        if "owner" not in tarea:
-            asignado = (tarea.get("asignado") or "").strip()
-            tarea["owner"] = asignado if asignado else DEFAULT_OWNER
-            changed = True
-    if changed:
-        _save(data)
+    with _mutex:
+        data = _load()
+        changed = False
+        for tarea in data["tareas"]:
+            if "owner" not in tarea:
+                asignado = (tarea.get("asignado") or "").strip()
+                tarea["owner"] = asignado if asignado else DEFAULT_OWNER
+                changed = True
+        if changed:
+            _save(data)
     return [t for t in data["tareas"] if t.get("owner") == owner]
 
 
@@ -110,6 +122,11 @@ def sync_tareas(owner: str, docs: list[dict]) -> dict:
     - Marca completadas las que ya no están pendientes
     - Actualiza descripción de las que cambiaron de estado
     """
+    with _mutex:
+        return _sync_tareas(owner, docs)
+
+
+def _sync_tareas(owner: str, docs: list[dict]) -> dict:
     data = _load()
 
     pending_by_source: dict[str, dict] = {}
@@ -172,11 +189,17 @@ def sync_tareas(owner: str, docs: list[dict]) -> dict:
             "auto_generated": True,
             "source_doc_id": sid,
             "owner": owner,
+            "id": str(uuid.uuid4()),
+            "createdAt": now,
+            "updatedAt": now,
         }
-        create("tareas", new_task)
+        # Sobre el mismo `data`: antes se guardaba aparte con create() y el
+        # _save(data) de abajo, con la copia vieja, las borraba si además
+        # se había completado o actualizado alguna.
+        data["tareas"].append(new_task)
         created += 1
 
-    if completed > 0 or updated > 0:
+    if completed or updated or created:
         _save(data)
 
     return {"created": created, "completed": completed, "updated": updated}

@@ -249,9 +249,17 @@ HELP: dict[str, dict] = {
         "pasos": [
             "«+ Nueva tarea» crea una tarea; márcala con el check cuando esté hecha.",
             "«Sincronizar con Documentos» crea tareas a partir de los documentos pendientes.",
-            "Las notas y reuniones tienen su propia pestaña."
+            "Cuando Técnico manda «P-26/123 - Cálculos realizados», la app lo ve sola (cada 5 min) "
+            "y crea la tarea «Subir cálculos» con la carpeta (📁), la revisión y sus notas. "
+            "«Buscar avisos de cálculos» lo mira ahora mismo.",
+            "Las respuestas a ese correo se añaden a la tarea; y la tarea se cierra sola cuando el "
+            "seguimiento de documentos muestra los cálculos enviados al cliente.",
+            "Las notas y reuniones van a la derecha."
         ],
-        "atajos": [],
+        "atajos": [
+            "Se activa o desactiva en Ajustes ▸ General ▸ Avisos de cálculos",
+            "Si borras una tarea de aviso no vuelve a aparecer",
+        ],
     },
     "informes": {
         "titulo": "Analítica",

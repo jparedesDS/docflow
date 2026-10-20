@@ -32,17 +32,18 @@ class NotificationManager:
     # ── API ──────────────────────────────────────────────────────────────────
 
     def notify(self, title: str, message: str = "", kind: str = "info",
-               duration_ms: int = 6500, native: bool = True) -> None:
+               duration_ms: int = 6500, native: bool = True, on_click=None) -> None:
+        """`on_click`: lo que se hace al pulsar el aviso (p.ej. ir a la sección)."""
         if native:
             self._native(title, message)
         try:
-            self._toast(title, message, kind, duration_ms)
+            self._toast(title, message, kind, duration_ms, on_click)
         except Exception as exc:  # noqa: BLE001 — nunca debe romper la app
             logger.debug("toast falló: %s", exc)
 
     # ── Toast in-app ───────────────────────────────────────────────────────────
 
-    def _toast(self, title, message, kind, duration_ms) -> None:
+    def _toast(self, title, message, kind, duration_ms, on_click=None) -> None:
         color = _KIND_COLOR.get(kind, theme.ACCENT)
         card = ctk.CTkFrame(self.master, fg_color=theme.BG_CARD, corner_radius=10,
                             border_width=1, border_color=theme.BORDER)
@@ -59,14 +60,30 @@ class NotificationManager:
         ctk.CTkLabel(top, text=title, font=theme.FONT_SMALL_BOLD, text_color=theme.TEXT_MAIN,
                      anchor="w", justify="left", wraplength=self.width - 70).pack(
             side="left", fill="x", expand=True)
-        ctk.CTkButton(top, text="✕", width=18, height=18, corner_radius=4,
-                      fg_color="transparent", hover_color=theme.BG_INPUT,
-                      text_color=theme.TEXT_MUTED, font=theme.font(10),
-                      command=lambda: self._dismiss(card)).pack(side="right")
+        cerrar = ctk.CTkButton(top, text="✕", width=18, height=18, corner_radius=4,
+                               fg_color="transparent", hover_color=theme.BG_INPUT,
+                               text_color=theme.TEXT_MUTED, font=theme.font(10),
+                               command=lambda: self._dismiss(card))
+        cerrar.pack(side="right")
         if message:
             ctk.CTkLabel(body, text=message, font=theme.FONT_TINY, text_color=theme.TEXT_SUB,
                          anchor="w", justify="left", wraplength=self.width - 40).pack(
                 anchor="w", pady=(2, 0))
+        if on_click is not None:
+            def pulsar(_e=None):
+                self._dismiss(card)
+                on_click()
+            pendientes = [card]
+            while pendientes:                 # todo el aviso es clicable, menos la ✕
+                w = pendientes.pop()
+                if w is cerrar:
+                    continue
+                w.bind("<Button-1>", pulsar)
+                try:
+                    w.configure(cursor="hand2")
+                except Exception:
+                    pass
+                pendientes.extend(w.winfo_children())
 
         # altura según contenido
         body.update_idletasks()

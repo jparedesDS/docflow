@@ -76,6 +76,8 @@ class DocFlowLiteApp(ctk.CTk):
         self.after(2500, self._prewarm_views)
         # Auto-refresco + notificaciones (primer chequeo a los 30s)
         self._start_autorefresh()
+        # Avisos de «Cálculos realizados» del correo → tareas en la Agenda
+        self._start_avisos()
 
     def _prewarm_data(self) -> None:
         import threading
@@ -266,6 +268,106 @@ class DocFlowLiteApp(ctk.CTk):
         # 3) Reprograma
         if getattr(self, "_refresh_min", 0) > 0:
             self.after(self._refresh_min * 60_000, self._autorefresh_tick)
+
+    # ── Avisos de cálculos (correo → Agenda) ──────────────────────────────────
+
+    _AVISOS_CADA_MIN = 5          # la bandeja de entrada (una búsqueda, ~0,1 s)
+    _AVISOS_COMPLETO_MIN = 30     # también las carpetas de los pedidos (~7 s)
+
+    def _start_avisos(self) -> None:
+        """Mira el correo en busca de «Cálculos realizados» y los pasa a tareas.
+
+        Corre en un hilo: la pantalla no espera al servidor de correo. La
+        primera pasada, a los 20 s de abrir, recorre también las carpetas de
+        los pedidos (los avisos que ya se archivaron siguen siendo trabajo)."""
+        from core import auth
+        from core.config import IMAP_HOST
+        self._avisos_en_marcha = False
+        self._avisos_completo_t = None
+        if IMAP_HOST and auth.can_view(self.current_user, "agenda"):
+            self.after(20_000, self._avisos_tick)
+
+    def _avisos_tick(self) -> None:
+        self.revisar_avisos()
+        self.after(self._AVISOS_CADA_MIN * 60_000, self._avisos_tick)
+
+    def revisar_avisos(self, manual: bool = False) -> None:
+        """Una pasada. `manual` (botón de la Agenda): todas las carpetas, y dice
+        también cuando no hay nada nuevo."""
+        import threading
+        import time as _t
+        from core import preferences as _pref
+        if self._avisos_en_marcha or (not manual and not _pref.get("avisos_calculos", True)):
+            return
+        ultimo = self._avisos_completo_t
+        completo = manual or ultimo is None or \
+            _t.monotonic() - ultimo >= self._AVISOS_COMPLETO_MIN * 60
+        self._avisos_en_marcha = True
+
+        def work():
+            res = error = None
+            try:
+                from core.services import avisos_calculos, monitoring
+                try:
+                    docs = monitoring.get_monitoring_data()
+                except Exception as exc:  # noqa: BLE001 — sin seguimiento no se cierra nada
+                    logger.debug("avisos: sin seguimiento de documentos: %s", exc)
+                    docs = None
+                res = avisos_calculos.revisar(completo=completo, docs=docs)
+            except Exception as exc:  # noqa: BLE001 — el correo puede no estar
+                logger.info("Avisos de cálculos: %s", exc)
+                error = str(exc)
+            ui.en_ui(self, lambda: self._avisos_hecho(res, completo, manual, error))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _avisos_hecho(self, res, completo: bool, manual: bool, error) -> None:
+        import time as _t
+        self._avisos_en_marcha = False
+        if res is None:
+            if manual and self.notifier:
+                self.notifier.notify("No se pudo mirar el correo", error or "", kind="error",
+                                     native=False)
+            return
+        if completo:
+            self._avisos_completo_t = _t.monotonic()
+        nuevas, actualizadas, cerradas = res["nuevas"], res["actualizadas"], res["cerradas"]
+        if nuevas or actualizadas or cerradas:
+            view = self._views.get("agenda")
+            if view is not None and hasattr(view, "_reload_all"):
+                view._reload_all()
+
+        avisar = self.notifier is not None and (manual or self._notif_on)
+        if not avisar:
+            return
+        ir = lambda: self.navigate("agenda")  # noqa: E731
+        if len(nuevas) > 3:
+            self.notifier.notify(
+                f"{len(nuevas)} avisos de cálculos",
+                "Ya se puede subir su documentación. Están en la Agenda: "
+                + ", ".join(t.get("pedido", "") + (f"-{t['supp']}" if t.get("supp") else "")
+                            for t in nuevas[:6]) + ("…" if len(nuevas) > 6 else ""),
+                kind="info", duration_ms=12_000, on_click=ir)
+        else:
+            for t in nuevas:
+                quien = t.get("remitente") or "Técnico"
+                self.notifier.notify(
+                    f"Cálculos listos · {t['titulo'].replace('Subir cálculos ', '')}",
+                    f"{quien}: ya se puede subir la documentación. Tarea añadida a la Agenda.",
+                    kind="info", duration_ms=12_000, on_click=ir)
+        for t in actualizadas:
+            ultima = (t.get("actualizaciones") or [{}])[-1]
+            self.notifier.notify(f"Actualización · {t['titulo']}", ultima.get("texto", ""),
+                                 kind="info", duration_ms=10_000, on_click=ir)
+        if cerradas:
+            self.notifier.notify(
+                "Cálculos enviados",
+                "Cerrada en la Agenda: " + ", ".join(t["titulo"] for t in cerradas[:4]),
+                kind="success", native=False, on_click=ir)
+        if manual and not (nuevas or actualizadas or cerradas):
+            self.notifier.notify("Sin avisos nuevos",
+                                 "No hay correos de «Cálculos realizados» por pasar a la Agenda.",
+                                 kind="info", native=False)
 
     # ── Layout ────────────────────────────────────────────────────────────────
 
