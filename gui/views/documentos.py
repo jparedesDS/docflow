@@ -369,6 +369,10 @@ class DocumentosView(ctk.CTkFrame):
     def _on_refreshed(self, docs: list[dict]) -> None:
         self.btn_refresh.configure(state="normal")
         self._on_loaded(docs)
+        # Lo que ahora consta enviado cierra su tarea de aviso en la Agenda
+        app = self.winfo_toplevel()
+        if hasattr(app, "cerrar_avisos_enviados"):
+            app.cerrar_avisos_enviados(docs)
 
     def _on_loaded(self, docs: list[dict]) -> None:
         self._all_docs = docs

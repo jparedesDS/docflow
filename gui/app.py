@@ -333,6 +333,29 @@ class DocFlowLiteApp(ctk.CTk):
             return
         if completo:
             self._avisos_completo_t = _t.monotonic()
+        self._avisos_mostrar(res, manual)
+
+    def cerrar_avisos_enviados(self, docs: list[dict]) -> None:
+        """Con el seguimiento recién traído del ERP (↻ de Documentos), cierra ya
+        las tareas de aviso cuyos documentos constan enviados, sin esperar a la
+        siguiente pasada por el correo."""
+        import threading
+
+        def work():
+            try:
+                from core.services import agenda, avisos_calculos
+                cerradas = avisos_calculos.cerrar_enviados(agenda.DEFAULT_OWNER, docs)
+            except Exception as exc:  # noqa: BLE001
+                logger.info("Avisos: no se pudieron cerrar las enviadas: %s", exc)
+                return
+            if cerradas:
+                ui.en_ui(self, lambda: self._avisos_mostrar(
+                    {"nuevas": [], "actualizadas": [], "cerradas": cerradas}))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _avisos_mostrar(self, res: dict, manual: bool = False) -> None:
+        """Recarga la Agenda y avisa de lo nuevo, lo actualizado y lo cerrado."""
         nuevas, actualizadas, cerradas = res["nuevas"], res["actualizadas"], res["cerradas"]
         if nuevas or actualizadas or cerradas:
             view = self._views.get("agenda")
