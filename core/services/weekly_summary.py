@@ -198,6 +198,8 @@ def _collect_personal_data(initials: str, docs: list, team_avg_pct: float,
     for d in my_docs:
         estado = str(d.get("Estado", "") or "").lower().strip()
         if estado not in ESTADOS_PERSONAL_PENDING:
+            if estado == "enviado":
+                my_enviado += 1               # en el cliente, esperando respuesta
             continue
 
         dias = d.get("Días Devolución", 0)
@@ -634,23 +636,32 @@ def _personal_card_args(pdata: dict) -> dict:
     ]
     pending = pdata.get("my_pending", [])
     if pending:
-        head = "<tr><th>Nº Doc.</th><th>Tipo</th><th>Estado</th><th>Días</th></tr>"
+        head = "<tr><th>Nº Doc.</th><th>Título</th><th>Tipo</th><th>Estado</th><th>Días</th></tr>"
         body = ""
         for d in pending[:8]:
             dias = d.get("dias") or 0
             emoji = "🔴" if dias > 15 else ("🟡" if dias > 7 else "⚪")
+            titulo = d.get("titulo", "") or ""
+            if len(titulo) > 60:
+                titulo = titulo[:59] + "…"
             body += ("<tr>"
                      f"<td>{emoji} {_escape(d.get('doc_eipsa', ''))}</td>"
+                     f"<td>{_escape(titulo)}</td>"
                      f"<td>{_escape(d.get('tipo', ''))}</td>"
                      f"<td>{_escape(d.get('estado_display') or d.get('estado', ''))}</td>"
                      f"<td>{dias if dias else '—'}</td></tr>")
         rest = pend - 8
         if rest > 0:
-            body += f"<tr><td colspan='4'>… y {rest} más</td></tr>"
+            body += f"<tr><td colspan='5'>… y {rest} más</td></tr>"
         table_html = f"<table><thead>{head}</thead><tbody>{body}</tbody></table>"
     else:
-        table_html = "✅ <i>Sin documentos pendientes. ¡Todo al día!</i>"
-    subtitle = f"{pend} documento(s) por realizar" if pend else "Sin pendientes"
+        # Todo al día: tarjeta corta igualmente, para saber que el envío llegó
+        aprobados = pdata.get("my_approved", 0)
+        en_cliente = pdata.get("my_enviado_count", 0)
+        facts = [("Pendientes", 0), ("Aprobados", aprobados), ("En el cliente", en_cliente)]
+        table_html = (f"✅ <i>Nada por realizar: {aprobados} aprobado(s) y {en_cliente} "
+                      f"enviado(s) esperando respuesta del cliente.</i>")
+    subtitle = f"{pend} documento(s) por realizar" if pend else "Sin pendientes · todo al día"
     return {"title": f"Pendientes · {nombre} ({ini})", "subtitle": subtitle,
             "facts": facts, "table_html": table_html}
 
@@ -728,7 +739,8 @@ def post_personal_to_teams(initials: str = "JP") -> dict:
 
 
 def post_all_personal_to_teams(user_filter=None) -> dict:
-    """Publica una tarjeta por persona (omite quienes no tienen pendientes)."""
+    """Publica una tarjeta por persona. Quien no tiene pendientes recibe una
+    corta de «todo al día»: sin ella no sabía si el envío había llegado."""
     from core.services import teams
     docs = monitoring_service.get_monitoring_data()
     start, end = _get_weekly_range()
@@ -739,18 +751,17 @@ def post_all_personal_to_teams(user_filter=None) -> dict:
     if user_filter and user_filter != "all" and isinstance(user_filter, list):
         users = {k: v for k, v in USERS.items() if k in user_filter}
 
-    sent, skipped, errors = [], [], []
+    sent, skipped, errors, al_dia = [], [], [], []
     for initials in users:
         pdata = _collect_personal_data(initials, docs, avg, ws, we)
         if pdata["my_pending_total"] == 0:
-            skipped.append(initials)
-            continue
+            al_dia.append(initials)
         link_text, link_url = _save_personal_report(initials, pdata)
         res = teams.post_card(recipient=_user_email(initials), link_text=link_text,
                               link_url=link_url, **_personal_card_args(pdata))
         (sent if res.get("ok") else errors).append(initials)
         time.sleep(0.4)
-    logger.info("Pendientes por Teams: enviado a %s · sin pendientes: %s · falló: %s",
-                sent or "—", skipped or "—", errors or "—")
-    return {"status": "sent", "sent": sent, "skipped": skipped,
+    logger.info("Pendientes por Teams: enviado a %s · al día: %s · falló: %s",
+                sent or "—", al_dia or "—", errors or "—")
+    return {"status": "sent", "sent": sent, "skipped": skipped, "al_dia": al_dia,
             "errors": errors, "count": len(sent)}

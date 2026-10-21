@@ -275,6 +275,8 @@ def _detalle(result: dict) -> str:
         enviados = [str(e).split("@")[0] for e in result.get("sent_to") or []]
     partes = []
     partes.append(f"enviado a {', '.join(enviados)}" if enviados else "no se envió a nadie")
+    if result.get("al_dia"):
+        partes.append(f"al día: {', '.join(result['al_dia'])}")
     if result.get("skipped"):
         partes.append(f"sin pendientes: {', '.join(result['skipped'])}")
     if result.get("errors"):

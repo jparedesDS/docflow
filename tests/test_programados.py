@@ -30,6 +30,7 @@ SID = "weekly-teams-personal"
 ok(sr.get_schedule(SID) is not None, "existe el de Pendientes por Teams")
 
 resultado = {}
+publicar_de_verdad = weekly_summary.post_all_personal_to_teams
 weekly_summary.post_all_personal_to_teams = lambda user_filter=None: dict(resultado)
 
 resultado.update(sent=["AA", "BB"], skipped=["CC"], errors=[], count=2)
@@ -56,5 +57,33 @@ ok(ultimo["status"] == "success" and ultimo["detalle"] == "no se envió a nadie 
 
 ok(sr._detalle({"sent_to": ["aa@ejemplo.test"], "skipped": []}) == "enviado a aa",
    "el correo personal también")
+
+# ── Las tarjetas de verdad (Teams simulado) ──────────────────────────────────
+DOCS = [
+    {"Repsonsable": "AA", "Estado": "Com. Menores", "Nº Doc. EIPSA": "99-001-CAL-0001",
+     "Título": "CALCULO DE ORIFICIO DE RESTRICCION PARA LINEA DE PRUEBA NUMERO UNO CON TEXTO LARGO",
+     "Tipo Doc.": "Cálculos", "Días Devolución": 20},
+    {"Repsonsable": "AA", "Estado": "Aprobado", "Nº Doc. EIPSA": "99-001-CAL-0002"},
+    {"Repsonsable": "BB", "Estado": "Aprobado", "Nº Doc. EIPSA": "99-002-DWG-0001"},
+    {"Repsonsable": "BB", "Estado": "Enviado", "Nº Doc. EIPSA": "99-002-DWG-0002"},
+]
+publicadas = []
+weekly_summary.monitoring_service.get_monitoring_data = lambda: DOCS
+weekly_summary.USERS = {"AA": {"nombre": "Ana Alonso", "emails": ["aa@ejemplo.test"]},
+                        "BB": {"nombre": "Beto Blanco", "emails": ["bb@ejemplo.test"]}}
+weekly_summary._save_personal_report = lambda ini, pdata: (None, None)
+weekly_summary._user_email = lambda ini: f"{ini.lower()}@ejemplo.test"
+weekly_summary.time.sleep = lambda s: None
+teams.post_card = lambda **kw: publicadas.append(kw) or {"ok": True, "status": 202}
+
+r = publicar_de_verdad(user_filter=["AA", "BB"])
+ok(r["sent"] == ["AA", "BB"] and r["al_dia"] == ["BB"], f"también quien está al día recibe la suya: {r}")
+ok(sr._detalle(r) == "enviado a AA, BB · al día: BB", f"y se dice: {sr._detalle(r)}")
+tabla = publicadas[0]["table_html"]
+ok("<th>Título</th>" in tabla and "CALCULO DE ORIFICIO" in tabla and "…" in tabla,
+   f"la tabla lleva el título (recortado si es largo): {tabla[:200]}")
+al_dia = publicadas[1]
+ok(al_dia["subtitle"].startswith("Sin pendientes") and ("Aprobados", 1) in al_dia["facts"]
+   and ("En el cliente", 1) in al_dia["facts"], f"tarjeta de todo al día: {al_dia}")
 
 print("FALLOS:", fallos)
