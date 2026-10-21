@@ -52,6 +52,13 @@ def _cached(key: str, builder, ttl: float = CACHE_TTL):
     return value
 
 
+def responsables(valor) -> list[str]:
+    """Las iniciales de la columna de responsable del documento: «EC/SS» →
+    ["EC", "SS"]. Un documento con dos responsables es de los dos, y cuenta
+    para cada uno (sus pendientes, su carga, su ranking)."""
+    return [p for p in (x.strip().upper() for x in re.split(r"[/,;+&]", str(valor or ""))) if p]
+
+
 def invalidate_cache() -> None:
     _cache.clear()
 

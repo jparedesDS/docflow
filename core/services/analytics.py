@@ -198,6 +198,11 @@ def _heatmap(docs) -> list[dict]:
 _OCULTAR_DOC = {"SI", "ES", "Sin Asignar"}
 
 
+def _responsables(d: dict) -> list[str]:
+    """Responsables del documento («EC/SS» → EC y SS); «Sin Asignar» si no hay."""
+    return monitoring.responsables(d.get("Repsonsable")) or ["Sin Asignar"]
+
+
 def get_ranking() -> list[dict]:
     """Rendimiento por responsable de documento (columna 'Repsonsable')."""
     docs = monitoring.get_monitoring_data()
@@ -206,27 +211,27 @@ def get_ranking() -> list[dict]:
         "sin_enviar": 0, "dias_aprobados": [], "dias_envio": [],
     })
     for d in docs:
-        resp = str(d.get("Repsonsable", "") or "").strip() or "Sin Asignar"
-        if resp in _OCULTAR_DOC:
-            continue
         est = _estado(d)
-        g = grupos[resp]
-        g["total"] += 1
-        if "aprobado" in est:
-            g["aprobados"] += 1
-            dd = _num(d.get("Días Devolución"))
-            if dd is not None and dd > 0:
-                g["dias_aprobados"].append(dd)
-        if any(s in est for s in ESTADOS_DEVOLUCION):
-            g["devoluciones"] += 1
-        if _es_critico(d) and "aprobado" not in est:
-            g["criticos"] += 1
-        if not est or not (("aprobado" in est) or (est in ESTADOS_ENVIADOS)
-                           or any(s in est for s in ESTADOS_DEVOLUCION)):
-            g["sin_enviar"] += 1
-        de = _num(d.get("Días Envío"))
-        if de is not None and de > 0:
-            g["dias_envio"].append(de)
+        for resp in _responsables(d):
+            if resp in _OCULTAR_DOC:
+                continue
+            g = grupos[resp]
+            g["total"] += 1
+            if "aprobado" in est:
+                g["aprobados"] += 1
+                dd = _num(d.get("Días Devolución"))
+                if dd is not None and dd > 0:
+                    g["dias_aprobados"].append(dd)
+            if any(s in est for s in ESTADOS_DEVOLUCION):
+                g["devoluciones"] += 1
+            if _es_critico(d) and "aprobado" not in est:
+                g["criticos"] += 1
+            if not est or not (("aprobado" in est) or (est in ESTADOS_ENVIADOS)
+                               or any(s in est for s in ESTADOS_DEVOLUCION)):
+                g["sin_enviar"] += 1
+            de = _num(d.get("Días Envío"))
+            if de is not None and de > 0:
+                g["dias_envio"].append(de)
 
     out = []
     for resp, g in grupos.items():
@@ -252,10 +257,9 @@ def get_team_overview() -> list[dict]:
     docs = monitoring.get_monitoring_data()
     grupos: dict[str, list] = defaultdict(list)
     for d in docs:
-        resp = str(d.get("Repsonsable", "") or "").strip() or "Sin Asignar"
-        if resp in _OCULTAR_DOC:
-            continue
-        grupos[resp].append(d)
+        for resp in _responsables(d):
+            if resp not in _OCULTAR_DOC:
+                grupos[resp].append(d)
 
     from core.config import USERS
     out = []
@@ -304,13 +308,13 @@ def get_matriz_comercial() -> list[dict]:
     grupos: dict[tuple, dict] = defaultdict(lambda: {"total": 0, "aprobados": 0})
     for d in docs:
         comercial = str(d.get("Responsable", "") or "").strip() or "Sin Asignar"
-        resp_doc = str(d.get("Repsonsable", "") or "").strip() or "Sin Asignar"
-        if resp_doc in _OCULTAR_DOC:
-            continue
-        key = (comercial, resp_doc)
-        grupos[key]["total"] += 1
-        if "aprobado" in _estado(d):
-            grupos[key]["aprobados"] += 1
+        for resp_doc in _responsables(d):
+            if resp_doc in _OCULTAR_DOC:
+                continue
+            key = (comercial, resp_doc)
+            grupos[key]["total"] += 1
+            if "aprobado" in _estado(d):
+                grupos[key]["aprobados"] += 1
     out = []
     for (comercial, resp_doc), g in grupos.items():
         pct = round(g["aprobados"] / g["total"] * 100) if g["total"] else 0
@@ -735,12 +739,14 @@ def get_actividad_por_responsable(meses: int = 6, eventos: list[dict] | None = N
     idx = {ym: i for i, ym in enumerate(periodo)}
     por_resp: dict[str, list] = {}
     for e in eventos:
-        if e["grupo"] != "enviado" or e["responsable"] in _OCULTAR_DOC:
+        if e["grupo"] != "enviado":
             continue
         i = idx.get((e["fecha"].year, e["fecha"].month))
         if i is None:
             continue
-        por_resp.setdefault(e["responsable"], [0] * len(periodo))[i] += 1
+        for resp in monitoring.responsables(e["responsable"]) or ["Sin Asignar"]:
+            if resp not in _OCULTAR_DOC:
+                por_resp.setdefault(resp, [0] * len(periodo))[i] += 1
     filas = [{"responsable": r, "valores": v, "total": sum(v)}
              for r, v in por_resp.items() if sum(v) > 0]
     filas.sort(key=lambda r: r["total"], reverse=True)

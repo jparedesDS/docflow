@@ -366,7 +366,7 @@ class AgendaView(ctk.CTkFrame):
                 docs = monitoring_service.get_monitoring_data()
                 pending = [
                     d for d in docs
-                    if str(d.get("Repsonsable", "") or "").strip() == DEFAULT_OWNER
+                    if DEFAULT_OWNER in monitoring_service.responsables(d.get("Repsonsable"))
                     and (d.get("Estado", "") or "").strip().lower() in agenda_service.ESTADOS_PENDIENTES
                 ]
                 res = agenda_service.sync_tareas(DEFAULT_OWNER, pending)

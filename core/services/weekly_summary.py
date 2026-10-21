@@ -180,7 +180,9 @@ def _collect_personal_data(initials: str, docs: list, team_avg_pct: float,
     user_info = USERS.get(initials, {})
     nombre = user_info.get("nombre", initials)
 
-    my_docs = [d for d in docs if str(d.get("Repsonsable", "") or "").strip() == initials]
+    # «EC/SS» es de EC y de SS: cada uno lo ve entre los suyos
+    my_docs = [d for d in docs
+               if initials.upper() in monitoring_service.responsables(d.get("Repsonsable"))]
     my_total = len(my_docs)
     my_approved = sum(
         1 for d in my_docs

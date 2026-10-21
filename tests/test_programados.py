@@ -86,4 +86,22 @@ al_dia = publicadas[1]
 ok(al_dia["subtitle"].startswith("Sin pendientes") and ("Aprobados", 1) in al_dia["facts"]
    and ("En el cliente", 1) in al_dia["facts"], f"tarjeta de todo al día: {al_dia}")
 
+# ── Un documento de dos responsables («AA/BB») es de los dos ─────────────────
+from core.services import analytics, monitoring  # noqa: E402
+
+ok(monitoring.responsables("EC/SS") == ["EC", "SS"] and monitoring.responsables(" jp ") == ["JP"]
+   and monitoring.responsables("") == [], "«EC/SS» → EC y SS")
+DOCS.append({"Repsonsable": "AA/BB", "Estado": "Rechazado", "Nº Doc. EIPSA": "99-003-PRC-0001",
+             "Título": "PROCEDIMIENTO COMPARTIDO", "Tipo Doc.": "Procedimientos"})
+publicadas.clear()
+r = publicar_de_verdad(user_filter=["AA", "BB"])
+ok(r["al_dia"] == [], f"BB ya no está al día: el compartido también es suyo: {r}")
+ok(all("99-003-PRC-0001" in p["table_html"] for p in publicadas),
+   "el compartido sale en la tarjeta de los dos")
+ranking = {x["responsable"]: x["total"] for x in analytics.get_ranking()}
+ok(ranking.get("AA") == 3 and ranking.get("BB") == 3 and "AA/BB" not in ranking,
+   f"ranking: cuenta para cada uno y no es un responsable más: {ranking}")
+equipo = {x["iniciales"]: x["n_pendientes"] for x in analytics.get_team_overview()}
+ok(equipo.get("AA") == 2 and equipo.get("BB") == 1, f"pendientes del equipo: {equipo}")
+
 print("FALLOS:", fallos)

@@ -143,10 +143,9 @@ def _series(cur_ev: list, win: Window, period: str) -> dict:
 def _by_responsable(cur_ev_docs: list) -> dict:
     c: Counter = Counter()
     for _, _, doc in cur_ev_docs:
-        resp = str(doc.get("Repsonsable", "") or "").strip()
-        if resp in _OCULTAR_RESP:
-            continue
-        c[resp] += 1
+        for resp in monitoring_service.responsables(doc.get("Repsonsable")) or [""]:
+            if resp not in _OCULTAR_RESP:
+                c[resp] += 1                  # «EC/SS» cuenta para EC y para SS
     top = c.most_common(10)
     return {"labels": [k for k, _ in top], "values": [v for _, v in top]}
 
