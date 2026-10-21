@@ -173,7 +173,8 @@ def update_schedule(schedule_id: str, changes: dict) -> Optional[dict]:
     return None
 
 
-def record_run(schedule_id: str, status: str, recipients_count: int = 0, error: Optional[str] = None) -> None:
+def record_run(schedule_id: str, status: str, recipients_count: int = 0, error: Optional[str] = None,
+               detalle: Optional[str] = None) -> None:
     schedules = _load()
     for i, s in enumerate(schedules):
         if s["id"] == schedule_id:
@@ -182,6 +183,9 @@ def record_run(schedule_id: str, status: str, recipients_count: int = 0, error: 
                 "status": status,
                 "recipients_count": recipients_count,
                 "error": error,
+                # A quién fue y a quién no («JM, JV · sin pendientes: JP»): con
+                # solo el número no había forma de saber por qué alguien no lo recibió
+                "detalle": detalle,
             }
             schedules[i] = s
             _save(schedules)
@@ -246,16 +250,36 @@ def execute_schedule(schedule_id: str) -> dict:
                 uf = [s.strip() for s in uf.split(",") if s.strip()]
             result = post_all_personal_to_teams(user_filter=uf)
             count = result.get("count", 0)
+            if result.get("errors") and not result.get("sent"):
+                fallo = f"Teams no aceptó ninguna tarjeta ({', '.join(result['errors'])})"
+                record_run(schedule_id, "error", error=fallo, detalle=_detalle(result))
+                return {"status": "error", "schedule_id": schedule_id, "error": fallo, "result": result}
         else:
             record_run(schedule_id, "error", error=f"Tipo desconocido: {sched['type']}")
             return {"status": "error", "error": f"Tipo desconocido: {sched['type']}"}
 
-        record_run(schedule_id, "success", recipients_count=count)
+        estado = "partial" if isinstance(result, dict) and result.get("errors") else "success"
+        record_run(schedule_id, estado, recipients_count=count,
+                   detalle=_detalle(result) if isinstance(result, dict) else None)
         return {"status": "success", "schedule_id": schedule_id, "result": result}
     except Exception as exc:
         logger.exception("Error ejecutando schedule %s", schedule_id)
         record_run(schedule_id, "error", error=str(exc))
         return {"status": "error", "schedule_id": schedule_id, "error": str(exc)}
+
+
+def _detalle(result: dict) -> str:
+    """«Enviado a JM, JV · sin pendientes: JP · falló: …» a partir del resultado."""
+    enviados = result.get("sent")
+    if enviados is None:                          # el correo personal da direcciones
+        enviados = [str(e).split("@")[0] for e in result.get("sent_to") or []]
+    partes = []
+    partes.append(f"enviado a {', '.join(enviados)}" if enviados else "no se envió a nadie")
+    if result.get("skipped"):
+        partes.append(f"sin pendientes: {', '.join(result['skipped'])}")
+    if result.get("errors"):
+        partes.append(f"falló: {', '.join(result['errors'])}")
+    return " · ".join(partes)
 
 
 def get_preview_html(schedule_id: str, personal_initials: str = "JP") -> Optional[str]:

@@ -119,11 +119,15 @@ class ProgramadosMixin:
                 ts_label = dt.strftime("%d %b %H:%M")
             except Exception:
                 ts_label = ts[:16]
-            icon = "✓" if status == "success" else "✗"
-            color = theme.GREEN if status == "success" else theme.RED
+            icon = {"success": "✓", "partial": "⚠"}.get(status, "✗")
+            color = {"success": theme.GREEN, "partial": theme.AMBER}.get(status, theme.RED)
+            texto = f"  ·  Último: {icon} {ts_label}"
+            if last_run.get("detalle"):
+                texto += f" — {last_run['detalle']}"
+            elif status not in ("success", "partial") and last_run.get("error"):
+                texto += f" — {last_run['error'][:90]}"
             ctk.CTkLabel(
-                footer, text=f"  ·  Último: {icon} {ts_label}",
-                font=theme.font(11), text_color=color, anchor="w",
+                footer, text=texto, font=theme.font(11), text_color=color, anchor="w",
             ).pack(side="left")
 
         # Recipients
@@ -173,8 +177,11 @@ class ProgramadosMixin:
 
     def _on_run_done(self, schedule_id: str, res: dict) -> None:
         if res.get("status") == "success":
+            from core.services.scheduled_reports import _detalle
+            resultado = res.get("result")
+            detalle = _detalle(resultado) if isinstance(resultado, dict) else str(resultado or "")
             self.lbl_status.configure(text=f"✓  {schedule_id} ejecutado", text_color=theme.GREEN)
-            messagebox.showinfo("Ejecutado", f"✓ {schedule_id} ejecutado correctamente.\n\n{res.get('result', '')}")
+            messagebox.showinfo("Ejecutado", f"✓ {schedule_id} ejecutado.\n\n{detalle[:1].upper() + detalle[1:]}")
         else:
             self.lbl_status.configure(text=f"✗  {res.get('error')}", text_color=theme.RED)
             messagebox.showerror("Error", res.get("error", "Error desconocido"))

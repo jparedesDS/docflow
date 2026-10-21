@@ -750,5 +750,7 @@ def post_all_personal_to_teams(user_filter=None) -> dict:
                               link_url=link_url, **_personal_card_args(pdata))
         (sent if res.get("ok") else errors).append(initials)
         time.sleep(0.4)
+    logger.info("Pendientes por Teams: enviado a %s · sin pendientes: %s · falló: %s",
+                sent or "—", skipped or "—", errors or "—")
     return {"status": "sent", "sent": sent, "skipped": skipped,
             "errors": errors, "count": len(sent)}
