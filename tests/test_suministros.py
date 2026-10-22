@@ -21,6 +21,10 @@ from core.parsers import base_parser as B
 from core.parsers import sacyr_parser
 from core.services import dev_folders, transmittal
 
+# Sin el ERP real: nuestra revisión la dicen los propios documentos de la
+# prueba (`_rev_nuestra`), y si no la llevan se archiva como antes.
+dev_folders._docs_erp = lambda: []
+
 fallos = 0
 
 

@@ -1,10 +1,23 @@
-"""Archivo de los documentos devueltos en `2-Tecnico\\dev. <Tipo>\\rev<N> AP|COM|com`.
+"""Archivo de los documentos devueltos en `2-Tecnico\\dev. <Tipo>\\rev <N>-<C> AP|COM|com`.
 
-Patrón de carpetas de los pedidos (se conserva el que ya tenga cada pedido):
+Patrón de carpetas de los pedidos:
 
     2-Tecnico\\env. Cálculos\\rev 2\\V-…-CAL-001-R02.PDF            ← lo enviado
-    2-Tecnico\\dev. Cálculos\\rev2 AP\\V-…-CAL-001-R02 (AF).PDF     ← lo devuelto
-                                     \\dev 15-07-2026.eml           ← el correo
+    2-Tecnico\\dev. Cálculos\\rev 2-C AP\\V-…-CAL-001-R02 (AF).PDF  ← lo devuelto
+                                        \\dev 15-07-2026.eml        ← el correo
+
+  · «rev 2-C»: primero NUESTRA revisión (siempre en números, desde el 0) y tras
+    el guion la del CLIENTE, que numera a su manera (0, 1, A, B…). Las dos
+    siempre, aunque coincidan: «rev 0-0 com». La nuestra sale del historial del
+    ERP (`_RevisionesNuestras`); la del cliente, del transmittal.
+  · Si esa revisión ya tiene carpeta se sigue usando, también si está escrita
+    como antes («rev1-B com»; «rev0 com» cuando las dos son 0).
+  · La misma pareja otra vez con un PDF distinto va al lado con la fecha:
+    «rev 2-C COM 22-10-2026».
+  · Sin nuestra revisión en el ERP, la carpeta sale como antes (abajo) y el
+    resumen de la devolución lo avisa.
+
+Cómo se nombraba antes (y se sigue haciendo cuando falta nuestra revisión):
 
   · Pedidos antiguos usan «dev X» / «env X» sin punto: si existe se respeta; si
     hay que crear, se imita el estilo de la carpeta «env» hermana (y «dev. X»
@@ -53,6 +66,7 @@ import re
 import unicodedata
 import zipfile
 import zlib
+from datetime import date
 from pathlib import Path
 
 from core.parsers.base_parser import es_anulado, norm_doc_code, supp_de_codigo
@@ -112,6 +126,131 @@ def _rev_number(value) -> int | None:
 def _rev_letter(value) -> str:
     v = str(value or "").strip().upper()
     return v if re.fullmatch(r"[A-Z]", v) else ""
+
+
+# ── Nuestra revisión y la del cliente ─────────────────────────────────────────
+#
+# Cada cliente numera a su manera (0, 1, A, B… y a veces pasa de letras a
+# números) y nosotros llevamos la nuestra, siempre en números desde el 0. Las
+# carpetas de devolución se nombran con las dos, la nuestra primero:
+# «rev 2-C COM» = nuestra revisión 2, que el cliente llama C.
+#
+# La nuestra sale del ERP: el último «Enviado Rev. N» del historial del
+# documento hasta el día de la devolución (lo que devuelven es lo último que se
+# les mandó). No de la «Vendor Rev» de TR: comparada con el ERP en 59
+# devoluciones solo coincidía en 35; cuando TR numera con números, copia ahí su
+# propia revisión (26-027-DOS-0003: enviado en Rev. 3, TR lo trae como 4 y 4).
+
+_HISTORIAL_RE = re.compile(r"(\d{2})[-/](\d{2})[-/](\d{4})\s+(.*?)\s+Rev\.\s*(\d+)\b", re.I)
+
+
+def _docs_erp() -> list[dict]:
+    """El seguimiento de documentos (ERP). Aparte para poder sustituirlo en pruebas."""
+    from core.services import monitoring
+    return monitoring.get_monitoring_data()
+
+
+def fecha_de(texto) -> date | None:
+    """«19-10-2026 09:22:06», «2026-10-19» o «19/10/2026» → la fecha."""
+    t = str(texto or "").strip()
+    m = re.match(r"(\d{4})-(\d{2})-(\d{2})", t) or None
+    try:
+        if m:
+            return date(int(m[1]), int(m[2]), int(m[3]))
+        m = re.match(r"(\d{2})[-/](\d{2})[-/](\d{4})", t)
+        if m:
+            return date(int(m[3]), int(m[2]), int(m[1]))
+    except ValueError:
+        pass
+    return None
+
+
+def revision_del_historial(historial: str, hasta) -> str | None:
+    """La revisión del último «Enviado» del historial del ERP no posterior a
+    `hasta`. El historial va del más nuevo al más viejo, así que con dos envíos
+    el mismo día vale el primero que aparece. None si no hay ninguno."""
+    mejor: tuple | None = None
+    for d, m, a, estado, rev in _HISTORIAL_RE.findall(str(historial or "")):
+        try:
+            dia = date(int(a), int(m), int(d))
+        except ValueError:
+            continue
+        if "enviado" not in _fold(estado) or (hasta is not None and dia > hasta):
+            continue
+        if mejor is None or dia > mejor[0]:
+            mejor = (dia, str(int(rev)))
+    return mejor[1] if mejor else None
+
+
+class _RevisionesNuestras:
+    """Nuestra revisión de cada documento devuelto, del ERP, para una devolución."""
+
+    def __init__(self, fecha) -> None:
+        self.fecha = fecha
+        self._por_codigo: dict[str, dict] | None = None
+
+    def para(self, doc: dict) -> str | None:
+        propia = str(doc.get("_rev_nuestra", "") or "").strip()
+        if propia:
+            return str(int(propia)) if propia.isdigit() else propia
+        codigo = norm_doc_code(doc.get("Doc. EIPSA", ""))
+        if not codigo:
+            return None
+        if self._por_codigo is None:
+            try:
+                self._por_codigo = {norm_doc_code(d.get("Nº Doc. EIPSA", "")): d for d in _docs_erp()}
+            except Exception as exc:  # noqa: BLE001 — sin ERP, como antes
+                logger.info("Archivo dev: sin seguimiento del ERP (%s)", exc)
+                self._por_codigo = {}
+        fila = self._por_codigo.get(codigo)
+        if fila is None:
+            return None
+        historial = str(fila.get("Historial Rev.", "") or "")
+        if _HISTORIAL_RE.search(historial):
+            return revision_del_historial(historial, self.fecha)
+        # Sin historial, la revisión que tiene ahora (solo si es un número)
+        actual = fila.get("Nº Revisión")
+        if isinstance(actual, float) and actual.is_integer():
+            return str(int(actual))
+        actual = str(actual or "").strip()
+        return str(int(actual)) if actual.isdigit() else None
+
+
+def revision_cliente(doc: dict) -> str:
+    """La revisión del cliente tal como la escribe él: «0», «1», «B», «C2»…
+
+    En TR va en su columna propia («TR Rev»); en los demás portales es la que
+    trae el transmittal. Sin adornos: «R00 (AF)» → «0», «Rev. B» → «B».
+    """
+    bruta = str(doc.get("_rev_cliente", "") or "").strip() or str(doc.get("Rev.", "") or "").strip()
+    t = re.sub(r"\(.*?\)", " ", bruta.upper())
+    t = re.sub(r"^\s*REV(?:ISION|ISIÓN)?\.?\s*", "", t)
+    t = re.sub(r"[^A-Z0-9]", "", t)
+    if re.fullmatch(r"R\d+", t):            # «R00», «R01»
+        t = t[1:]
+    if t.isdigit():
+        t = str(int(t))
+    return t[:4]
+
+
+def nombre_rev(nuestra: str, cliente: str) -> str:
+    """«rev 2-C»: nuestra revisión, guion, la del cliente (siempre las dos)."""
+    return f"rev {nuestra}-{cliente}" if cliente else f"rev {nuestra}"
+
+
+def _es_de_la_revision(num: int | None, rev: str, nuestra: str, cliente: str) -> bool:
+    """¿Esta carpeta («rev2-C», «rev 2-C», «rev0») es de esa pareja de revisiones?
+
+    · Con guion: el número es la nuestra y lo de detrás la del cliente.
+    · Sin guion («rev0 com», el estilo antiguo): ese número era unas veces la
+      revisión del cliente y otras un correlativo, así que solo se da por buena
+      cuando las dos revisiones valen eso y no hay duda posible.
+    """
+    if num is None or not nuestra.isdigit() or num != int(nuestra):
+        return False
+    if rev:
+        return rev == cliente.upper()
+    return not cliente or cliente == nuestra
 
 
 def _suffix(estado: str) -> str:
@@ -683,7 +822,8 @@ def _rev_folder_for(dev_dir: Path, n: int | None, letter: str, suffix: str,
 
 def _rev_del_anulado(dev_dir: Path, n: int | None, letter: str, codes: list[str],
                      nombres: list[str] | None = None,
-                     envio: Path | None = None) -> tuple[Path, bool]:
+                     envio: Path | None = None, nuestra: str | None = None,
+                     cliente: str = "") -> tuple[Path, bool]:
     """Dónde va un documento que el cliente anula (VOID), y si la carpeta existe.
 
     Un VOID no es una devolución más: el cliente cancela un documento que ya
@@ -716,6 +856,11 @@ def _rev_del_anulado(dev_dir: Path, n: int | None, letter: str, codes: list[str]
             return False
 
     elegida = next((sub for sub, _num, _rev, _suf in subs if tiene_el_documento(sub)), None)
+    if elegida is None and nuestra is not None:
+        elegida = next((sub for sub, num, rev, _suf in subs
+                        if _es_de_la_revision(num, rev, nuestra, cliente)), None)
+        if elegida is None:
+            return _rev_folder_nueva(dev_dir, nuestra, cliente, VOID_DIR)
     if elegida is None and rev_text:
         elegida = next((sub for sub, _num, rev, _suf in subs if rev == rev_text), None)
     if elegida is None and n is not None:
@@ -729,6 +874,15 @@ def _rev_del_anulado(dev_dir: Path, n: int | None, letter: str, codes: list[str]
 def _clave_rev(dev_dir: Path, n: int | None, letter: str) -> tuple:
     """Lo que identifica una revisión dentro de una carpeta dev."""
     return (str(dev_dir).lower(), n, str(letter or "").upper())
+
+
+def _clave_de(destino: dict) -> tuple:
+    """La revisión de un destino: la pareja nuestra-cliente si se sabe la
+    nuestra; si no, la de siempre."""
+    if destino.get("nuestra") is not None:
+        return (str(destino["dev_dir"]).lower(), "par", destino["nuestra"],
+                str(destino.get("cliente", "")).upper())
+    return _clave_rev(destino["dev_dir"], destino["n"], destino["letter"])
 
 
 # El nombre largo de cada resolución, para cuando va en subcarpeta de la revisión.
@@ -771,6 +925,63 @@ def _rev_por_estados(dev_dir: Path, n: int | None, letter: str) -> Path | None:
     return None
 
 
+def _rev_folder_nueva(dev_dir: Path, nuestra: str, cliente: str, suffix: str) -> tuple[Path, bool]:
+    """La carpeta de esa pareja de revisiones con esa resolución, o la que hay
+    que crear: «rev 2-C COM».
+
+    Si la revisión ya tiene carpeta con esa resolución se sigue usando, también
+    si está escrita al estilo antiguo («rev2-C COM», «rev0 com» cuando las dos
+    revisiones son 0): no se reparte una misma revisión en dos carpetas.
+    """
+    def mismo_sufijo(found: str) -> bool:
+        return found.upper() == "AP" if suffix == "AP" else found == suffix
+
+    for sub, num, rev, found in _rev_subfolders(dev_dir):
+        if _es_de_la_revision(num, rev, nuestra, cliente) and mismo_sufijo(found):
+            return sub, True
+    cabeza = nombre_rev(nuestra, cliente)
+    # Sin sufijo cuando la resolución va en subcarpeta: un nombre acabado en
+    # espacio Windows lo recorta y quedarían dos carpetas con el mismo nombre.
+    return dev_dir / (f"{cabeza} {suffix}" if suffix else cabeza), False
+
+
+def _rev_nueva_por_estados(dev_dir: Path, nuestra: str, cliente: str) -> Path | None:
+    """La carpeta de esa pareja de revisiones si ya está repartida por resolución
+    («rev0 com\\com. menores», «rev 0-A\\aprobados»): ahí va lo de esa revisión."""
+    conocidas = {_fold(v) for v in SUBCARPETA_ESTADO.values()}
+    for sub, num, rev, _sufijo in _rev_subfolders(dev_dir):
+        if not _es_de_la_revision(num, rev, nuestra, cliente):
+            continue
+        try:
+            if any(h.is_dir() and _fold(h.name) in conocidas for h in sub.iterdir()):
+                return sub
+        except OSError:
+            pass
+    return None
+
+
+def _sin_pisar_con_fecha(rev_dir: Path, existe: bool, fichero: str, tamaño: int,
+                         crc: int | None, fecha: str) -> tuple[Path, bool]:
+    """La misma carpeta, o una al lado con la fecha si ahí ya vive OTRO fichero así.
+
+    Con el nombre nuevo el número es nuestra revisión y ya no se puede pasar a
+    la siguiente: si el cliente vuelve a devolver la misma pareja de revisiones
+    con un PDF distinto, va a «rev 2-C COM 22-10-2026» (y «… (2)» si ese día ya
+    llegó otro). Lo archivado no se toca nunca.
+    """
+    destino = rev_dir / fichero
+    if not destino.exists() or _mismo_fichero(destino, tamaño, crc):
+        return rev_dir, existe
+    base = f"{rev_dir.name} {fecha}" if fecha else rev_dir.name
+    for i in range(1, 100):
+        nombre = base if (i == 1 and fecha) else f"{base} ({i + (0 if fecha else 1)})"
+        otra, otra_existe = _subcarpeta(rev_dir.parent, nombre)
+        destino = otra / fichero
+        if not destino.exists() or _mismo_fichero(destino, tamaño, crc):
+            return otra, otra_existe
+    return rev_dir, existe                  # el «xb» de la copia no deja pisar
+
+
 class _CarpetasDeRevision:
     """La subcarpeta de revisión de cada grupo de documentos del paquete.
 
@@ -796,14 +1007,13 @@ class _CarpetasDeRevision:
     def __init__(self, destinos: list[dict]) -> None:
         resoluciones: dict[tuple, set[str]] = {}
         for d in destinos:
-            clave = _clave_rev(d["dev_dir"], d["n"], d["letter"])
-            resoluciones.setdefault(clave, set()).add(_suffix(d["estado"]))
+            resoluciones.setdefault(_clave_de(d), set()).add(_suffix(d["estado"]))
         self._mezcladas = {c for c, s in resoluciones.items() if len(s) > 1}
         self._abiertas: dict[tuple, tuple[Path, bool]] = {}
 
     def para(self, destino: dict) -> tuple[Path, bool]:
         """(carpeta, existe_ya) donde va ese documento."""
-        rev = _clave_rev(destino["dev_dir"], destino["n"], destino["letter"])
+        rev = _clave_de(destino)
         sufijo = _suffix(destino["estado"])
         if (clave := rev + (sufijo,)) not in self._abiertas:
             self._abiertas[clave] = self._abrir(destino, rev, sufijo)
@@ -811,6 +1021,15 @@ class _CarpetasDeRevision:
 
     def _abrir(self, destino: dict, rev: tuple, sufijo: str) -> tuple[Path, bool]:
         dev_dir, n, letter = destino["dev_dir"], destino["n"], destino["letter"]
+        nuestra, cliente = destino.get("nuestra"), destino.get("cliente", "")
+        if nuestra is not None:
+            # Con nuestra revisión: «rev 2-C COM», o la que ya tenga esa revisión
+            padre = _rev_nueva_por_estados(dev_dir, nuestra, cliente)
+            if padre is None:
+                if rev not in self._mezcladas:
+                    return _rev_folder_nueva(dev_dir, nuestra, cliente, sufijo)
+                padre, _existe = _rev_folder_nueva(dev_dir, nuestra, cliente, "")
+            return _subcarpeta(padre, SUBCARPETA_ESTADO.get(sufijo, sufijo))
         # Si esa revisión ya está repartida por resolución, el documento va con
         # los suyos y no abre correlativo, traiga el paquete una resolución o
         # varias.
@@ -969,6 +1188,14 @@ def _trabajo(doc: dict, suministros: _PorSuministro,
     return ctx, destino, motivo
 
 
+def _con_revisiones(destino: dict, doc: dict, nuestras: _RevisionesNuestras) -> str | None:
+    """Añade al destino nuestra revisión (del ERP) y la del cliente. Devuelve la
+    nuestra; None si el ERP no la sabe, y entonces la carpeta sale como antes."""
+    destino["nuestra"] = nuestras.para(doc)
+    destino["cliente"] = revision_cliente(doc)
+    return destino["nuestra"]
+
+
 class _Fichero:
     """Un fichero devuelto, venga dentro del paquete o suelto."""
 
@@ -1017,13 +1244,16 @@ def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: 
     Devuelve {archived: [(fichero, destino)], skipped: [(fichero, motivo)],
     created: [carpetas nuevas], plan: [...]} — con `dry_run` solo calcula.
     """
-    res = {"archived": [], "skipped": [], "created": [], "plan": []}
+    res = {"archived": [], "skipped": [], "created": [], "plan": [], "sin_rev_nuestra": []}
     suministros = _PorSuministro(pedido, docs)
     base, motivo = suministros.para()
     if base is None:
         res["skipped"].append((zip_path.name, motivo))
         return res
     eml_name = f"dev {email_date[:10]}.eml" if email_date else "dev.eml"
+    fecha = fecha_de(email_date)
+    fecha_txt = fecha.strftime("%d-%m-%Y") if fecha else ""
+    nuestras = _RevisionesNuestras(fecha)
 
     with _ficheros_devueltos(zip_path) as entries:
         matched = _match_docs([f.nombre for f in entries], docs, file_docs)
@@ -1052,6 +1282,8 @@ def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: 
             if destino is None:
                 res["skipped"].append((fname, motivo))
                 continue
+            if _con_revisiones(destino, doc, nuestras) is None:
+                res["sin_rev_nuestra"].append(fname)
             trabajos.append((fich, fname, doc, ctx, destino))
 
         revisiones = _CarpetasDeRevision([d for _, _, _, _, d in trabajos])
@@ -1067,16 +1299,22 @@ def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: 
                 # «xb» de más abajo.
                 rev_dir, rev_exists = _rev_del_anulado(
                     dev_dir, n, letter, destino["codes"],
-                    nombres=portal_names.get(id(doc)), envio=envio)
+                    nombres=portal_names.get(id(doc)), envio=envio,
+                    nuestra=destino["nuestra"], cliente=destino["cliente"])
             else:
                 rev_dir = _ya_archivado(dev_dir, fname, fich.tamaño, fich.crc)
                 rev_exists = rev_dir is not None
                 if rev_dir is None:
                     rev_dir, rev_exists = revisiones.para(destino)
+                    if destino["nuestra"] is not None:
+                        # La misma pareja de revisiones otra vez, con otro PDF:
+                        # al lado, con la fecha de esta devolución.
+                        rev_dir, rev_exists = _sin_pisar_con_fecha(
+                            rev_dir, rev_exists, fname, fich.tamaño, fich.crc, fecha_txt)
                     # Con la resolución en subcarpeta no se avanza el
                     # correlativo —sacaría el documento de su revisión—: ahí lo
                     # que protege de pisar algo es el «xb» de más abajo.
-                    if _REV_DIR_RE.match(rev_dir.name):
+                    elif _REV_DIR_RE.match(rev_dir.name):
                         rev_dir, rev_exists = _sin_pisar(dev_dir, rev_dir, rev_exists, fname,
                                                          fich.tamaño, fich.crc)
             target = rev_dir / fname
@@ -1125,13 +1363,15 @@ def archive_email_only(docs: list[dict], pedido: str, *, email_raw: bytes | None
 
     Devuelve lo mismo que `archive_return` más `emails`: los .eml escritos.
     """
-    res = {"archived": [], "skipped": [], "created": [], "plan": [], "emails": []}
+    res = {"archived": [], "skipped": [], "created": [], "plan": [], "emails": [],
+           "sin_rev_nuestra": []}
     suministros = _PorSuministro(pedido, docs)
     base, motivo = suministros.para()
     if base is None:
         res["skipped"].append(("el correo", motivo))
         return res
     eml_name = f"dev {email_date[:10]}.eml" if email_date else "dev.eml"
+    nuestras = _RevisionesNuestras(fecha_de(email_date))
 
     # Igual que con el paquete: la carpeta dev primero y la de revisión después,
     # que depende de cuántas resoluciones traiga el correo de esa revisión.
@@ -1147,6 +1387,8 @@ def archive_email_only(docs: list[dict], pedido: str, *, email_raw: bytes | None
         if destino is None:
             res["skipped"].append((etiqueta, motivo))
             continue
+        if _con_revisiones(destino, doc, nuestras) is None:
+            res["sin_rev_nuestra"].append(etiqueta)
         trabajos.append((etiqueta, ctx, destino))
 
     revisiones = _CarpetasDeRevision([d for _, _, d in trabajos])
@@ -1155,7 +1397,9 @@ def archive_email_only(docs: list[dict], pedido: str, *, email_raw: bytes | None
         dev_dir, dev_exists = destino["dev_dir"], destino["dev_exists"]
         if destino["anulado"]:
             rev_dir, rev_exists = _rev_del_anulado(dev_dir, destino["n"], destino["letter"],
-                                                   destino["codes"], envio=destino["envio"])
+                                                   destino["codes"], envio=destino["envio"],
+                                                   nuestra=destino["nuestra"],
+                                                   cliente=destino["cliente"])
         else:
             rev_dir, rev_exists = revisiones.para(destino)
         res["plan"].append({"file": eml_name, "dest": rev_dir / eml_name,
@@ -1193,4 +1437,8 @@ def summary_line(res: dict) -> str:
         parts.append(f"correo en {eml.parent.parent.name}\\{eml.parent.name}")
     if res.get("skipped"):
         parts.append(f"{len(res['skipped'])} sin colocar")
+    if res.get("sin_rev_nuestra"):
+        # Archivado, pero sin «rev <nuestra>-<cliente>»: conviene revisar el nombre
+        parts.append(f"{len(res['sin_rev_nuestra'])} sin nuestra revisión en el ERP "
+                     "(carpeta como antes)")
     return " · ".join(parts) if parts else "nada que archivar"

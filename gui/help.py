@@ -170,7 +170,11 @@ HELP: dict[str, dict] = {
             "«+ Devolución manual» si el correo no es de un portal reconocido: escribe el pedido y se autocompleta.",
             "«⤓ Descargar devolución» (Técnicas Reunidas y AYESA): baja el zip del portal y lo guarda con el "
             "correo en 00 TRANS Y RES \\ NNN (fecha) del pedido; además copia cada PDF devuelto a su carpeta "
-            "2-Tecnico \\ dev. <Tipo> \\ rev<N> AP|COM (la crea si no existe). Con la descarga automática activa se hace solo.",
+            "2-Tecnico \\ dev. <Tipo> \\ rev <nuestra>-<cliente> AP|COM|com (la crea si no existe). Con la descarga automática activa se hace solo.",
+            "La carpeta lleva las dos revisiones, la nuestra primero: «rev 2-C COM» es nuestra rev 2, que el cliente "
+            "llama C (las dos siempre: «rev 0-0 com»). La nuestra sale del historial del ERP; si esa revisión ya tiene "
+            "carpeta, aunque sea con el nombre de antes, se sigue usando. Si vuelve la misma pareja con otro PDF, va al "
+            "lado con la fecha («rev 2-C COM 22-10-2026»). Si el ERP no la sabe, se archiva como antes y el resumen lo avisa.",
             "Hay devoluciones que no traen paquete —Wood avisa de documentos «2I - FOR INFORMATION ONLY» sin enlace—: entonces se archiva el correo, tanto en 00 TRANS Y RES como en la carpeta dev. del documento, que se crea igual. Si te falta esa carpeta en una devolución antigua, el botón «🗂 Archivar en 2-Tecnico» la abre.",
             "La columna «Descarga» marca «✓ guardada» cuando la devolución ya está en su carpeta; en la preview el botón "
             "pasa a «📂 Abrir carpetas» (abre 00 TRANS Y RES \\ NNN y las dev. donde quedaron los PDF) para comprobarla "

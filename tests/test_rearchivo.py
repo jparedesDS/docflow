@@ -13,6 +13,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from core.services import dev_folders
 from core.services import portal_downloads as P
 
+# Sin el ERP real: nuestra revisión la dicen los propios documentos de la
+# prueba (`_rev_nuestra`), y si no la llevan se archiva como antes.
+dev_folders._docs_erp = lambda: []
+
 fallos = 0
 
 
