@@ -180,12 +180,38 @@ class ManualDevolucionWindow(ctk.CTkToplevel):
             ent.insert(0, value)
 
     def _autofill_from_pedido(self, _event=None) -> None:
-        info = _lookup_pedido(self.ent_pedido.get().strip())
+        """Busca el pedido en el ERP (en un hilo: la primera lectura de los Excel
+        tarda) y rellena cliente, material y PO. Dice si no lo encuentra: antes
+        se callaba y parecía que el autocompletado no funcionaba."""
+        pedido = self.ent_pedido.get().strip()
+        if not pedido or pedido == getattr(self, "_pedido_buscado", None):
+            return
+        self._pedido_buscado = pedido
+        self.lbl_status.configure(text=f"⏳  Buscando {pedido} en el ERP…", text_color=theme.TEXT_MUTED)
+
+        def worker():
+            try:
+                info = _lookup_pedido(pedido)
+            except Exception:  # noqa: BLE001
+                logger.exception("Autocompletar pedido %s", pedido)
+                info = None
+            ui.en_ui(self, lambda: self._autofill_done(pedido, info))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _autofill_done(self, pedido: str, info: dict | None) -> None:
+        if pedido != self.ent_pedido.get().strip():
+            return                      # mientras tanto se escribió otro
         if not info:
+            self._pedido_buscado = None   # que se pueda volver a intentar
+            self.lbl_status.configure(
+                text=f"✗  {pedido} no está en el ERP: rellena cliente y material a mano",
+                text_color=theme.AMBER)
             return
         self._set_entry(self.ent_cliente, info["cliente"])
         self._set_entry(self.ent_material, info["material"])
         self._set_entry(self.ent_po, info.get("po", ""))
+        self.lbl_status.configure(text=f"✓  {pedido}: {info['cliente']}", text_color=theme.GREEN)
 
     def _field(self, grid, row: int, col: int, label: str, placeholder: str) -> ctk.CTkEntry:
         box = ctk.CTkFrame(grid, fg_color="transparent")

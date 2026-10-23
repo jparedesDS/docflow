@@ -35,6 +35,22 @@ def _lookup_pedido(raw: str) -> dict | None:
                 "material": str(d.get("Material", "") or ""),
                 "po": str(d.get("Nº PO", "") or ""),
             }
+    # Un pedido sin documentos todavía (PA-26/112) no está en el seguimiento,
+    # pero sí en la consulta de pedidos del ERP: de ahí cliente, material y PO.
+    try:
+        from core.services import erp
+        pedidos = erp.consulta()
+    except Exception:
+        logger.debug("No se pudo cargar la consulta del ERP para autocompletar pedido", exc_info=True)
+        return None
+    for p in pedidos:
+        np = re.sub(r"[^0-9a-z]", "", str(p.get("Nº Pedido", "")).lower())
+        if np and (np == key or np.startswith(key)):
+            return {
+                "cliente": str(p.get("Cliente", "") or "").strip(),
+                "material": str(p.get("Tipo Equipo", "") or "").strip(),
+                "po": str(p.get("Nº Referencia", "") or "").strip(),
+            }
     return None
 
 
