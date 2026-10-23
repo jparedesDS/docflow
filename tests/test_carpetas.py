@@ -16,9 +16,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.services import dev_folders as D
 
-# Sin el ERP real: nuestra revisión la dicen los propios documentos de la
-# prueba (`_rev_nuestra`), y si no la llevan se archiva como antes.
-D._docs_erp = lambda: []
 
 fallos = 0
 
@@ -296,6 +293,7 @@ try:
     (tecnico / "env. MANUAL").mkdir()
     D.tecnico_dir = lambda _pedido: tecnico
 
+    # Primera devolución (nuestra 0) que el cliente llama 0: «rev 0-0 AP»
     DOC = {"Nº Pedido": "P-26/004", "Supp.": "S00", "Doc. EIPSA": "",
            "Doc. Cliente": "V-1234AB00A-1100-300-PRO-001", "Título": "PMI PROCEDURE",
            "Rev.": "0", "Estado": "Informativo", "Tipo de documento": ""}
@@ -303,16 +301,16 @@ try:
 
     res = D.archive_email_only([DOC], "P-26/004", email_raw=CORREO,
                                email_date="2026-09-24", dry_run=True)
-    ok(res["plan"] and res["plan"][0]["dest"].parent.name == "rev0 AP",
+    ok(res["plan"] and res["plan"][0]["dest"].parent.name == "rev 0-0 AP",
        f"el «for information» es AP: {res['plan'] and res['plan'][0]['dest'].parent.name}")
     ok(not (tecnico / "dev. PMI PROCEDURE").exists(), "con dry_run no se crea nada")
 
     res = D.archive_email_only([DOC], "P-26/004", email_raw=CORREO, email_date="2026-09-24")
-    eml = tecnico / "dev. PMI PROCEDURE" / "rev0 AP" / "dev 2026-09-24.eml"
-    ok(eml.is_file(), f"el correo queda en dev. PMI PROCEDURE\\rev0 AP: {eml.is_file()}")
+    eml = tecnico / "dev. PMI PROCEDURE" / "rev 0-0 AP" / "dev 2026-09-24.eml"
+    ok(eml.is_file(), f"el correo queda en dev. PMI PROCEDURE\\rev 0-0 AP: {eml.is_file()}")
     ok(eml.read_bytes() == CORREO, "y es el correo entero")
     ok(res["emails"] == [eml] and not res["skipped"], f"se informa de dónde cayó: {res}")
-    ok("correo en dev. PMI PROCEDURE\\rev0 AP" in D.summary_line(res),
+    ok("correo en dev. PMI PROCEDURE\\rev 0-0 AP" in D.summary_line(res),
        f"el resumen lo dice: {D.summary_line(res)}")
 
     # Repetirlo no duplica ni la carpeta ni el correo
@@ -331,8 +329,8 @@ try:
     # Pero si la carpeta de esa revisión ya está, la anulación va dentro de ella
     void = dict(DOC, Estado="M - VOID")
     res = D.archive_email_only([void], "P-26/004", email_raw=CORREO, email_date="2026-10-01")
-    eml = tecnico / "dev. PMI PROCEDURE" / "rev0 AP" / "VOID" / "dev 2026-10-01.eml"
-    ok(res["emails"] == [eml], f"el VOID va a rev0 AP\\VOID: {res['emails']}")
+    eml = tecnico / "dev. PMI PROCEDURE" / "rev 0-0 AP" / "VOID" / "dev 2026-10-01.eml"
+    ok(res["emails"] == [eml], f"el VOID va a rev 0-0 AP\\VOID: {res['emails']}")
     ok(eml.is_file(), "y el correo queda ahí")
     ok(not (tecnico / "dev. PMI PROCEDURE" / "rev1 VOID").exists(),
        "la anulación no abre un correlativo nuevo")
@@ -373,9 +371,10 @@ try:
     res = D.archive_return(paquete, PLANOS, "P-26/031")
     caidos = {Path(dest).parts[-5]: Path(dest).parent.name for _, dest in res["archived"]}
     ok(not res["skipped"] and len(res["archived"]) == 3, f"los tres se colocan: {res['skipped']}")
-    ok(caidos == {"P-26-031-S00 - TR-SILLENO": "rev1-B com",
-                  "P-26-031-S01 - TR-SILLENO": "rev1-B com",
-                  "P-26-031-S02 - TR-SILLENO": "rev1-B com"},
+    # Primera devolución que hay de cada uno (nuestra 0) y TR la llama B
+    ok(caidos == {"P-26-031-S00 - TR-SILLENO": "rev 0-B com",
+                  "P-26-031-S01 - TR-SILLENO": "rev 0-B com",
+                  "P-26-031-S02 - TR-SILLENO": "rev 0-B com"},
        f"cada plano en la carpeta de SU suministro: {caidos}")
 
     # Y el suministro que no tiene carpeta no se lleva por delante a los demás
@@ -443,15 +442,15 @@ try:
     for _f, dest in res["archived"]:
         donde.setdefault(f"{Path(dest).parent.parent.name}\\{Path(dest).parent.name}", 0)
         donde[f"{Path(dest).parent.parent.name}\\{Path(dest).parent.name}"] += 1
-    ok(donde == {"rev0\\com. menores": 3, "rev0\\com. mayores": 2},
-       f"cada resolución a su subcarpeta de rev0: {donde}")
+    ok(donde == {"rev 0-0\\com. menores": 3, "rev 0-0\\com. mayores": 2},
+       f"cada resolución a su subcarpeta de rev 0-0: {donde}")
     ok(not list((tecnico / "dev. Cálculos").glob("rev1*")),
        "y ninguna abre un correlativo nuevo")
     ok(not list((tecnico / "dev. Cálculos").glob("rev0 *")),
        "la carpeta de revisión va sin sufijo, que no cabrían las dos")
     for sub in ("com. menores", "com. mayores"):
-        eml = tecnico / "dev. Cálculos" / "rev0" / sub / "dev 2026-10-08.eml"
-        ok(eml.is_file(), f"el correo queda en rev0\\{sub}")
+        eml = tecnico / "dev. Cálculos" / "rev 0-0" / sub / "dev 2026-10-08.eml"
+        ok(eml.is_file(), f"el correo queda en rev 0-0\\{sub}")
 
     # Repetir la descarga no duplica ni mueve nada
     antes = sorted(str(p.relative_to(tecnico)) for p in (tecnico / "dev. Cálculos").rglob("*"))
@@ -469,8 +468,8 @@ try:
         zf.writestr(luego[0]["Doc. Cliente"] + ".PDF", b"%PDF-mas-tarde")
     res = D.archive_return(paquete2, luego, "P-26/062")
     destino = Path(res["archived"][0][1])
-    ok(destino.parent.name == "com. mayores" and destino.parent.parent.name == "rev0",
-       f"se mete en rev0\\com. mayores: {destino.parent}")
+    ok(destino.parent.name == "com. mayores" and destino.parent.parent.name == "rev 0-0",
+       f"se mete en rev 0-0\\com. mayores: {destino.parent}")
     ok(not list((tecnico / "dev. Cálculos").glob("rev1*")),
        "sin abrir «rev1 COM» al lado")
 
@@ -518,8 +517,9 @@ try:
             zf.writestr(doc["Doc. Cliente"] + ".PDF", b"%PDF-" + doc["Doc. Cliente"].encode())
     res = D.archive_return(solo, otros, "P-26/062")
     carpetas = {Path(dest).parent.name for _f, dest in res["archived"]}
-    ok(carpetas == {"rev1 com"},
-       f"una resolución sola sigue yendo a «rev1 com», como todos los pedidos: {carpetas}")
+    # Su primera devolución (nuestra 0) y el cliente empieza en la 1
+    ok(carpetas == {"rev 0-1 com"},
+       f"una resolución sola, sin subcarpeta: «rev 0-1 com»: {carpetas}")
 finally:
     D.tecnico_dir = tecnico_real
     shutil.rmtree(tmp, ignore_errors=True)
@@ -536,8 +536,12 @@ try:
     (tecnico / "env Painting and Coating" / "rev1 IFC").mkdir(parents=True)
     (tecnico / "env Painting and Coating" / "rev1 IFC"
      / "VD-CI0021-022_1 PAINTING AND COATING PROCEDURE.pdf").write_bytes(b"enviado")
-    for sub in ("rev0-A com", "rev1-B COM"):
+    # Las dos devoluciones anteriores de ese documento, que el cliente numeró A y B
+    for sub, letra in (("rev0-A com", "A"), ("rev1-B COM", "B")):
         (tecnico / "dev Painting and Coating" / sub).mkdir(parents=True)
+        (tecnico / "dev Painting and Coating" / sub
+         / f"VD-CI0021-022_(NMR 602) PAINTING AND COATING PROCEDURE_{letra}.pdf").write_bytes(
+            b"%PDF devuelto " + letra.encode())
     D.tecnico_dir = lambda _pedido: tecnico
 
     PINTURA = {"Nº Pedido": "P-24/070", "Supp.": "S00", "Doc. EIPSA": "",
@@ -554,7 +558,8 @@ try:
     ok(len(res["archived"]) == 1 and not res["skipped"],
        f"el PDF suelto se archiva igual: {res['skipped']}")
     destino = Path(res["archived"][0][1])
-    ok(destino.parent.name == "rev2-1 AP", f"en la carpeta que le toca: {destino.parent.name}")
+    # Tercera devolución: nuestra 2, aunque el cliente pase de letras a números (1)
+    ok(destino.parent.name == "rev 2-1 AP", f"en la carpeta que le toca: {destino.parent.name}")
     ok(destino.read_bytes() == b"%PDF-1.7 proceso de pintura", "con su contenido")
     ok((destino.parent / "dev 2026-10-13.eml").is_file(), "y el correo al lado")
     ok(suelto.is_file(), "el original no se mueve, se copia")
@@ -626,7 +631,7 @@ try:
         zf.writestr("V-1065110910-0299.pdf", b"%PDF-anulado-3")
     res = D.archive_return(suelto, [otra], "P-24/066")
     ok(len(res["archived"]) == 1 and
-       Path(res["archived"][0][1]).parent.name == "rev2-D VOID",
+       Path(res["archived"][0][1]).parent.name == "rev 0-D VOID",
        f"sin revisión archivada, carpeta propia: {res['archived']} / {res['skipped']}")
 finally:
     D.tecnico_dir = tecnico_real
@@ -676,8 +681,8 @@ try:
     # Y el número de la carpeta de envío es el orden, no la revisión: lo enviado
     # desde «ENVÍO CÁLCULOS\REV 0» en revisión 1 vuelve a «rev0-1 com», que es
     # como está a mano la del S00 del mismo pedido («dev cál pla\rev0-1 COM»).
-    ok(caidos == {"P-26-027-S02 - TR-ADNOC": "dev CÁLCULOS\\rev0-1 com",
-                  "P-26-027-S03 - TR-ADNOC": "dev CÁL Y PLA\\rev0-1 com"},
+    ok(caidos == {"P-26-027-S02 - TR-ADNOC": "dev CÁLCULOS\\rev 0-1 com",
+                  "P-26-027-S03 - TR-ADNOC": "dev CÁL Y PLA\\rev 0-1 com"},
        f"cada uno en la carpeta dev de su envío: {caidos}")
 
     # Y si calcular la carpeta de uno revienta, los demás se colocan igual
