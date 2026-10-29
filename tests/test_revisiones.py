@@ -150,6 +150,14 @@ try:
     (dev / "rev1 AP" / "CLI-CAL-0009_R1.pdf").write_bytes(b"%PDF a mano 2")
     r = archivar([doc(9, "C", "Com. Menores")])
     ok(donde(r) == {"CLI-CAL-0009": "rev 2-C com"}, f"dos anteriores a mano: la 2: {donde(r)}")
+
+    # Si falta una (la 1 fue una anulación sin carpeta de devolución), manda el
+    # número de la última: 0-A, 2-B, 3-C → la D es la 4, no la 3 (26-031-ESP-0003)
+    for nombre, letra in (("rev0-A COM", "A"), ("rev2-B COM", "B"), ("rev3-C com", "C")):
+        (dev / nombre).mkdir()
+        (dev / nombre / "CLI-CAL-0011.pdf").write_bytes(b"%PDF " + letra.encode())
+    r = archivar([doc(11, "D", "Aprobado")], contenido=b"%PDF-D")
+    ok(donde(r) == {"CLI-CAL-0011": "rev 4-D AP"}, f"la última más uno: {donde(r)}")
 finally:
     D.tecnico_dir = tecnico_real
     shutil.rmtree(tmp, ignore_errors=True)

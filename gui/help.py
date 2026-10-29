@@ -173,7 +173,7 @@ HELP: dict[str, dict] = {
             "2-Tecnico \\ dev. <Tipo> \\ rev <nuestra>-<cliente> AP|COM|com (la crea si no existe). Con la descarga automática activa se hace solo.",
             "La carpeta lleva las dos revisiones, la nuestra primero: «rev 2-C COM» es nuestra rev 2, que el cliente "
             "llama C (las dos siempre: «rev 0-0 com»). La nuestra la cuenta la app, no el ERP: la primera devolución del "
-            "documento es la 0 y cada revisión suya ya archivada en sus carpetas dev suma una. Si el cliente devuelve "
+            "documento es la 0 y la siguiente, la de su última carpeta de devolución más uno. Si el cliente devuelve "
             "otra vez una revisión que ya está archivada, es esa misma y va al lado con la fecha («rev 2-C COM 22-10-2026»). "
             "Si esa revisión ya tiene carpeta, aunque sea con el nombre de antes, se sigue usando.",
             "Hay devoluciones que no traen paquete —Wood avisa de documentos «2I - FOR INFORMATION ONLY» sin enlace—: entonces se archiva el correo, tanto en 00 TRANS Y RES como en la carpeta dev. del documento, que se crea igual. Si te falta esa carpeta en una devolución antigua, el botón «🗂 Archivar en 2-Tecnico» la abre.",

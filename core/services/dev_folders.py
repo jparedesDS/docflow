@@ -9,8 +9,8 @@ Patrón de carpetas de los pedidos:
   · «rev 2-C»: primero NUESTRA revisión (siempre en números, desde el 0) y tras
     el guion la del CLIENTE, que numera a su manera (0, 1, A, B…). Las dos
     siempre, aunque coincidan: «rev 0-0 com». La del cliente sale del
-    transmittal; la nuestra se CUENTA: la primera devolución del documento es la
-    0 y cada revisión suya ya archivada suma una (`_DevolucionesArchivadas`). El
+    transmittal; la nuestra sale de lo archivado: la primera devolución del
+    documento es la 0 y la siguiente, la última más uno (`_DevolucionesArchivadas`). El
     ERP no sirve para esto: se rellena a mano y se salta revisiones.
   · Si esa revisión ya tiene carpeta se sigue usando, también si está escrita
     como antes («rev1-B com»; «rev0 com» cuando las dos son 0).
@@ -136,9 +136,9 @@ def _rev_letter(value) -> str:
 # «rev 2-C COM» = nuestra revisión 2, que el cliente llama C.
 #
 # La nuestra NO sale del ERP: se rellena a mano y se salta revisiones (de la 2
-# a la 4) o empieza en la 1. Se CUENTA: la primera devolución de un documento
-# es la 0, y cada revisión distinta suya que ya esté archivada en las carpetas
-# dev del pedido suma una. En 127 documentos devueltos de verdad la cuenta
+# a la 4) o empieza en la 1. Sale de lo ya archivado: la primera devolución de
+# un documento es la 0, y la siguiente es la de su última carpeta de
+# devolución más uno. En 127 documentos devueltos de verdad la cuenta
 # cuadraba con la del cliente (Wood 0-0, 1-1, 2-2; TR A=0, B=1, C=2, D=3), y
 # las 5 veces que el ERP decía otra cosa era el ERP el que estaba mal.
 # Tampoco de la «Vendor Rev» de TR: cuando TR numera con números, copia ahí la
@@ -212,10 +212,10 @@ class _DevolucionesArchivadas:
 
     def nuestra(self, ctx: dict, codes: list[str], nombres: list[str] | None, cliente: str,
                 mismo: tuple | None = None) -> str:
-        """Nuestra revisión de esta devolución, contando las anteriores.
+        """Nuestra revisión de esta devolución, según las anteriores.
 
-        · Cada revisión distinta del documento ya archivada suma una (las de un
-          VOID no: anulan, no revisan). La primera devolución es la 0.
+        · La primera devolución es la 0; la siguiente, la última ya archivada
+          más uno (lo de un VOID no cuenta: anula, no revisa).
         · Si el cliente devuelve otra vez una revisión que ya está archivada con
           su letra («rev1-B», «rev 1-B»), es esa misma: no suma.
         · `mismo` = (nombre, tamaño, crc) del fichero que se archiva: si ya está
@@ -242,6 +242,13 @@ class _DevolucionesArchivadas:
                    if partes[1] and cliente and partes[1] == cliente.upper() and partes[0] is not None]
         if iguales:
             return str(max(iguales))
+        # La siguiente a la última: el número de las carpetas manda. Contarlas no
+        # vale cuando falta alguna —en el 26-031-ESP-0003 la 1 fue una anulación
+        # sin carpeta de devolución (0-A, 2-B, 3-C): contando, la D salía 3 y
+        # es la 4—. Solo si ninguna lleva número («revB com») se cuentan.
+        numeros = [partes[0] for partes in revisiones.values() if partes[0] is not None]
+        if numeros:
+            return str(max(numeros) + 1)
         return str(len(revisiones))
 
 

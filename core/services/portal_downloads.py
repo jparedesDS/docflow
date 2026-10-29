@@ -34,9 +34,14 @@ además, si el zip ya existe en alguna subcarpeta, no se vuelve a bajar.
 
 from __future__ import annotations
 
+import contextlib
 import email
 import logging
+import os
 import re
+import sys
+import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
@@ -474,9 +479,75 @@ def archive_pending(uid: str, folder: str = "INBOX", *, session=None) -> dict:
     return res
 
 
+# Una descarga a la vez, entre TODAS las ventanas de la app: puede haber dos
+# abiertas (una en una sesión de escritorio remoto que se quedó desconectada) y
+# las dos lanzan la descarga automática cada 10 minutos. El 29-10-2026 las dos
+# vieron el 10571-TRSEI-V-15258 sin descargar y lo bajaron a la vez: dos
+# carpetas en «00 TRANS Y RES» (014 y 015) y dos repartos.
+_candado_hilos = threading.RLock()
+_dentro = threading.local()
+
+
+@contextlib.contextmanager
+def _de_una_en_una(espera: float = 900.0):
+    """Candado entre procesos (fichero bloqueado). Reentrante en el mismo hilo."""
+    with _candado_hilos:
+        if getattr(_dentro, "si", False):
+            yield
+            return
+        ruta = str(PORTAL_DOWNLOADS_FILE) + ".descargando.lock"
+        Path(ruta).parent.mkdir(parents=True, exist_ok=True)
+        fh = open(ruta, "a+b")
+        try:
+            # Hace falta un byte que bloquear. Se mira el tamaño y no se lee:
+            # en Windows, con el byte bloqueado por otro proceso, leerlo falla.
+            if os.fstat(fh.fileno()).st_size == 0:
+                with contextlib.suppress(OSError):
+                    fh.write(b"\0")
+                    fh.flush()
+            fin = time.monotonic() + espera
+            while True:
+                try:
+                    fh.seek(0)
+                    if sys.platform == "win32":
+                        import msvcrt
+                        msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+                    else:
+                        import fcntl
+                        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except OSError:
+                    if time.monotonic() > fin:
+                        raise TimeoutError("Otra ventana de la app lleva demasiado descargando") from None
+                    time.sleep(0.5)
+            _dentro.si = True
+            try:
+                yield
+            finally:
+                _dentro.si = False
+                fh.seek(0)
+                if sys.platform == "win32":
+                    import msvcrt
+                    msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        finally:
+            fh.close()
+
+
 def download_for_email(uid: str, folder: str = "INBOX", *, session=None) -> dict:
     """Descarga la devolución del correo `uid` a la carpeta de su pedido y guarda
-    también el correo. `session`: sesión de eGesDoc ya abierta (opcional)."""
+    también el correo. `session`: sesión de eGesDoc ya abierta (opcional).
+
+    Si mientras se esperaba el turno otra ventana de la app ya la bajó, no se
+    vuelve a pedir al portal: se reparte lo descargado (`archive_pending`) y el
+    resultado lleva `already=True`."""
+    with _de_una_en_una():
+        return _descargar(uid, folder, session=session)
+
+
+def _descargar(uid: str, folder: str = "INBOX", *, session=None) -> dict:
     from core.services import transmittal
 
     pv = transmittal.preview_email(uid, folder)
@@ -493,8 +564,11 @@ def download_for_email(uid: str, folder: str = "INBOX", *, session=None) -> dict
     if not pedido:
         raise LookupError("No sé a qué pedido pertenece esta devolución (no está en el ERP)")
 
-    raw = imap_service.fetch_raw(uid, folder)
     code = info["code"]
+    if is_downloaded(code):
+        logger.info("Devolución %s: ya la descargó otra ventana de la app; solo se reparte", code)
+        return archive_pending(uid, folder, session=session)
+    raw = imap_service.fetch_raw(uid, folder)
     if info["portal"] == "sacyr":
         # Si el paquete no está en disco se baja ahora del SharePoint, con el
         # enlace de «Comments»: tiene que estar antes de emparejar ficheros y
@@ -745,6 +819,8 @@ def auto_download(days: int = 7, *, force: bool = False) -> list[dict]:
                         continue
             try:
                 res = download_for_email(e["uid"], session=session)
+                if res.get("already"):
+                    continue            # la bajó otra ventana de la app: ya avisó ella
                 results.append(res)
                 _notify(res)
             except NothingToDownload as exc:
