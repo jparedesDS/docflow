@@ -157,7 +157,42 @@ try:
         (dev / nombre).mkdir()
         (dev / nombre / "CLI-CAL-0011.pdf").write_bytes(b"%PDF " + letra.encode())
     r = archivar([doc(11, "D", "Aprobado")], contenido=b"%PDF-D")
-    ok(donde(r) == {"CLI-CAL-0011": "rev 4-D AP"}, f"la última más uno: {donde(r)}")
+    # La 4; y escrita como la última que se hizo en esta carpeta («rev3-C com», sin espacio)
+    ok(donde(r) == {"CLI-CAL-0011": "rev4-D AP"}, f"la última más uno: {donde(r)}")
+finally:
+    D.tecnico_dir = tecnico_real
+    shutil.rmtree(tmp, ignore_errors=True)
+
+# ── El formato y la carpeta de las devoluciones anteriores ───────────────────
+# 1043010640-T-0047: la de envío es «env MANUFACTURIG RECORD BOOK» (errata) y
+# las devoluciones están en «dev MANUFACTURING RECORD BOOK», escritas «rev5-4
+# com». Se abrió una «dev MANUFACTURIG…» nueva con «rev 6-5 AP».
+tmp = Path(tempfile.mkdtemp(prefix="revisiones_"))
+tecnico = tmp / "P-99-002 - S00 - CLIENTE - TEMPERATURA" / "2-Tecnico"
+envio = tecnico / "env MANUFACTURIG RECORD BOOK" / "rev6"
+envio.mkdir(parents=True)
+(envio / "CLI-DOS-0002.pdf").write_bytes(b"enviado")
+buena = tecnico / "dev MANUFACTURING RECORD BOOK"
+for nombre in ("rev0-B com", "rev1-0 AP", "rev2-50 com", "rev3-2 com", "rev4-3 com", "rev5-4 com"):
+    (buena / nombre).mkdir(parents=True)
+    (buena / nombre / "CLI-DOS-0002.pdf").write_bytes(b"%PDF " + nombre.encode())
+D.tecnico_dir = lambda _pedido: tecnico
+try:
+    dossier = {"Nº Pedido": "P-99/002", "Supp.": "S00", "Doc. EIPSA": "99-002-DOS-0002",
+               "Doc. Cliente": "CLI-DOS-0002", "Título": "MANUFACTURING RECORDS BOOK",
+               "Tipo de documento": "Dossier", "Rev.": "5", "_rev_cliente": "5", "Estado": "Aprobado"}
+    paquete = tmp / "T-0047.zip"
+    with zipfile.ZipFile(paquete, "w") as zf:
+        zf.writestr("CLI-DOS-0002.pdf", b"%PDF-septima")
+    r = D.archive_return(paquete, [dossier], "P-99/002", email_date="29-10-2099 12:00:00")
+    destino = Path(r["archived"][0][1])
+    ok(destino.parent.parent == buena, f"a la carpeta con sus devoluciones: {destino.parent.parent.name}")
+    ok(not (tecnico / "dev MANUFACTURIG RECORD BOOK").exists(), "sin abrir la de la errata")
+    ok(destino.parent.name == "rev6-5 AP", f"con el formato de las anteriores, sin espacio: {destino.parent.name}")
+    ok(D._estilo_rev(buena) == ("rev", ""), f"estilo de la carpeta: {D._estilo_rev(buena)}")
+    ok(D._estilo_rev(tmp / "vacia") == ("rev", " "), "una carpeta sin revisiones: «rev » con espacio")
+    (tmp / "mayus" / "REV 3 AP").mkdir(parents=True)
+    ok(D._estilo_rev(tmp / "mayus") == ("REV", " "), "y «REV 3» se copia en mayúsculas")
 finally:
     D.tecnico_dir = tecnico_real
     shutil.rmtree(tmp, ignore_errors=True)

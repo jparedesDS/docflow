@@ -559,7 +559,8 @@ try:
        f"el PDF suelto se archiva igual: {res['skipped']}")
     destino = Path(res["archived"][0][1])
     # Tercera devolución: nuestra 2, aunque el cliente pase de letras a números (1)
-    ok(destino.parent.name == "rev 2-1 AP", f"en la carpeta que le toca: {destino.parent.name}")
+    # …y con el formato de las anteriores («rev1-B COM»: sin espacio)
+    ok(destino.parent.name == "rev2-1 AP", f"en la carpeta que le toca: {destino.parent.name}")
     ok(destino.read_bytes() == b"%PDF-1.7 proceso de pintura", "con su contenido")
     ok((destino.parent / "dev 2026-10-13.eml").is_file(), "y el correo al lado")
     ok(suelto.is_file(), "el original no se mueve, se copia")
@@ -631,7 +632,7 @@ try:
         zf.writestr("V-1065110910-0299.pdf", b"%PDF-anulado-3")
     res = D.archive_return(suelto, [otra], "P-24/066")
     ok(len(res["archived"]) == 1 and
-       Path(res["archived"][0][1]).parent.name == "rev 0-D VOID",
+       Path(res["archived"][0][1]).parent.name == "rev0-D VOID",
        f"sin revisión archivada, carpeta propia: {res['archived']} / {res['skipped']}")
 finally:
     D.tecnico_dir = tecnico_real

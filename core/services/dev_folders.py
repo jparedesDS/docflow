@@ -210,6 +210,36 @@ class _DevolucionesArchivadas:
         self._por_tecnico[clave] = out
         return out
 
+    def _del_documento(self, ctx: dict, codes: list[str], nombres: list[str] | None):
+        """Lo archivado de ese documento: por su código (entero: «…-001» no es
+        «…-0010») o por el nombre que le da el portal."""
+        quiere = {_fold(n) for n in (nombres or []) if n}
+        patrones = [re.compile(r"(?<![A-Z0-9])" + re.escape(c) + r"(?![0-9])") for c in codes]
+        for entrada in self._indice(ctx):
+            nombre = entrada[3]
+            if _fold(nombre) in quiere or any(p.search(norm_doc_code(nombre)) for p in patrones):
+                yield entrada
+
+    def carpeta_dev(self, ctx: dict, codes: list[str], nombres: list[str] | None) -> Path | None:
+        """La carpeta dev donde están las devoluciones de ese documento (la de
+        la última), o None si no tiene ninguna.
+
+        Es la buena aunque no se llame como la de envío: en el P-23/105 la de
+        envío es «env MANUFACTURIG RECORD BOOK» (con la errata) y las seis
+        devoluciones anteriores estaban en «dev MANUFACTURING RECORD BOOK»;
+        siguiendo el nombre se abrió una «dev MANUFACTURIG…» nueva para la
+        séptima (1043010640-T-0047)."""
+        # Por carpeta: su revisión más alta y cuántas tiene de él. Gana la de la
+        # última revisión; si empatan, la que tiene más historia del documento.
+        por_carpeta: dict[str, list] = {}
+        for top, partes, _ruta, _nombre in self._del_documento(ctx, codes, nombres):
+            dato = por_carpeta.setdefault(str(top.parent).lower(), [-1, set(), top.parent])
+            dato[0] = max(dato[0], partes[0] if partes[0] is not None else -1)
+            dato[1].add(_fold(top.name))
+        if not por_carpeta:
+            return None
+        return max(por_carpeta.values(), key=lambda d: (d[0], len(d[1])))[2]
+
     def nuestra(self, ctx: dict, codes: list[str], nombres: list[str] | None, cliente: str,
                 mismo: tuple | None = None) -> str:
         """Nuestra revisión de esta devolución, según las anteriores.
@@ -221,13 +251,9 @@ class _DevolucionesArchivadas:
         · `mismo` = (nombre, tamaño, crc) del fichero que se archiva: si ya está
           archivado (volver a descargar), su carpeta no cuenta como anterior.
         """
-        quiere = {_fold(n) for n in (nombres or []) if n}
-        patrones = [re.compile(r"(?<![A-Z0-9])" + re.escape(c) + r"(?![0-9])") for c in codes]
         revisiones: dict[tuple, tuple] = {}
         suyas: set[tuple] = set()
-        for top, partes, ruta, nombre in self._indice(ctx):
-            if not (_fold(nombre) in quiere or any(p.search(norm_doc_code(nombre)) for p in patrones)):
-                continue
+        for top, partes, ruta, nombre in self._del_documento(ctx, codes, nombres):
             ident = _identidad_rev(partes)
             if mismo and _fold(nombre) == _fold(mismo[0]) and _mismo_fichero(ruta, mismo[1], mismo[2]):
                 suyas.add(ident)
@@ -269,9 +295,37 @@ def revision_cliente(doc: dict) -> str:
     return t[:4]
 
 
-def nombre_rev(nuestra: str, cliente: str) -> str:
-    """«rev 2-C»: nuestra revisión, guion, la del cliente (siempre las dos)."""
-    return f"rev {nuestra}-{cliente}" if cliente else f"rev {nuestra}"
+def nombre_rev(nuestra: str, cliente: str, prefijo: str = "rev", espacio: str = " ") -> str:
+    """«rev 2-C»: nuestra revisión, guion, la del cliente (siempre las dos).
+
+    `prefijo` y `espacio` imitan cómo están escritas las carpetas de esa
+    carpeta dev («rev5-4 com» → «rev6-5»): ver `_estilo_rev`."""
+    cabeza = f"{prefijo}{espacio}{nuestra}"
+    return f"{cabeza}-{cliente}" if cliente else cabeza
+
+
+_ESTILO_RE = re.compile(r"^z?(rev)(\s*)(?=\d)", re.I)
+
+
+def _estilo_rev(dev_dir: Path) -> tuple[str, str]:
+    """(prefijo, espacio) con que están escritas las revisiones de esa carpeta dev.
+
+    Se copia el de la última («rev5-4 com» → «rev», ""): las devoluciones de un
+    pedido van todas con el mismo formato, y una «rev 6-5» al lado de «rev5-4»
+    no lo seguía (1043010640-T-0047). Sin ninguna, «rev » con espacio."""
+    mejor: tuple | None = None
+    for sub, num, _rev, _suf in _rev_subfolders(dev_dir):
+        m = _ESTILO_RE.match(sub.name)
+        if not m or num is None:
+            continue
+        try:
+            reciente = sub.stat().st_mtime
+        except OSError:
+            reciente = 0.0
+        # La de número más alto; con el mismo, la más reciente (la costumbre de ahora)
+        if mejor is None or (num, reciente) > mejor[0]:
+            mejor = ((num, reciente), m.group(1), m.group(2))
+    return (mejor[1], " " if mejor[2] else "") if mejor else ("rev", " ")
 
 
 def _es_de_la_revision(num: int | None, rev: str, nuestra: str, cliente: str) -> bool:
@@ -981,7 +1035,7 @@ def _rev_folder_nueva(dev_dir: Path, nuestra: str, cliente: str, suffix: str) ->
     for sub, num, rev, found in _rev_subfolders(dev_dir):
         if _es_de_la_revision(num, rev, nuestra, cliente) and mismo_sufijo(found):
             return sub, True
-    cabeza = nombre_rev(nuestra, cliente)
+    cabeza = nombre_rev(nuestra, cliente, *_estilo_rev(dev_dir))
     # Sin sufijo cuando la resolución va en subcarpeta: un nombre acabado en
     # espacio Windows lo recorta y quedarían dos carpetas con el mismo nombre.
     return dev_dir / (f"{cabeza} {suffix}" if suffix else cabeza), False
@@ -1239,6 +1293,13 @@ def _con_revisiones(destino: dict, doc: dict, ctx: dict, archivadas: _Devolucion
     """Añade al destino la revisión del cliente y la nuestra, contando las
     devoluciones anteriores del documento (`_DevolucionesArchivadas`)."""
     destino["cliente"] = revision_cliente(doc)
+    # Si el documento ya tiene devoluciones, va a la carpeta dev donde están
+    donde = archivadas.carpeta_dev(ctx, destino["codes"], nombres)
+    if donde is not None and _fold(str(donde)) != _fold(str(destino["dev_dir"])):
+        logger.info("Archivo dev: %s va a «%s», donde están sus devoluciones (no a «%s»)",
+                    destino["codes"][:1], donde.name, Path(destino["dev_dir"]).name)
+        destino["dev_dir"], destino["dev_exists"] = donde, True
+        destino["how"] = (destino.get("how") or "") + " · donde están sus devoluciones"
     propia = str(doc.get("_rev_nuestra", "") or "").strip()
     if propia:
         destino["nuestra"] = str(int(propia)) if propia.isdigit() else propia
