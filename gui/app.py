@@ -186,7 +186,8 @@ class DocFlowLiteApp(ctk.CTk):
         from core import preferences as _pref
         try:
             if self.state() == "normal":  # no guardar geometría si está maximizada/iconificada
-                _pref.set_value("window_geometry", self.winfo_geometry())
+                # geometry() de CTk: tamaño sin escalar, como lo espera _restore_geometry
+                _pref.set_value("window_geometry", self.geometry())
         except Exception:
             pass
         if self._current:

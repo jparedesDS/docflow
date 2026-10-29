@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import ctypes
 import logging
+import math
 import re
 import tkinter
 from contextlib import contextmanager
@@ -32,6 +33,8 @@ import customtkinter as ctk
 
 logger = logging.getLogger(__name__)
 
+# A escala 100 %; con otra escala de Windows (125 % en el escritorio remoto)
+# el marco crece con ella: `bordes()` los da en píxeles de pantalla.
 MARGEN = 12        # aire entre la ventana y el borde del escritorio
 MARCO_ALTO = 40    # barra de título + bordes que añade Windows (Tk mide sin ellos)
 MARCO_ANCHO = 16
@@ -78,18 +81,40 @@ def area_trabajo(win) -> tuple[int, int, int, int]:
     return 0, 0, win.winfo_screenwidth(), win.winfo_screenheight()
 
 
+def escala(win) -> float:
+    """Factor por el que CustomTkinter multiplica los tamaños de `win` (la
+    escala de Windows): 1.25 a 125 %. Tk y el escritorio miden en píxeles de
+    pantalla; `geometry()` de CustomTkinter, en tamaños sin escalar."""
+    try:
+        return win._get_window_scaling() or 1.0
+    except Exception:  # noqa: BLE001 — una ventana de Tk sin más
+        return 1.0
+
+
+def bordes(win) -> tuple[int, int, int]:
+    """(margen, marco_ancho, marco_alto) en píxeles de pantalla a la escala de `win`."""
+    e = escala(win)
+    return math.ceil(MARGEN * e), math.ceil(MARCO_ANCHO * e), math.ceil(MARCO_ALTO * e)
+
+
 def encajar_principal(win, ancho: int, alto: int, x: int | None = None, y: int | None = None,
                       geometria=None) -> None:
     """Tamaño y posición de una ventana raíz (login, app): cabe en el escritorio
-    y, si no trae posición o la traída se sale, va centrada."""
+    y, si no trae posición o la traída se sale, va centrada.
+
+    `ancho`/`alto` sin escalar, como en `geometry()`; `x`/`y` en píxeles de
+    pantalla (CustomTkinter no escala la posición)."""
+    e = escala(win)
+    _, marco_ancho, marco_alto = bordes(win)
     izq, arriba, der, abajo = area_trabajo(win)
-    ancho = min(ancho, der - izq - MARCO_ANCHO)
-    alto = min(alto, abajo - arriba - MARCO_ALTO)
+    w = min(round(ancho * e), der - izq - marco_ancho)
+    h = min(round(alto * e), abajo - arriba - marco_alto)
     if (x is None or y is None or x < izq or y < arriba
-            or x + ancho + MARCO_ANCHO > der or y + alto + MARCO_ALTO > abajo):
-        x = izq + max(0, (der - izq - ancho - MARCO_ANCHO) // 2)
-        y = arriba + max(0, (abajo - arriba - alto - MARCO_ALTO) // 2)
-    (geometria or win.geometry)(f"{ancho}x{alto}+{x}+{y}")
+            or x + w + marco_ancho > der or y + h + marco_alto > abajo):
+        x = izq + max(0, (der - izq - w - marco_ancho) // 2)
+        y = arriba + max(0, (abajo - arriba - h - marco_alto) // 2)
+    # int() y no round(): al volver a escalar no se pasa de lo que cabe
+    (geometria or win.geometry)(f"{int(w / e)}x{int(h / e)}+{x}+{y}")
 
 
 def encajar(win, repaso: bool = False) -> None:
@@ -106,33 +131,34 @@ def encajar(win, repaso: bool = False) -> None:
         if not win.winfo_exists() or win.overrideredirect():
             return
         win.update_idletasks()
-        escala = win._get_window_scaling() or 1.0
+        e = escala(win)
+        margen, marco_ancho, marco_alto = bordes(win)
         izq, arriba, der, abajo = area_trabajo(win)
-        max_w = der - izq - 2 * MARGEN - MARCO_ANCHO
-        max_h = abajo - arriba - 2 * MARGEN - MARCO_ALTO
+        max_w = der - izq - 2 * margen - marco_ancho
+        max_h = abajo - arriba - 2 * margen - marco_alto
 
         # Si su mínimo no cabe en esta pantalla, el mínimo es la pantalla
-        min_w, min_h = win._min_width * escala, win._min_height * escala
+        min_w, min_h = win._min_width * e, win._min_height * e
         if min_w > max_w or min_h > max_h:
-            win.minsize(int(min(min_w, max_w) / escala), int(min(min_h, max_h) / escala))
+            win.minsize(int(min(min_w, max_w) / e), int(min(min_h, max_h) / e))
 
         natural = not getattr(win, "_encaje_tamano", False)
         req_w, req_h = win.winfo_reqwidth(), win.winfo_reqheight()
         if natural:
             w, h = req_w, req_h
         else:
-            w = max(round(win._current_width * escala), req_w)
-            h = max(round(win._current_height * escala), req_h)
+            w = max(round(win._current_width * e), req_w)
+            h = max(round(win._current_height * e), req_h)
         w, h = min(w, max_w), min(h, max_h)
-        x = max(izq, izq + (der - izq - w - MARCO_ANCHO) // 2)
-        y = max(arriba, arriba + (abajo - arriba - h - MARCO_ALTO) // 2)
+        x = max(izq, izq + (der - izq - w - marco_ancho) // 2)
+        y = max(arriba, arriba + (abajo - arriba - h - marco_alto) // 2)
 
         if repaso and win.state() == "normal" and _geometria(win) == (w, h, x, y):
             return
         if natural and (w, h) == (req_w, req_h):
             win.geometry(f"+{x}+{y}")
         else:
-            win.geometry(f"{int(w / escala)}x{int(h / escala)}+{x}+{y}")
+            win.geometry(f"{int(w / e)}x{int(h / e)}+{x}+{y}")
         if not repaso and win.state() == "normal":
             win.lift()
     except Exception as exc:  # noqa: BLE001 — colocar una ventana nunca debe romperla

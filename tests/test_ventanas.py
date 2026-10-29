@@ -31,6 +31,11 @@ IZQ, ARRIBA, DER, ABAJO = AREA
 
 root = ctk.CTk()
 root.geometry("400x300+0+0")
+# Tk y el escritorio miden en píxeles de pantalla; geometry() de CustomTkinter,
+# sin escalar. Con Windows a 125 % (el escritorio remoto) 900 son 1125 px, y el
+# marco de Windows también crece: todo se compara a la escala de la sesión.
+ESCALA = ventanas.escala(root)
+MARGEN, MARCO_ANCHO, MARCO_ALTO = ventanas.bordes(root)
 ventanas_abiertas = {}
 nada_mas_crear = {}
 
@@ -60,22 +65,34 @@ def abrir():
 
 
 def dentro(win, nombre):
+    """Tamaño en píxeles de pantalla, tras comprobar que cabe y va centrada."""
+    win.update_idletasks()
     x, y = win.winfo_x(), win.winfo_y()
     w, h = win.winfo_width(), win.winfo_height()
     ok(x >= IZQ and y >= ARRIBA, f"{nombre}: empieza dentro del escritorio ({x},{y})")
-    ok(x + w + ventanas.MARCO_ANCHO <= DER and y + h + ventanas.MARCO_ALTO <= ABAJO,
+    ok(x + w + MARCO_ANCHO <= DER and y + h + MARCO_ALTO <= ABAJO,
        f"{nombre}: acaba dentro del escritorio ({x},{y} {w}x{h})")
-    centro_x = x + (w + ventanas.MARCO_ANCHO) / 2
+    centro_x = x + (w + MARCO_ANCHO) / 2
     ok(abs(centro_x - (IZQ + DER) / 2) <= 2, f"{nombre}: centrada en horizontal ({centro_x})")
     return w, h
+
+
+def logico(win):
+    """(ancho, alto) sin escalar, como los pide geometry()."""
+    w, h = win.geometry().split("+")[0].split("x")
+    return int(w), int(h)
 
 
 def comprobar():
     v = ventanas_abiertas
     w, h = dentro(v["alta"], "alta")
-    ok(w == 900 and h == ABAJO - ARRIBA - 2 * ventanas.MARGEN - ventanas.MARCO_ALTO,
-       f"la alta se recorta a la altura útil: {w}x{h}")
-    ok(v["alta"]._min_height <= h, f"y su mínimo ya no obliga a salirse: {v['alta']._min_height}")
+    util = ABAJO - ARRIBA - 2 * MARGEN - MARCO_ALTO          # en píxeles de pantalla
+    # Sin escalar, exacto; en pantalla, lo útil salvo lo que se pierde al
+    # redondear a un tamaño sin escalar (menos de un paso de escala)
+    ok(logico(v["alta"]) == (900, int(util / ESCALA)) and w == round(900 * ESCALA)
+       and util - ESCALA < h <= util,
+       f"la alta se recorta a la altura útil: {w}x{h} ({logico(v['alta'])} a escala {ESCALA}, útil {util})")
+    ok(v["alta"]._min_height * ESCALA <= h, f"y su mínimo ya no obliga a salirse: {v['alta']._min_height}")
     w, h = dentro(v["llena"], "llena")
     ok(w >= 500 and h >= 400, f"la que no cabía crece hasta su contenido: {w}x{h}")
     w, h = dentro(v["natural"], "natural")
@@ -89,6 +106,22 @@ def comprobar():
     ok(v["oculta"].state() == "withdrawn", "la que se ocultó a propósito sigue oculta")
     v["oculta"].deiconify()
     ok(v["oculta"].state() == "normal", "y se enseña cuando quien la usa lo pide")
+
+    # La principal (login, app) pide su tamaño sin escalar: más grande que el
+    # escritorio, se recorta a lo que cabe (ya escalada) y se centra
+    ventanas.encajar_principal(root, 1600, 1000)
+    w, h = dentro(root, "principal grande")
+    ok(DER - IZQ - MARCO_ANCHO - ESCALA < w and ABAJO - ARRIBA - MARCO_ALTO - ESCALA < h,
+       f"la principal grande ocupa el escritorio: {w}x{h}")
+    # Si cabe, con su tamaño (escalado) y en la posición que traía
+    ventanas.encajar_principal(root, 400, 300, IZQ + 10, ARRIBA + 10)
+    root.update_idletasks()
+    ok((root.winfo_x(), root.winfo_y()) == (IZQ + 10, ARRIBA + 10) and logico(root) == (400, 300)
+       and (root.winfo_width(), root.winfo_height()) == (round(400 * ESCALA), round(300 * ESCALA)),
+       f"la principal que cabe se queda donde estaba: {root.wm_geometry()}")
+    # Y si al escalarla ya no cabe donde estaba, se recoloca
+    ventanas.encajar_principal(root, 400, 300, DER - MARCO_ANCHO - 400, ARRIBA)
+    dentro(root, "principal en el borde")
 
     # Cambio de sección: lo de dentro cambia y no queda ninguna capa encima
     marco = ctk.CTkFrame(root)
