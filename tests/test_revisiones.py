@@ -193,6 +193,27 @@ try:
     ok(D._estilo_rev(tmp / "vacia") == ("rev", " "), "una carpeta sin revisiones: «rev » con espacio")
     (tmp / "mayus" / "REV 3 AP").mkdir(parents=True)
     ok(D._estilo_rev(tmp / "mayus") == ("REV", " "), "y «REV 3» se copia en mayúsculas")
+
+    # P-23/028 «dev NDE»: las dev se numeraron mal a mano (rev1-0, rev1-2,
+    # rev2-50) pero el envío dice la pareja entera, «env NDE\rev4-51», y el
+    # cliente devuelve la 51: es nuestra 4, no la 3
+    nde_env = tecnico / "env NDE"
+    for nombre in ("rev0-B", "rev1-0", "rev2-1", "rev3-50", "rev4-51"):
+        (nde_env / nombre).mkdir(parents=True)
+        (nde_env / nombre / "CLI-NDE-0011.pdf").write_bytes(b"enviado " + nombre.encode())
+    nde_dev = tecnico / "dev NDE"
+    for nombre in ("rev0-B com", "rev1-0 com", "rev1-2 AP", "rev2-50 REJ"):
+        (nde_dev / nombre).mkdir(parents=True)
+        (nde_dev / nombre / "CLI-NDE-0011.pdf").write_bytes(b"%PDF " + nombre.encode())
+    nde = {**dossier, "Doc. EIPSA": "99-002-NDE-0011", "Doc. Cliente": "CLI-NDE-0011",
+           "Título": "NDE PROCEDURE", "Tipo de documento": "", "Rev.": "51", "_rev_cliente": "51"}
+    paquete = tmp / "nde.zip"
+    with zipfile.ZipFile(paquete, "w") as zf:
+        zf.writestr("CLI-NDE-0011.pdf", b"%PDF-51")
+    r = D.archive_return(paquete, [nde], "P-99/002", email_date="29-10-2099 08:00:00")
+    destino = Path(r["archived"][0][1])
+    ok(destino.parent.parent == nde_dev and destino.parent.name == "rev4-51 AP",
+       f"la pareja del envío manda: {destino.parent.parent.name}\\{destino.parent.name}")
 finally:
     D.tecnico_dir = tecnico_real
     shutil.rmtree(tmp, ignore_errors=True)

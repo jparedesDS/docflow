@@ -1306,7 +1306,27 @@ def _con_revisiones(destino: dict, doc: dict, ctx: dict, archivadas: _Devolucion
     else:
         destino["nuestra"] = archivadas.nuestra(ctx, destino["codes"], nombres,
                                                 destino["cliente"], mismo)
+        enviada = _rev_del_envio(ctx["folders"], destino["codes"], nombres, destino["cliente"])
+        if enviada is not None and enviada > int(destino["nuestra"]):
+            destino["nuestra"] = str(enviada)
     return destino["nuestra"]
+
+
+def _rev_del_envio(folders: list[dict], codes: list[str], nombres: list[str] | None,
+                   cliente: str) -> int | None:
+    """Nuestra revisión según la carpeta desde la que se ENVIÓ el documento, si
+    lo dice entera: el fichero está en «env …\\rev4-51» y el cliente devuelve
+    justo la 51. Entonces es nuestra 4 aunque las carpetas dev estén mal
+    numeradas a mano (P-23/028 «dev NDE»: rev1-0, rev1-2, rev2-50… y los
+    envíos rev1-0, rev2-1, rev3-50, rev4-51). Sin pareja que case, None."""
+    if not cliente:
+        return None
+    numeros = []
+    for _f, sub in _find_sent_file(folders, codes, nombres):
+        partes = _partes_rev(sub.name) if sub is not None else None
+        if partes and partes[0] is not None and partes[1] == cliente.upper():
+            numeros.append(partes[0])
+    return max(numeros) if numeros else None
 
 
 class _Fichero:
