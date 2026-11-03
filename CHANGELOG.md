@@ -3,6 +3,32 @@
 Lo que ha ido entrando, por meses. Los detalles finos están en los mensajes de
 los commits; aquí queda lo que cambió la forma de trabajar.
 
+## Octubre y noviembre 2026
+
+- **Carpetas de devolución**: nuestra revisión ya no se lee del ERP (se rellena
+  a mano y se salta revisiones) sino de lo archivado: `rev<nuestra>-<cliente>`,
+  con el formato de las carpetas hermanas y en la carpeta `dev.` donde ya están
+  las devoluciones anteriores. Un documento anulado (VOID) va a la revisión que
+  anula. Las descargas de los portales van de una en una, aunque haya dos
+  DocFlow abiertos.
+- **Agenda y avisos**: los correos «Cálculos realizados» y «planos hechos» de
+  Técnico crean su tarea con carpeta, revisión y notas, y se cierran solas
+  cuando el seguimiento muestra el documento enviado. La sincronización con
+  Documentos respeta las tareas completadas o borradas a mano.
+- **Correo**: el buzón solo se lee (EXAMINE); solo Correo y Devoluciones
+  marcan como leído, y Ofertas ya no escribe en los buzones de comercial. La
+  lista carga en una petición (2 s → 0,2 s) y, con la clave de IA, «Análisis
+  IA» resume el correo abierto.
+- **IA opcional con Claude Haiku 5.5**: los párrafos de los informes y el
+  análisis de Correo, en `core/services/ia.py`. Sin clave no se llama a nada.
+- **Más rápido por escritorio remoto**: volver a una sección ya no vuelve a
+  medir cada celda de sus tablas (Calidad 400 → 80 ms), y DocuSign y las
+  subcarpetas de «Nuevo pedido» se dibujan en un solo lienzo (DocuSign
+  600 → 80 ms). Las ventanas encajan a cualquier escala de Windows (125 %).
+- **Limpieza**: fuera ~625 líneas de código muerto, datos inventados en las
+  pruebas (nada de clientes reales en el repositorio público), y los Excel
+  temporales y las copias del ERP ya no se acumulan en `data/`.
+
 ## Septiembre 2026
 
 - **Ni un dato de la empresa en el código**: equipo, clientes, libro de pedidos,
@@ -11,8 +37,7 @@ los commits; aquí queda lo que cambió la forma de trabajar.
   Una instalación nueva arranca en blanco y funciona igual.
 - **Devoluciones sin paquete**: los transmittals «for information» de Wood no
   traen enlace de descarga, pero la devolución existe: ahora se le abre su
-  carpeta `dev. <Tipo>
-ev<N> AP` y el correo queda dentro, como el resto.
+  carpeta `dev. <Tipo>\rev<N> AP` y el correo queda dentro, como el resto.
 - **Documentos cerrados de un pedido**: botón «⤓ Comentados del cliente» en
   Pedidos (y `tools/finales_egesdoc.py` para la línea de comandos) que baja de
   eGesDoc el PDF comentado de todos los documentos en Final de un PO —los 345

@@ -77,8 +77,7 @@ vuelo, ya no hay nada que pintar y el resultado se descarta en silencio.
 Hay devoluciones que llegan **sin paquete**: Wood avisa de documentos
 «2I - FOR INFORMATION ONLY» y el correo no trae enlace de descarga. No hay PDF
 que repartir, pero la devolución existe igual, así que se le abre su carpeta
-`dev. <Tipo>
-ev<N> AP` y dentro queda el correo (`archive_email_only`). Es lo
+`dev. <Tipo>\rev<N> AP` y dentro queda el correo (`archive_email_only`). Es lo
 que se hacía a mano, y sin ello el rastro se quedaba solo en «00 TRANS Y RES».
 
 ## Las carpetas de revisión
