@@ -412,15 +412,26 @@ class InboxView(ctk.CTkFrame):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+# En español a mano: strftime(%A/%b) sale en el idioma del sistema, que en el
+# servidor es inglés («Monday 02 Nov»)
+_DIAS = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
+_MESES = ("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic")
+
+
+def _parse(iso: str):
+    dt = parsedate_to_datetime(iso) if " " in iso else None
+    if dt is None:
+        from datetime import datetime
+        dt = datetime.fromisoformat(iso)
+    return dt
+
+
 def _fmt_date(iso: str) -> str:
     if not iso:
         return ""
     try:
-        dt = parsedate_to_datetime(iso) if " " in iso else None
-        if dt is None:
-            from datetime import datetime
-            dt = datetime.fromisoformat(iso)
-        return dt.strftime("%d %b · %H:%M")
+        dt = _parse(iso)
+        return f"{dt.day:02d} {_MESES[dt.month - 1]} · {dt:%H:%M}"
     except Exception:
         return iso[:16]
 
@@ -429,11 +440,9 @@ def _fmt_date_long(iso: str) -> str:
     if not iso:
         return ""
     try:
-        dt = parsedate_to_datetime(iso) if " " in iso else None
-        if dt is None:
-            from datetime import datetime
-            dt = datetime.fromisoformat(iso)
-        return dt.strftime("%A %d %b %Y · %H:%M")
+        dt = _parse(iso)
+        return (f"{_DIAS[dt.weekday()].capitalize()} {dt.day:02d} {_MESES[dt.month - 1]} "
+                f"{dt.year} · {dt:%H:%M}")
     except Exception:
         return iso
 

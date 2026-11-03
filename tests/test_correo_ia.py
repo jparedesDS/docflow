@@ -47,6 +47,15 @@ ia.redactar = lambda prompt, **_k: pedido.append(prompt) or "Resumen: comentario
 ok(B.analizar(CORREO) == "Resumen: comentarios." and pedido == [p],
    "analizar le pasa ese prompt a la IA")
 
+# ── Las fechas, en español (el servidor tiene Windows en inglés) ─────────────
+ok(V._fmt_date_long("2026-11-02T09:05:00+01:00") == "Lunes 02 nov 2026 · 09:05",
+   f"la fecha larga: {V._fmt_date_long('2026-11-02T09:05:00+01:00')!r}")
+ok(V._fmt_date("2026-08-15T18:30:00+02:00") == "15 ago · 18:30",
+   f"y la corta de la lista: {V._fmt_date('2026-08-15T18:30:00+02:00')!r}")
+ok(V._fmt_date_long("Sun, 01 Nov 2026 10:00:00 +0100") == "Domingo 01 nov 2026 · 10:00",
+   "también si llega en el formato del correo")
+ok(V._fmt_date("no es fecha") == "no es fecha", "y lo que no es fecha se deja tal cual")
+
 # ── La pantalla ──────────────────────────────────────────────────────────────
 B.list_emails = lambda **_k: [{"uid": "7", "subject": CORREO["subject"], "from": CORREO["from"],
                                "date": CORREO["date"], "is_read": True},
