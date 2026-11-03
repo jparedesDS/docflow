@@ -396,17 +396,70 @@ def button(parent, text: str, variant: str = "primary", command=None,
     return ctk.CTkButton(parent, text=text, command=command, **kw)
 
 
-def icon_button(parent, glyph: str, command=None, danger: bool = False, **overrides) -> ctk.CTkButton:
-    """Botón-icono discreto (✏ 🗑 ✕) de 24×22: transparente, hover suave —o
-    DELETE_HOVER si `danger`— y texto atenuado."""
-    kw = dict(
-        width=24, height=22, corner_radius=4, border_width=0,
-        fg_color="transparent",
-        hover_color=theme.DELETE_HOVER if danger else theme.BG_INPUT,
-        text_color=theme.TEXT_MUTED, font=theme.font(11),
-    )
-    kw.update(overrides)
-    return ctk.CTkButton(parent, text=glyph, command=command, **kw)
+def fondo_de(widget) -> str:
+    """El color que se ve detrás de `widget`: el de su contenedor CTk más cercano
+    que no sea «transparent» (para pintar un widget de Tk sin que desentone)."""
+    w = widget
+    while w is not None:
+        try:
+            color = w.cget("fg_color")
+        except Exception:  # noqa: BLE001 — un widget de Tk sin fg_color
+            try:
+                color = w.cget("bg")
+            except Exception:  # noqa: BLE001
+                color = None
+        if color and color != "transparent":
+            if isinstance(color, (tuple, list)):
+                color = color[1] if ctk.get_appearance_mode() == "Dark" else color[0]
+            return color
+        w = getattr(w, "master", None)
+    return theme.BG_CARD
+
+
+class _IconoBoton(tk.Label):
+    """Botón-icono de una sola ventana de Windows. Un CTkButton son tres (marco,
+    lienzo y texto) y en una lista de tarjetas con ✏ 🗑 📁 en cada una se nota
+    al pintar por escritorio remoto. Admite command, state y tooltip."""
+
+    def __init__(self, parent, glyph: str, command=None, danger: bool = False,
+                 text_color: str | None = None, font=None, **_ignorado):
+        self._fondo = fondo_de(parent)
+        self._hover = theme.DELETE_HOVER if danger else theme.BG_INPUT
+        self._command = command
+        super().__init__(parent, text=glyph, bg=self._fondo, fg=text_color or theme.TEXT_MUTED,
+                         disabledforeground=theme.BORDER_STRONG, font=font or theme.font(11),
+                         padx=4, pady=1, bd=0, cursor="hand2")
+        self.bind("<Enter>", lambda _e: self._pintar(self._hover), add="+")
+        self.bind("<Leave>", lambda _e: self._pintar(self._fondo), add="+")
+        self.bind("<ButtonRelease-1>", self._clic, add="+")
+
+    def _activo(self) -> bool:
+        return str(self.cget("state")) != "disabled"
+
+    def _pintar(self, color: str) -> None:
+        if self._activo():
+            self.configure(bg=color)
+
+    def _clic(self, e) -> None:
+        # Como un botón: cuenta si se suelta encima
+        if self._activo() and self._command and 0 <= e.x < self.winfo_width() \
+                and 0 <= e.y < self.winfo_height():
+            self._command()
+
+    def configure(self, cnf=None, **kw):
+        if "state" in kw:
+            kw["cursor"] = "hand2" if kw["state"] != "disabled" else ""
+            if kw["state"] == "disabled":
+                kw["bg"] = self._fondo
+        return super().configure(cnf, **kw)
+
+    config = configure
+
+
+def icon_button(parent, glyph: str, command=None, danger: bool = False, **overrides) -> tk.Label:
+    """Botón-icono discreto (✏ 🗑 ✕): transparente, hover suave —o DELETE_HOVER
+    si `danger`— y texto atenuado. De una sola ventana (ver _IconoBoton)."""
+    return _IconoBoton(parent, glyph, command=command, danger=danger, **overrides)
 
 
 # ── Estados vacíos ─────────────────────────────────────────────────────────────
