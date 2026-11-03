@@ -536,12 +536,9 @@ class OfertasView(ctk.CTkFrame):
             ctk.CTkLabel(r, text=str(val), font=theme.FONT_SMALL, text_color=theme.TEXT_MAIN,
                          anchor="w", justify="left", wraplength=600).pack(side="left", fill="x", expand=True)
 
-        # Acciones
-        if not o.get("is_read"):
-            act = ctk.CTkFrame(self.detail, fg_color="transparent")
-            act.pack(fill="x", padx=theme.SPACE_4, pady=(theme.SPACE_2, 0))
-            ui.button(act, "✓ Marcar como leído", "outline", size="sm", height=30,
-                      text_color=theme.GREEN, command=lambda: self._mark_read(o)).pack(side="left")
+        # Sin «Marcar como leído»: los buzones de comercial son de otras
+        # personas y solo se leen (EXAMINE / BODY.PEEK). Lo leído lo marca su
+        # dueño en su correo, y así el «sin leer» de aquí dice la verdad.
 
         # Estado de respuesta (con la salvedad de la bandeja compartida)
         elabel, ecolor, eicon = _engagement(o)
@@ -755,15 +752,3 @@ class OfertasView(ctk.CTkFrame):
         ui.toast(self, "Dominio de confianza", f"{domain} marcado como de confianza.", kind="success")
         self._fetch(force=True)
 
-    def _mark_read(self, o: dict) -> None:
-        def worker():
-            of.mark_read(o["account"], o["uid"])
-            o["is_read"] = True
-            ui.en_ui(self, self._after_mark_read)
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _after_mark_read(self) -> None:
-        k = of.kpis(self._ofertas)
-        self._kpi["sin_leer"].configure(text=str(k["sin_leer"]))
-        self._render_list()

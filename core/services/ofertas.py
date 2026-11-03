@@ -586,12 +586,3 @@ def _url_domain(url: str) -> str:
     return m.group(1).lower() if m else ""
 
 
-def mark_read(account_label: str, uid: str) -> None:
-    creds = _creds(account_label)
-    if not creds:
-        return
-    user, password = creds
-    try:
-        imap_service.mark_as_read(uid, "INBOX", user, password)
-    except Exception as exc:
-        logger.warning("Ofertas: no se pudo marcar leído %s: %s", uid, exc)

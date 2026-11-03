@@ -79,7 +79,7 @@ def _rtf_segment_to_text(segment: str) -> str:
 
 
 def _extract_html_from_outlook_rtf(rtf_str: str, logger) -> str | None:
-    """
+    r"""
     Reconstruye el HTML completo desde RTF de Outlook.
     Outlook entrelaza:
       - {\*\htmltag <th>}  →  etiqueta HTML
@@ -145,10 +145,12 @@ def _nombre_carpeta(folder) -> str:
     return nombre if nombre.startswith('"') else f'"{nombre}"'
 
 
-def _connect(folder="INBOX", imap_user=None, imap_pass=None):
+def _connect(folder="INBOX", imap_user=None, imap_pass=None, escribir=False):
+    """Abre la carpeta en solo lectura (EXAMINE) salvo que se vaya a escribir:
+    solo `mark_as_read`, para Correo y Devoluciones."""
     conn = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT)
     conn.login(imap_user or IMAP_USER, imap_pass or IMAP_PASS)
-    typ, data = conn.select(_nombre_carpeta(folder))
+    typ, data = conn.select(_nombre_carpeta(folder), readonly=not escribir)
     if typ != "OK":
         detalle = (data[0].decode("utf-8", "replace") if data and data[0] else "")
         conn.logout()
@@ -586,7 +588,7 @@ def buscar_asunto(texto, days=14, carpetas="INBOX", saltar=(), imap_user=None, i
 
 
 def mark_as_read(uid, folder="INBOX", imap_user=None, imap_pass=None):
-    conn = _connect(folder, imap_user, imap_pass)
+    conn = _connect(folder, imap_user, imap_pass, escribir=True)
     try:
         conn.store(uid.encode() if isinstance(uid, str) else uid, "+FLAGS", "\\Seen")
     finally:

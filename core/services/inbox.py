@@ -29,10 +29,11 @@ def _decode_header_value(value) -> str:
     return "".join(result)
 
 
-def _connect(folder: str = "INBOX") -> imaplib.IMAP4_SSL:
+def _connect(folder: str = "INBOX", escribir: bool = False) -> imaplib.IMAP4_SSL:
+    """En solo lectura (EXAMINE) salvo para marcar como no leído."""
     conn = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT)
     conn.login(IMAP_USER, IMAP_PASS)
-    conn.select(folder)
+    conn.select(folder, readonly=not escribir)
     return conn
 
 
@@ -129,7 +130,7 @@ def mark_read(uid: str, folder: str = "INBOX") -> None:
 
 def mark_unread(uid: str, folder: str = "INBOX") -> None:
     """Quita el flag \\Seen del email."""
-    conn = _connect(folder)
+    conn = _connect(folder, escribir=True)
     try:
         target = uid.encode() if isinstance(uid, str) else uid
         conn.store(target, "-FLAGS", "\\Seen")
