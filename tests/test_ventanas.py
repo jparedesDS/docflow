@@ -119,8 +119,8 @@ def comprobar():
     ok((root.winfo_x(), root.winfo_y()) == (IZQ + 10, ARRIBA + 10) and logico(root) == (400, 300)
        and (root.winfo_width(), root.winfo_height()) == (round(400 * ESCALA), round(300 * ESCALA)),
        f"la principal que cabe se queda donde estaba: {root.wm_geometry()}")
-    # Y si al escalarla ya no cabe donde estaba, se recoloca
-    ventanas.encajar_principal(root, 400, 300, DER - MARCO_ANCHO - 400, ARRIBA)
+    # Y si ya escalada no cabe donde estaba (1 px de más a cualquier escala), se recoloca
+    ventanas.encajar_principal(root, 400, 300, DER - MARCO_ANCHO - round(400 * ESCALA) + 1, ARRIBA)
     dentro(root, "principal en el borde")
 
     # Cambio de sección: lo de dentro cambia y no queda ninguna capa encima
