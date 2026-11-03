@@ -64,7 +64,7 @@ try:
         "var_f_entrada", "var_f_prevista", "var_material", "var_overwrite",
         "var_pedido", "var_planning_tpl", "var_sref", "var_subfolders",
         "var_suffix", "var_template_dir", "var_vddl_lang",
-        "_subfolder_checkboxes",
+        "_subfolder_list",
     ]
     faltan = [a for a in ATRIBUTOS if not hasattr(vista, a)]
     ok(not faltan, f"están los {len(ATRIBUTOS)} widgets y variables de la vista: faltan {faltan}")
@@ -111,11 +111,31 @@ try:
     # El idioma cambia los títulos que se verán en el VDDL
     vista.var_vddl_lang.set("en")
     vista._refresh_subfolder_labels()
-    ingles = [ck.cget("text") for ck in vista._subfolder_checkboxes.values()]
+    lista = vista._subfolder_list
+    ingles = [lista.texto(k) for k in vista.var_subfolders]
+    primera = lista.etiqueta(next(iter(vista.var_subfolders)))
+    pintado = lista.itemcget(lista.find_withtag(primera)[-1], "text")
     vista.var_vddl_lang.set("es")
     vista._refresh_subfolder_labels()
-    espanol = [ck.cget("text") for ck in vista._subfolder_checkboxes.values()]
+    espanol = [lista.texto(k) for k in vista.var_subfolders]
     ok(ingles != espanol, "el selector de idioma cambia lo que dicen los checks")
+    # Lo que se ve es ese texto, entero o rematado con «…» si no cabe en su columna
+    ok(pintado == ingles[0] or (pintado.endswith("…") and ingles[0].startswith(pintado[:-1])),
+       f"y se ve en pantalla: {pintado!r}")
+
+    # Las casillas son un solo lienzo: un clic en la segunda la desmarca y otro la marca
+    root.update_idletasks()
+    segunda = list(vista.var_subfolders)[1]
+    x = lista._ancho_col + 5
+    y = lista._px(13)
+    lista.event_generate("<Button-1>", x=x, y=y)
+    ok(not vista.var_subfolders[segunda].get(), f"un clic desmarca «{segunda}»")
+    ok(segunda not in vista._selected_subfolders(), "y ya no se crea")
+    lista.event_generate("<Button-1>", x=x, y=y)
+    ok(vista.var_subfolders[segunda].get(), "otro clic la vuelve a marcar")
+    lista.event_generate("<Button-1>", x=lista._ancho_col - 2, y=y)
+    ok(all(v.get() for v in vista.var_subfolders.values()),
+       "el hueco entre columnas no marca ni desmarca nada")
 
     # ── Los destinatarios, con su botón de contactos ─────────────────────────
     vista._set_cm_textboxes(["a@eipsa.es"], ["b@eipsa.es", "c@eipsa.es"])

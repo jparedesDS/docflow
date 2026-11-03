@@ -19,6 +19,7 @@ from core.services import comm_matrix as comm_matrix_service
 from core.services import erp_tags
 from gui import theme
 from gui.widgets import contactos, ui
+from gui.widgets.casillas import Casillas
 from gui.widgets.scrollframe import ScrollFrame
 
 
@@ -246,33 +247,17 @@ class AperturaView(ctk.CTkFrame):
             font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED,
         ).pack(side="left")
 
-        ck_grid = ctk.CTkFrame(sub_card, fg_color="transparent")
-        ck_grid.pack(fill="x", padx=theme.SPACE_4, pady=(0, theme.SPACE_3))
-        for c in range(3):
-            ck_grid.grid_columnconfigure(c, weight=1, uniform="subf")
-
-        self.var_subfolders: dict[str, ctk.BooleanVar] = {}
-        self._subfolder_checkboxes: dict[str, ctk.CTkCheckBox] = {}
-
-        entries = apertura_service.SUBFOLDER_CATALOG
-        ncols = 3
-        for i, entry in enumerate(entries):
-            r = i // ncols
-            c = i % ncols
-            folder = entry["folder"]
-            var = ctk.BooleanVar(value=True)
-            ck = ctk.CTkCheckBox(
-                ck_grid, text=self._subfolder_label(entry, "es"),
-                variable=var,
-                font=theme.FONT_BODY, text_color=theme.TEXT_MAIN,
-                fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-                border_color=theme.BORDER_STRONG,
-                checkbox_width=18, checkbox_height=18,
-            )
-            ck.grid(row=r, column=c, sticky="w",
-                    padx=theme.SPACE_1, pady=2)
-            self.var_subfolders[folder] = var
-            self._subfolder_checkboxes[folder] = ck
+        # Un solo lienzo para las ~34 casillas: como CTkCheckBox eran un tercio
+        # de las ventanas de la vista y lo más caro de abrirla (gui/widgets/casillas.py)
+        self._subfolder_list = Casillas(
+            sub_card,
+            [(e["folder"], self._subfolder_label(e, "es"))
+             for e in apertura_service.SUBFOLDER_CATALOG],
+            columnas=3,
+        )
+        self._subfolder_list.pack(fill="x", padx=theme.SPACE_4 + theme.SPACE_1,
+                                  pady=(0, theme.SPACE_3))
+        self.var_subfolders: dict[str, ctk.BooleanVar] = self._subfolder_list.vars
 
         # ── 4 · Destinatarios de reclamaciones ────────────────────────────
         cm_card = self._card(wrapper, "4 · Destinatarios de reclamaciones")
@@ -419,16 +404,13 @@ class AperturaView(ctk.CTkFrame):
         """Re-renderiza los textos de los checkboxes al cambiar idioma."""
         lang = self.var_vddl_lang.get()
         for entry in apertura_service.SUBFOLDER_CATALOG:
-            ck = self._subfolder_checkboxes.get(entry["folder"])
-            if ck is not None:
-                ck.configure(text=self._subfolder_label(entry, lang))
+            self._subfolder_list.poner_texto(entry["folder"], self._subfolder_label(entry, lang))
 
     def _set_all_subfolders(self, value: bool) -> None:
-        for var in self.var_subfolders.values():
-            var.set(value)
+        self._subfolder_list.marcar_todas(value)
 
     def _selected_subfolders(self) -> list[str]:
-        return [f for f, v in self.var_subfolders.items() if v.get()]
+        return self._subfolder_list.marcadas()
 
     # ── Helpers Communication Matrix ───────────────────────────────────────
 
