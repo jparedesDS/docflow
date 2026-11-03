@@ -56,6 +56,9 @@ class DataTable(ctk.CTkFrame):
         self._contenido: dict[str, int] | None = None   # caché: lo que mide lo más largo
         self._ajuste_pendiente = None
         self._ultimo_ancho = 0
+        # Con qué anchos se recortaron las celdas la última vez (None: hay que
+        # volver a hacerlo). Ver recortar_celdas.
+        self._recorte_hecho: dict | None = None
         self._globo = Globo(self)               # el texto entero de una celda recortada
 
         _STYLE_SEQ[0] += 1
@@ -335,6 +338,7 @@ class DataTable(ctk.CTkFrame):
         if hijos:
             self.tree.delete(*hijos)            # de una vez: fila a fila es O(n) llamadas a Tk
         self._contenido = None
+        self._recorte_hecho = None
         self._row_count = 0
         self._base_tags.clear()
         self._valores.clear()
@@ -353,6 +357,7 @@ class DataTable(ctk.CTkFrame):
         self._base_tags[new_iid] = final_tags
         self._valores[new_iid] = tuple(values)
         self._contenido = None
+        self._recorte_hecho = None       # una fila nueva llega entera: hay que recortarla
         if self._row_count == 1:
             self._pedir_ajuste()     # con datos, el reparto ya puede tener en cuenta su largo
         return new_iid
@@ -546,8 +551,15 @@ class DataTable(ctk.CTkFrame):
         anchos, fuente = self._medidas()
         if fuente is None:
             return
+        # Cada vez que la tabla aparece (<Map>, al volver a la sección) se pasa
+        # por aquí. Con los mismos anchos y las mismas filas no hay nada que
+        # hacer, y medir cada celda otra vez costaba ~350 ms en una tabla de
+        # 600 filas (Calidad), cada vez que se volvía a la sección.
+        if self._recorte_hecho == anchos:
+            return
         for iid in self.tree.get_children():
             self._recortar_fila(iid, anchos, fuente)
+        self._recorte_hecho = anchos
 
     def _medidas(self):
         """Ancho útil de cada columna y con qué fuente se mide."""

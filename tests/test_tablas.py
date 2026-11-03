@@ -84,6 +84,31 @@ root.update()
 comprobar(list(tabla.tree.item("d2", "values")) == ["☐"],
           "una fila incompleta no se reescribe")
 
+# Volver a la sección (<Map>) con los mismos anchos y filas no vuelve a medir
+# cada celda: costaba ~350 ms en una tabla de 600 filas
+medidas = []
+recortar_real = DataTable._recortar
+DataTable._recortar = staticmethod(lambda t, a, f: medidas.append(t) or recortar_real(t, a, f))
+tabla.recortar_celdas()
+comprobar(not medidas, f"sin cambios, no se mide nada: {len(medidas)} medidas")
+tabla.add_row(["☐", LARGO], iid="d3")
+tabla.recortar_celdas()
+comprobar(medidas and tabla.tree.item("d3", "values")[1].endswith("…"),
+          "una fila nueva sí se recorta")
+medidas.clear()
+tabla.set_columns_width({"Título": 560})
+root.update_idletasks()
+tabla.recortar_celdas()
+comprobar(medidas and tabla.tree.item("d3", "values")[1] == LARGO,
+          "y al cambiar el ancho se vuelve a recortar todo")
+tabla.clear()
+tabla.add_row(["☐", LARGO], iid="d4")
+tabla.set_columns_width({"Título": 100})
+root.update_idletasks()
+tabla.recortar_celdas()
+comprobar(tabla.tree.item("d4", "values")[1].endswith("…"), "y tras vaciarla y rellenarla también")
+DataTable._recortar = recortar_real
+
 try:
     root.destroy()
 except Exception:  # noqa: BLE001
