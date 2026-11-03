@@ -44,11 +44,28 @@ class ImapFalso:
         self._readonly = readonly
         return "OK", [b"1"]
 
-    def search(self, *_a):
-        return "OK", [b"1"]
+    # Para la lista en lote: el 1 y el 3 leídos (el 3 con los FLAGS detrás de
+    # la cabecera, como hacen algunos servidores) y el 2 sin leer
+    buzon = {b"1": b"\\Seen", b"2": b"", b"3": b"\\Seen"}
+    peticiones: list[bytes] = []
 
-    def fetch(self, _uid, _partes):
-        return "OK", [(b"1 (FLAGS (\\Seen) BODY[] {10}", CORREO), b")"]
+    def search(self, _charset, *criterio):
+        if criterio == ("UNSEEN",):
+            return "OK", [b" ".join(k for k, v in self.buzon.items() if not v)]
+        return "OK", [b" ".join(self.buzon)]
+
+    def fetch(self, seqs, _partes):
+        seqs = seqs if isinstance(seqs, bytes) else str(seqs).encode()
+        ImapFalso.peticiones.append(seqs)
+        out = []
+        for s in sorted(seqs.split(b","), key=int):        # el servidor, en su orden
+            cab = CORREO.replace(b"prueba", b"prueba " + s)
+            if s == b"3":
+                out += [(s + b" (BODY[HEADER.FIELDS (SUBJECT FROM DATE)] {10}", cab),
+                        b" FLAGS (\\Seen))"]
+            else:
+                out += [(s + b" (FLAGS (" + self.buzon.get(s, b"") + b") BODY[] {10}", cab), b")"]
+        return "OK", out
 
     def store(self, *args):
         if self._readonly:
@@ -82,6 +99,18 @@ B.get_email_detail("1")
 ok(len(ImapFalso.aperturas) >= 7, f"se abrió el buzón en cada lectura: {ImapFalso.aperturas}")
 ok(not abiertas_en_escritura(), f"y siempre en solo lectura: {ImapFalso.aperturas}")
 ok(not ImapFalso.escrituras, "sin escribir nada")
+
+# ── La lista de Correo: una petición para todos, en orden y con su estado ────
+ImapFalso.peticiones.clear()
+lista = B.list_emails()
+ok(len(ImapFalso.peticiones) == 1, f"una sola petición para toda la lista: {ImapFalso.peticiones}")
+ok([e["uid"] for e in lista] == ["3", "2", "1"], f"los más recientes primero: {lista}")
+ok([e["is_read"] for e in lista] == [True, False, True],
+   f"leído o no, venga el FLAGS delante o detrás: {[(e['uid'], e['is_read']) for e in lista]}")
+ok(lista[0]["subject"] == "P-99/001 prueba 3" and "ejemplo.test" in lista[0]["from"],
+   f"con asunto y remitente: {lista[0]}")
+ok([e["uid"] for e in B.list_emails(limit=2)] == ["3", "2"], "y el límite se queda con los últimos")
+ok(B.contar_no_leidos() == 1, f"Inicio cuenta los no leídos sin bajarlos: {B.contar_no_leidos()}")
 
 # ── Las dos marcas que se mantienen sí escriben ──────────────────────────────
 ImapFalso.aperturas.clear()

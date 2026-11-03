@@ -364,8 +364,7 @@ class HomeView(ctk.CTkFrame):
 
             try:
                 from core.services import inbox as inbox_service
-                emails = inbox_service.list_emails(filter="unread", limit=200)
-                results["inbox"] = len(emails)
+                results["inbox"] = inbox_service.contar_no_leidos()
             except Exception as exc:
                 logger.warning("KPI inbox falló (probablemente IMAP no configurado): %s", exc)
 

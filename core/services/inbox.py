@@ -7,6 +7,7 @@ se añadirá cuando ANTHROPIC_API_KEY esté configurada.
 import email as email_lib
 import imaplib
 import logging
+import re
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
 
@@ -14,6 +15,9 @@ from core.config import IMAP_HOST, IMAP_PASS, IMAP_PORT, IMAP_USER
 from core.services import imap as imap_service
 
 logger = logging.getLogger(__name__)
+
+_LOTE = 250
+_CAMPOS = "(FLAGS BODY.PEEK[HEADER.FIELDS (SUBJECT FROM DATE)])"
 
 
 def _decode_header_value(value) -> str:
@@ -53,40 +57,55 @@ def list_emails(folder: str = "INBOX", filter: str = "all", limit: int = 200) ->
         # Más recientes primero, recortado al límite
         uids = list(reversed(uids))[:limit]
 
-        results = []
-        for uid in uids:
-            _, msg_data = conn.fetch(uid, "(BODY.PEEK[HEADER] FLAGS)")
-            if not msg_data or not msg_data[0]:
-                continue
-            raw_header = msg_data[0][1]
-            msg = email_lib.message_from_bytes(raw_header)
-
-            # Flags
-            flags_str = ""
-            for item in msg_data:
+        # En lote y solo las tres cabeceras que se enseñan: antes era una
+        # petición al servidor por correo (hasta 200) con la cabecera entera.
+        por_seq: dict[str, dict] = {}
+        for i in range(0, len(uids), _LOTE):
+            _, md = conn.fetch(b",".join(uids[i:i + _LOTE]), _CAMPOS)
+            ultimo = None
+            for item in md or []:
                 if isinstance(item, bytes):
-                    flags_str += " " + item.decode(errors="replace")
-                elif isinstance(item, tuple) and len(item) > 0:
-                    s = item[0].decode(errors="replace") if isinstance(item[0], bytes) else str(item[0])
-                    flags_str += " " + s
-            is_read = "\\Seen" in flags_str
+                    # Lo que el servidor manda tras la cabecera: hay servidores
+                    # que ponen aquí los FLAGS y no delante
+                    if ultimo is not None and b"\\Seen" in item:
+                        ultimo["is_read"] = True
+                    continue
+                if not (isinstance(item, tuple) and len(item) >= 2 and item[1]):
+                    continue
+                info = item[0].decode(errors="replace") if isinstance(item[0], bytes) else str(item[0])
+                m = re.match(r"\s*(\d+)", info)
+                if not m:
+                    continue
+                msg = email_lib.message_from_bytes(item[1])
+                date_str = msg.get("Date", "")
+                try:
+                    date_iso = parsedate_to_datetime(date_str).isoformat()
+                except Exception:
+                    date_iso = date_str
+                ultimo = por_seq[m.group(1)] = {
+                    "uid": m.group(1),
+                    "subject": _decode_header_value(msg.get("Subject", "")),
+                    "from": _decode_header_value(msg.get("From", "")),
+                    "date": date_iso,
+                    "is_read": "\\Seen" in info,
+                }
+        # El servidor responde en su orden: se devuelven en el de `uids`
+        return [por_seq[u.decode()] for u in uids if u.decode() in por_seq]
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        conn.logout()
 
-            subject = _decode_header_value(msg.get("Subject", ""))
-            sender = _decode_header_value(msg.get("From", ""))
-            date_str = msg.get("Date", "")
-            try:
-                date_iso = parsedate_to_datetime(date_str).isoformat()
-            except Exception:
-                date_iso = date_str
 
-            results.append({
-                "uid": uid.decode() if isinstance(uid, bytes) else str(uid),
-                "subject": subject,
-                "from": sender,
-                "date": date_iso,
-                "is_read": is_read,
-            })
-        return results
+def contar_no_leidos(folder: str = "INBOX") -> int:
+    """Cuántos correos sin leer hay: una búsqueda, sin bajar ninguna cabecera
+    (Inicio solo enseña el número)."""
+    conn = _connect(folder)
+    try:
+        _, data = conn.search(None, "UNSEEN")
+        return len(data[0].split()) if data and data[0] else 0
     finally:
         try:
             conn.close()
