@@ -72,6 +72,18 @@ try:
     ok(reciente.exists(), "el reciente se respeta")
     ok(de_otro.exists(), "los de otro Excel los limpia su propio refresco")
     ok(destino.is_file(), "y el Excel sigue ahí")
+
+    # Las copias del botón manual: solo se guardan las 3 últimas de cada Excel
+    for fecha in ("20260901_080000", "20260902_080000", "20260903_080000", "20260904_080000"):
+        (tmp / f"data_erp.backup-{fecha}.xlsx").write_bytes(b"xlsx")
+    (tmp / "consulta_erp.backup-20260901_080000.xlsx").write_bytes(b"xlsx")
+    E._write_xlsx(df, destino, make_backup=True)          # hace la 5.ª
+    copias = sorted(p.name for p in tmp.glob("data_erp.backup-*"))
+    ok(len(copias) == 3 and "data_erp.backup-20260901_080000.xlsx" not in copias
+       and "data_erp.backup-20260902_080000.xlsx" not in copias,
+       f"se quedan las 3 últimas: {copias}")
+    ok((tmp / "consulta_erp.backup-20260901_080000.xlsx").exists(),
+       "y las de otro Excel no se tocan")
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 

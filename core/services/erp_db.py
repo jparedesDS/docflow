@@ -281,6 +281,29 @@ def _limpiar_temporales(target: Path) -> list[Path]:
     return borrados
 
 
+COPIAS_A_GUARDAR = 3
+
+
+def _podar_copias(target: Path) -> list[Path]:
+    """Deja solo las `COPIAS_A_GUARDAR` últimas «<nombre>.backup-AAAAMMDD_HHMMSS»
+    de `target`: el botón manual de refresco hace una cada vez y nunca se
+    borraban. El nombre lleva la fecha, así que ordenarlo es ordenar por fecha."""
+    try:
+        copias = sorted(target.parent.glob(f"{target.stem}.backup-*{target.suffix}"))
+    except OSError:
+        return []
+    borradas = []
+    for vieja in copias[:-COPIAS_A_GUARDAR]:
+        try:
+            vieja.unlink()
+            borradas.append(vieja)
+        except OSError:
+            pass               # abierta por alguien: ya caerá en otro refresco
+    if borradas:
+        logger.info("Borradas %d copias viejas de %s", len(borradas), target.name)
+    return borradas
+
+
 def _write_xlsx(df: pd.DataFrame, target: Path, make_backup: bool) -> str | None:
     """Vuelca el DataFrame a `target` de forma atómica (tmp + replace) y devuelve
     la ruta del backup si se hizo."""
@@ -288,6 +311,7 @@ def _write_xlsx(df: pd.DataFrame, target: Path, make_backup: bool) -> str | None
     if make_backup and target.exists():
         backup = target.with_name(f"{target.stem}.backup-{datetime.now():%Y%m%d_%H%M%S}{target.suffix}")
         shutil.copy2(target, backup)
+        _podar_copias(target)
     target.parent.mkdir(parents=True, exist_ok=True)
     # Escritura atómica: tmp + replace, para que el refresco no deje al lector
     # (Documentos/reportes) con un fichero a medio escribir.
