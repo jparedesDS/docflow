@@ -1,7 +1,7 @@
 """Servicio Inbox — lectura de correos IMAP con flag is_read y detalle completo.
 
-Port simplificado de inbox_service del DocFlow grande. Sin IA — la clasificación
-se añadirá cuando ANTHROPIC_API_KEY esté configurada.
+Port simplificado de inbox_service del DocFlow grande. El análisis con IA de un
+correo (`analizar`) es opcional: solo funciona con la clave de Ajustes ▸ IA.
 """
 
 import email as email_lib
@@ -141,6 +141,42 @@ def get_email_detail(uid: str, folder: str = "INBOX") -> dict:
         "html_body": html_body,
         "plain_body": plain_body,
     }
+
+
+# ── Análisis IA (opcional: solo con clave, core.services.ia) ─────────────────
+
+def cuerpo_legible(d: dict) -> str:
+    """El texto del correo: el plano o, si no hay, el HTML pasado a texto."""
+    return d.get("plain_body") or html_to_text(d.get("html_body", ""))
+
+
+def prompt_analisis(d: dict) -> str:
+    """Lo que se le pide a Claude sobre un correo del buzón de documentación."""
+    return (
+        "Eres el asistente del Document Controller de EIPSA, un fabricante de "
+        "instrumentación que envía documentación técnica (cálculos, planos, "
+        "procedimientos, dosieres) a sus clientes y recibe sus devoluciones con "
+        "comentarios. Analiza este correo del buzón de documentación y responde "
+        "en español, en texto plano sin Markdown, con estas cuatro líneas:\n"
+        "Resumen: qué dice, en una o dos frases.\n"
+        "Qué piden: lo que esperan de nosotros, o «nada» si es informativo.\n"
+        "Referencias: pedidos (P-xx/xxx), documentos, transmittals o revisiones "
+        "que se mencionen, o «ninguna».\n"
+        "Siguiente paso: la acción concreta que propones y si corre prisa.\n"
+        "No inventes datos que no estén en el correo.\n\n"
+        f"Asunto: {d.get('subject') or '(sin asunto)'}\n"
+        f"De: {d.get('from', '')}\n"
+        f"Para: {d.get('to', '')}\n"
+        + (f"Cc: {d['cc']}\n" if d.get("cc") else "")
+        + f"Fecha: {d.get('date', '')}\n\n"
+        f"Mensaje:\n{cuerpo_legible(d) or '(sin cuerpo legible)'}"
+    )
+
+
+def analizar(d: dict) -> str | None:
+    """El análisis de Claude de un correo, o None sin clave o si falla."""
+    from core.services import ia
+    return ia.redactar(prompt_analisis(d))
 
 
 def mark_read(uid: str, folder: str = "INBOX") -> None:

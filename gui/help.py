@@ -210,11 +210,13 @@ HELP: dict[str, dict] = {
     },
     "inbox": {
         "titulo": "Correo",
-        "que": "El buzón de documentación, con resumen y clasificación por IA cuando está configurada.",
+        "que": "El buzón de documentación, con análisis por IA del correo que abras si está configurada.",
         "pasos": [
             "«Recargar» lee los correos recientes.",
-            "Selecciona uno para leerlo; márcalo como leído o no leído.",
-            "Con la clave de IA en Ajustes, cada correo trae un resumen automático."
+            "Selecciona uno para leerlo (queda como leído); puedes volver a marcarlo como no leído.",
+            "Con la clave de IA en Ajustes ▸ IA, «🤖 Análisis IA» resume el correo, qué piden, "
+            "a qué pedidos o documentos se refiere y el siguiente paso. Solo al pulsarlo: "
+            "entonces el correo se manda a Anthropic (Claude) y cuesta una fracción de céntimo."
         ],
         "atajos": [],
     },

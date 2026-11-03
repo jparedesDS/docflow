@@ -7,7 +7,7 @@ from email.utils import parsedate_to_datetime
 import customtkinter as ctk
 from tkinter import messagebox
 
-from core.config import ANTHROPIC_API_KEY
+from core.services import ia
 from core.services import inbox as inbox_service
 from gui import theme
 from gui.widgets import ui
@@ -23,6 +23,7 @@ class InboxView(ctk.CTkFrame):
         super().__init__(master, fg_color=theme.BG_PAGE, **kwargs)
         self._emails: list[dict] = []
         self._current_uid: str | None = None
+        self._analisis: dict[str, str] = {}      # uid → análisis IA ya hecho
         self._search_after_id = None
         self._build_layout()
         self._reload()
@@ -34,7 +35,7 @@ class InboxView(ctk.CTkFrame):
         ui.page_header(
             self, "Correo",
             "El buzón de documentación: lee los correos y, con la IA configurada en Ajustes, "
-            "resume cada uno.",
+            "analiza el que abras.",
             help_key="inbox")
 
         # Toolbar
@@ -266,12 +267,24 @@ class InboxView(ctk.CTkFrame):
         ui.button(actions, toggle_label, "chip", height=30, border_width=0,
                   command=lambda uid=d["uid"], r=is_read: self._toggle_read(uid, r)).pack(side="left")
 
-        # Botón IA (deshabilitado sin key)
-        ai_btn = ui.button(actions, "🤖 Análisis IA", "chip", height=30, border_width=0,
-                           text_color=theme.TEXT_MUTED, state="disabled", command=lambda: None)
-        ai_btn.pack(side="left", padx=(8, 0))
-        if not ANTHROPIC_API_KEY:
-            ui.tooltip(ai_btn, "Guarda la clave de IA en Ajustes ▸ IA para activar el análisis.")
+        # Análisis IA: solo con la clave de Ajustes ▸ IA (core.services.ia)
+        hay_ia = ia.disponible()
+        self.btn_ia = ui.button(
+            actions, "🤖 Análisis IA", "chip", height=30, border_width=0,
+            text_color=theme.TEXT_MAIN if hay_ia else theme.TEXT_MUTED,
+            state="normal" if hay_ia else "disabled",
+            command=lambda dd=d: self._analizar(dd))
+        self.btn_ia.pack(side="left", padx=(8, 0))
+        ui.tooltip(self.btn_ia,
+                   "Resume el correo, qué piden y el siguiente paso. Manda el correo a "
+                   "Anthropic (Claude)." if hay_ia else
+                   "Guarda la clave de IA en Ajustes ▸ IA y reinicia para activar el análisis.")
+
+        # Donde aparece el análisis, entre las acciones y el mensaje
+        self._ia_host = ctk.CTkFrame(self.detail, fg_color="transparent", height=0)
+        self._ia_host.pack(fill="x", padx=18)
+        if d["uid"] in self._analisis:
+            self._pintar_analisis(self._analisis[d["uid"]])
 
         # Body
         ctk.CTkLabel(
@@ -280,7 +293,7 @@ class InboxView(ctk.CTkFrame):
             text_color=theme.TEXT_MUTED, anchor="w",
         ).pack(anchor="w", padx=18, pady=(10, 4))
 
-        body_text = d.get("plain_body") or inbox_service.html_to_text(d.get("html_body", ""))
+        body_text = inbox_service.cuerpo_legible(d)
         if not body_text:
             body_text = "(Email sin cuerpo legible)"
 
@@ -300,6 +313,49 @@ class InboxView(ctk.CTkFrame):
                 target=lambda u=d["uid"]: _safe_call(inbox_service.mark_read, u),
                 daemon=True,
             ).start()
+
+    # ── Análisis IA ──────────────────────────────────────────────────────────
+
+    def _analizar(self, d: dict) -> None:
+        uid = d["uid"]
+        self.btn_ia.configure(state="disabled", text="🤖 Analizando…")
+
+        def worker():
+            texto = inbox_service.analizar(d)
+            ui.en_ui(self, lambda: self._analisis_listo(uid, texto))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _analisis_listo(self, uid: str, texto: str | None) -> None:
+        if texto:
+            self._analisis[uid] = texto            # al volver al correo sigue ahí
+        if uid != self._current_uid:
+            return                                 # ya se está leyendo otro
+        try:
+            self.btn_ia.configure(state="normal", text="🤖 Análisis IA")
+        except Exception:  # noqa: BLE001 — el detalle se redibujó entretanto
+            return
+        if texto:
+            self._pintar_analisis(texto)
+        else:
+            ui.toast(self, "Análisis IA",
+                     "No se pudo analizar el correo. El motivo queda en el log.", kind="error")
+
+    def _pintar_analisis(self, texto: str) -> None:
+        for w in self._ia_host.winfo_children():
+            w.destroy()
+        caja = ctk.CTkFrame(self._ia_host, fg_color=ui.blend(theme.ACCENT, theme.BG_CARD, 0.10),
+                            corner_radius=8, border_width=1,
+                            border_color=ui.blend(theme.ACCENT, theme.BORDER, 0.4))
+        caja.pack(fill="x", pady=(0, 4))
+        ctk.CTkLabel(caja, text="ANÁLISIS IA", font=theme.font(9, "bold"),
+                     text_color=theme.ACCENT, anchor="w").pack(anchor="w", padx=12, pady=(8, 2))
+        lbl = ctk.CTkLabel(caja, text=texto, font=theme.FONT_BODY, text_color=theme.TEXT_MAIN,
+                           anchor="w", justify="left", wraplength=500)
+        lbl.pack(anchor="w", fill="x", padx=12, pady=(0, 10))
+        # El ajuste de línea sigue al ancho de la caja
+        caja.bind("<Configure>", lambda e: lbl.configure(wraplength=max(200, e.width - 30)),
+                  add="+")
 
     def _meta_row(self, parent, label: str, value: str) -> None:
         row = ctk.CTkFrame(parent, fg_color="transparent")
