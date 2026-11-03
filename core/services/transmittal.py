@@ -86,11 +86,6 @@ def _message_id_from_raw(raw: bytes) -> str:
         return ""
 
 
-def is_processed(key: str) -> bool:
-    """`key` es el de `email_key()`, no el uid."""
-    return key in _load_processed()
-
-
 # ── Detección de plataforma ───────────────────────────────────────────────────
 
 def _detect_platform(sender: str):
@@ -168,11 +163,6 @@ def fetch_all_emails(folder: str = "INBOX") -> list[dict]:
             "download": _download_status(e),
         })
     return out
-
-
-def saved_folder_for(preview: dict) -> str:
-    """Carpeta donde quedó guardada la devolución de este correo ('' si no se ha descargado)."""
-    return _download_status(preview).get("folder", "")
 
 
 def saved_dev_folders_for(preview: dict) -> list[str]:

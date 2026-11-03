@@ -47,10 +47,6 @@ _THEME_ALIASES = {
 }
 
 
-def is_coral_theme(value: str) -> bool:
-    return value in ("light-coral", "dark-coral")
-
-
 def base_mode(value: str) -> str:
     """Devuelve 'light' o 'dark' para mapear a CustomTkinter.appearance_mode."""
     return "light" if value.startswith("light") else "dark"

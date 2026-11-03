@@ -457,12 +457,6 @@ def download_transmittal(po: str, code: str, dest_dir: Path | str, *,
 
 # ── Documentos del PO ─────────────────────────────────────────────────────────
 
-# Los recuadros del panel de resumen de la sección «Documents» (el `itemprop` de
-# cada celda). «Finals» es el verde de abajo a la derecha: los documentos ya
-# cerrados, los que la tabla enseña con DOC. STATUS = Final.
-DOC_FILTERS = ("Pending", "Complete", "All", "Claimed", "Returned", "Rejected",
-               "PendingCritical", "Finals")
-
 
 def list_documents(s: requests.Session, *, summary: str = "Finals") -> list[dict]:
     """Documentos del PO activo, filtrados por uno de los recuadros del resumen.

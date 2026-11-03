@@ -43,10 +43,6 @@ def _hoy() -> str:
     return date.today().strftime("%d/%m/%Y")
 
 
-def _sino(n: int, singular: str, plural: str) -> str:
-    return singular if n == 1 else plural
-
-
 def _riesgo_color(riesgo: str) -> str:
     return {"fuera": rk.RED, "atrasado": rk.AMBER}.get(riesgo, rk.GREEN)
 

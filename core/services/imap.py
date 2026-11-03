@@ -292,30 +292,6 @@ def list_since(days=30, folder="INBOX", imap_user=None, imap_pass=None, limit=30
         conn.logout()
 
 
-_SENT_NAMES = {"sent", "sent items", "inbox.sent", "inbox.sent items", "enviados",
-               "elementos enviados", "[gmail]/sent mail"}
-
-
-def find_sent_folder(conn) -> str | None:
-    """Localiza la carpeta de Enviados (por atributo \\Sent o por nombre común)."""
-    try:
-        typ, data = conn.list()
-    except Exception:
-        return None
-    if typ != "OK" or not data:
-        return None
-    fallback = None
-    for line in data:
-        s = line.decode(errors="replace") if isinstance(line, bytes) else str(line)
-        names = re.findall(r'"([^"]*)"', s)
-        name = names[-1] if names else s.split()[-1]
-        if "\\sent" in s.lower():
-            return name
-        if name.lower() in _SENT_NAMES and fallback is None:
-            fallback = name
-    return fallback
-
-
 _SKIP_FOLDER_TOKENS = ("trash", "papelera", "junk", "spam", "drafts", "borrador",
                        "deleted", "eliminados")
 _SKIP_FOLDER_ATTRS = ("\\trash", "\\junk", "\\drafts", "\\noselect")

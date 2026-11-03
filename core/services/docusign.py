@@ -168,17 +168,6 @@ class DocuSignService:
 
     # ── KPIs ────────────────────────────────────────────────────────────────
 
-    def get_kpis(self, days: int = 30) -> dict:
-        envelopes = self.list_envelopes(days=days)
-        counts = {s: 0 for s in STATUS_META}
-        urgent = 0
-        for env in envelopes:
-            st = env.get("status", "created")
-            counts[st] = counts.get(st, 0) + 1
-            if env.get("urgency") == "high":
-                urgent += 1
-        return {"total": len(envelopes), "by_status": counts, "urgent": urgent, "days": days}
-
     # ── Normalización ───────────────────────────────────────────────────────
 
     def _map_envelope(self, raw: dict, full: bool = False) -> dict:

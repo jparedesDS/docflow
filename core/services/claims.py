@@ -157,13 +157,6 @@ def save_recipients(pedido: str, to: list[str], cc: list[str]) -> None:
     write_json(CLAIM_RECIPIENTS_PATH, data)
 
 
-def forget_recipients(pedido: str) -> None:
-    data = read_json(CLAIM_RECIPIENTS_PATH, default={})
-    if pedido in data:
-        del data[pedido]
-        write_json(CLAIM_RECIPIENTS_PATH, data)
-
-
 # ── API pública ───────────────────────────────────────────────────────────────
 
 DEFAULT_MIN_DAYS = 15
@@ -303,24 +296,6 @@ def get_pedido_preview(pedido: str, min_days: int = DEFAULT_MIN_DAYS) -> dict:
         "matrix_cc": matrix["cc"] if matrix else None,
         "matrix_updated_at": matrix["updatedAt"] if matrix else None,
     }
-
-
-def get_pedido_history(pedido: str) -> dict:
-    log = _load_log()
-    entry = log.get(pedido, {})
-    if "history" not in entry:
-        history = []
-        if "sent_at" in entry:
-            history.append({
-                "sent_at": entry["sent_at"],
-                "to": entry.get("to", []),
-                "cc": entry.get("cc", []),
-                "docs_count": entry.get("docs_count", 0),
-                "level": 1,
-            })
-    else:
-        history = entry["history"]
-    return {"pedido": pedido, "count": len(history), "entries": history}
 
 
 # ── Escalation ────────────────────────────────────────────────────────────────

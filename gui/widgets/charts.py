@@ -240,48 +240,6 @@ class BarChart(ChartCard):
                                     anchor="n", fill=theme.TEXT_MUTED, font=theme.font(9))
 
 
-class StackedBars(ChartCard):
-    """Barras apiladas: cada barra es un 100% repartido entre categorías."""
-
-    def __init__(self, master, labels: list, series: list, *, totals: list | None = None,
-                 **kwargs):
-        self._labels = list(labels)
-        self._series = series
-        self._totals = totals
-        kwargs.setdefault("legend", [(s["label"], s["color"]) for s in series])
-        super().__init__(master, **kwargs)
-        self._schedule()
-
-    def _pintar(self, w, h) -> None:
-        if not self._labels:
-            return self._vacio(w, h)
-        x0, x1 = _PAD_L - 34, w - _PAD_R
-        y0, y1 = _PAD_T, h - _PAD_B
-        n = len(self._labels)
-        slot = (x1 - x0) / max(1, n)
-        bw = max(6.0, min(46.0, slot * 0.66))
-        for i in range(n):
-            total = sum(s["values"][i] for s in self._series if i < len(s["values"])) or 1
-            centro = x0 + slot * (i + 0.5)
-            y = y1
-            for s in self._series:
-                v = s["values"][i] if i < len(s["values"]) else 0
-                if v <= 0:
-                    continue
-                alto = (y1 - y0) * (v / total)
-                self.canvas.create_rectangle(centro - bw / 2, y - alto, centro + bw / 2, y,
-                                             fill=s["color"], outline="")
-                if alto > 13 and bw > 22:
-                    self.canvas.create_text(centro, y - alto / 2, text=str(int(v)),
-                                            fill=theme.TEXT_ON_ACCENT, font=theme.font(9, "bold"))
-                y -= alto
-            etiqueta = str(self._labels[i])
-            if self._totals:
-                etiqueta += f"  ({fmt_num(self._totals[i])})"
-            self.canvas.create_text(centro, y1 + 6, text=etiqueta, anchor="n",
-                                    fill=theme.TEXT_MUTED, font=theme.font(9))
-
-
 class Donut(ChartCard):
     """Anillo de reparto con el total en el centro."""
 

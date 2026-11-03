@@ -13,7 +13,6 @@ import customtkinter as ctk
 from tkinter import messagebox
 
 from core.services import monitoring as monitoring_service
-from gui import cell_format
 from gui import theme
 from gui.widgets import ui
 from gui.widgets.pilltable import PillTable
@@ -872,82 +871,6 @@ class DocumentosView(ctk.CTkFrame):
 #  Ventana de detalle
 # ════════════════════════════════════════════════════════════════════════════
 
-class DocDetailWindow(ctk.CTkToplevel):
-    def __init__(self, master, doc: dict):
-        super().__init__(master, fg_color=theme.BG_PAGE)
-        self.title(f"{doc.get('Nº Doc. EIPSA', 'Documento')}")
-        self.geometry("680x720")
-        self.minsize(560, 560)
-        self.transient(master)
-        self.grab_set()
-
-        self._build(doc)
-
-    def _build(self, doc: dict) -> None:
-        # Header
-        header = ctk.CTkFrame(self, fg_color="transparent")
-        header.pack(fill="x", padx=22, pady=(20, 6))
-        ctk.CTkLabel(
-            header, text=str(doc.get("Nº Doc. EIPSA", "—")),
-            font=theme.font(18, "bold"),
-            text_color=theme.TEXT_MAIN, anchor="w",
-        ).pack(anchor="w")
-        ctk.CTkLabel(
-            header, text=str(doc.get("Título", "") or "Sin título"),
-            font=theme.FONT_BODY, text_color=theme.TEXT_SUB,
-            anchor="w", wraplength=620, justify="left",
-        ).pack(anchor="w", pady=(2, 0))
-
-        # Badge estado
-        estado = str(doc.get("Estado", "") or "Sin Enviar")
-        badge_color = _status_color(estado)
-        badge = ctk.CTkFrame(self, fg_color=badge_color, corner_radius=6, height=28)
-        badge.pack(anchor="w", padx=22, pady=(8, 8))
-        ctk.CTkLabel(
-            badge, text=f"  {estado.upper()}  ", font=theme.font(11, "bold"),
-            text_color="white",
-        ).pack()
-
-        # Footer pegado al fondo (se packea primero para garantizar visibilidad)
-        footer = ctk.CTkFrame(self, fg_color="transparent")
-        footer.pack(side="bottom", fill="x", padx=22, pady=(0, 14))
-        ui.button(footer, "Cerrar", "secondary", size="lg", command=self.destroy).pack(side="right")
-
-        # Scrollable list de campos (toma el espacio restante)
-        scroll = ctk.CTkScrollableFrame(self, fg_color=theme.BG_CARD, corner_radius=10)
-        scroll.pack(side="top", fill="both", expand=True, padx=22, pady=(0, 14))
-
-        field_order = [
-            "Nº Pedido", "Nº PO", "Nº Oferta",
-            "Cliente", "Material", "Responsable", "Repsonsable",
-            "Tipo Doc.", "Info/Review", "Crítico", "Nº Revisión",
-            "Fecha Pedido", "Fecha Prevista", "Fecha Env. Doc.",
-            "Días Envío", "Días Devolución",
-            "Nº Doc. Cliente", "Seguimiento", "Historial Rev.",
-        ]
-        seen = set()
-        for k in field_order + list(doc.keys()):
-            if k in seen or k == "Estado" or k == "Título" or k == "Nº Doc. EIPSA":
-                continue
-            seen.add(k)
-            val = doc.get(k, "")
-            if val == "" or val is None:
-                continue
-            self._add_field(scroll, k, str(val))
-
-    def _add_field(self, parent, label: str, value: str) -> None:
-        row = ctk.CTkFrame(parent, fg_color="transparent")
-        row.pack(fill="x", padx=14, pady=4)
-        ctk.CTkLabel(
-            row, text=label, font=theme.font(10, "bold"),
-            text_color=theme.TEXT_MUTED, anchor="w", width=160,
-        ).pack(side="left")
-        ctk.CTkLabel(
-            row, text=value or "—", font=theme.FONT_BODY,
-            text_color=theme.TEXT_MAIN, anchor="w", justify="left", wraplength=420,
-        ).pack(side="left", fill="x", expand=True)
-
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _fmt(val) -> str:
@@ -973,24 +896,6 @@ def _fmt_int(val, dash: bool = False) -> str:
         return "—" if dash else _fmt(val)
 
 
-def _fmt_cell(doc: dict, col: str) -> str:
-    """Formateo por columna: iconos de estado, barra de urgencia, marca crítico."""
-    raw = doc.get(col, "")
-    if col == "Estado":
-        return cell_format.estado_with_icon(raw)
-    if col == "Días Devolución":
-        try:
-            return str(int(float(raw)))
-        except (ValueError, TypeError):
-            return "—"
-    if col == "Crítico":
-        s = str(raw or "").strip().lower()
-        if s in ("sí", "si"):
-            return "Sí"
-        return "No" if s else "—"
-    return _fmt(raw)
-
-
 def _sort_key(v):
     """Devuelve siempre tuplas con shape uniforme (bucket:int, sort_value).
 
@@ -1013,29 +918,6 @@ def _sort_key(v):
         return (0, float(s))
     except ValueError:
         return (1, s.lower())
-
-
-def _row_tags(doc: dict) -> tuple:
-    """Color de la fila SIEMPRE según el Estado (consistente con la web).
-
-    El color del texto identifica el estado: Aprobado=verde, Enviado=azul,
-    Devolución/comentado=ámbar, Rechazado=rojo, Sin enviar=gris. La condición
-    de crítico/atrasado NO recolorea la fila (eso saturaba la tabla); se ve en
-    las columnas Crítico y Días.
-    """
-    estado = str(doc.get("Estado", "") or "").lower().strip()
-
-    if "aprobado" in estado:
-        return ("row_aprobado",)
-    if "rechazado" in estado:
-        return ("row_rechazado",)
-    if any(s in estado for s in ("com.", "comentado", "menores", "mayores")):
-        return ("row_comentado",)
-    if "enviado" in estado:
-        return ("row_enviado",)
-    if not estado or "sin" in estado:
-        return ("row_sin_enviar",)
-    return ()
 
 
 def _status_color(estado: str) -> str:

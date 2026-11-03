@@ -63,9 +63,6 @@ class Formulario:
             celda.remove(extra)
         _escribir_parrafo(parrafos[0], texto)
 
-    def escribir_parrafo(self, indice: int, texto) -> None:
-        _escribir_parrafo(self.parrafos[indice], texto)
-
     def escribir_caja(self, indice: int, texto) -> None:
         """Texto DENTRO del cuadro del formulario, no encima de él.
 

@@ -39,7 +39,3 @@ def state_dir() -> Path:
     p.mkdir(parents=True, exist_ok=True)
     return p
 
-
-def ui_dir() -> Path:
-    """Carpeta de assets UI (servida por FastAPI)."""
-    return resource_path("ui")

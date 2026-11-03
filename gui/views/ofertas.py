@@ -26,7 +26,6 @@ from gui import theme
 from gui.widgets import ui
 from gui.widgets.scrollframe import ScrollFrame
 
-_TRUST_FILTERS = {"Verificado": "verificado", "Precaución": "precaucion", "Sospechoso": "sospechoso"}
 _ASIGNADOS = ["Sin asignar"] + sorted({i.get("nombre", "") for i in USERS.values() if i.get("nombre")})
 
 logger = logging.getLogger(__name__)
@@ -89,8 +88,6 @@ class OfertasView(ctk.CTkFrame):
         super().__init__(master, fg_color=theme.BG_PAGE, **kwargs)
         self._ofertas: list[dict] = []
         self._buzon_filter = ""
-        self._portal_filter = ""
-        self._trust_filter = ""
         self._estado_filter = ""
         self._days = 30
         self._selected_uid: str | None = None
@@ -223,14 +220,6 @@ class OfertasView(ctk.CTkFrame):
         self._buzon_filter = "" if label.startswith("Todos") else label
         self._render_list()
 
-    def _on_portal(self, label: str) -> None:
-        self._portal_filter = "" if label.startswith("Todos") else label
-        self._render_list()
-
-    def _on_trust(self, label: str) -> None:
-        self._trust_filter = _TRUST_FILTERS.get(label, "")
-        self._render_list()
-
     # ── Fetch ────────────────────────────────────────────────────────────────
 
     def _fetch(self, force: bool = False) -> None:
@@ -355,10 +344,6 @@ class OfertasView(ctk.CTkFrame):
         rows = self._ofertas
         if self._buzon_filter:
             rows = [o for o in rows if o["account"] == self._buzon_filter]
-        if self._portal_filter:
-            rows = [o for o in rows if o["portal"] == self._portal_filter]
-        if self._trust_filter:
-            rows = [o for o in rows if o.get("trust_level") == self._trust_filter]
         if self._estado_filter:
             rows = [o for o in rows if om.estado_of(o.get("meta_key", "")) == self._estado_filter]
         q = self.ent_search.get().strip().lower()

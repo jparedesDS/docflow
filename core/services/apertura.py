@@ -423,7 +423,6 @@ def validate_catalog() -> list[str]:
 
 # Regex para validar P-XX-XXX (formato carpetas) y P-XX/XXX (formato N.REF)
 _PEDIDO_FOLDER_RE = re.compile(r"^P-(\d{2})-(\d{3})$", re.IGNORECASE)
-_PEDIDO_NREF_RE = re.compile(r"^P-(\d{2})/(\d{3})(?:-S\d{2})?$", re.IGNORECASE)
 
 # Tolerante: acepta P-26-023, P-26/023, P-26-023-S00, P-26/023-S00…
 _PEDIDO_FLEX_RE = re.compile(

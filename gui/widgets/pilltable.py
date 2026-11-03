@@ -364,9 +364,6 @@ class PillTable(ctk.CTkFrame):
     def clear(self) -> None:
         self.set_rows([])
 
-    def selected_id(self) -> str | None:
-        return self._selected
-
     def selected_ids(self) -> list[str]:
         """Filas seleccionadas, en el orden en que se fueron marcando."""
         return [r for r in self._sel if r in self._rowid_pos]

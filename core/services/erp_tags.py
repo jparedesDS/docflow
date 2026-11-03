@@ -179,13 +179,6 @@ def _fmt(v) -> str:
     return "" if s.lower() in ("none", "nan", "null") else s
 
 
-def _first(*vals) -> str:
-    for v in vals:
-        if v:
-            return v
-    return ""
-
-
 # ── Disponibilidad ────────────────────────────────────────────────────────────
 
 def is_available() -> bool:

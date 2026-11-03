@@ -165,12 +165,6 @@ def _parse_from_text(text: str, subject: str, received_time: str) -> pd.DataFram
 
     logger.debug("PRODOC (texto): columnas %s", col_idx)
 
-    def _get_cell(cells, key):
-        idx = col_idx.get(key)
-        if idx is not None and idx < len(cells):
-            return cells[idx].strip()
-        return ''
-
     # 3. Iterar líneas desde header+1 agrupando por código EIPSA
     documents = []       # lista de dicts: {name, data_lines}
     current_name = None

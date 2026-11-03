@@ -227,10 +227,6 @@ def current_mode() -> str:
     return _MODE
 
 
-def is_coral() -> bool:
-    return _MODE in ("light-coral", "dark-coral", "light-claude", "dark-claude")
-
-
 def is_dark() -> bool:
     return _MODE in ("dark", "dark-coral", "dark-claude")
 

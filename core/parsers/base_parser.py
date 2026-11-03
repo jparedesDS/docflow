@@ -37,14 +37,8 @@ AYESA_DOC_TYPE_TO_ERP = {
     "PRC0": "Packing",
 }
 
-# Project key de Document Space (HEC) -> N Pedido
-DOCSPACE_PO_MAP = organizacion.portales
-DOCSPACE_SUPP_MAP = {
-    "PRY&001": "S00",
-}
-# Lo que dice el portal -> familia de producto. Una sola tabla para los cuatro:
+# Lo que dice el portal -> familia de producto. Una sola tabla para todos:
 # las claves no se pisan y asi se rellena una vez en Ajustes > Organizacion.
-DOCSPACE_MATERIAL_MAP = organizacion.materiales
 PRODOC_MATERIAL_MAP = organizacion.materiales
 SENDOC_MATERIAL_MAP = organizacion.materiales
 GAIA_MATERIAL_MAP = organizacion.materiales
@@ -133,21 +127,6 @@ DEFAULT_CC = organizacion.correo_cc
 # ═══════════════════════════════════════════════════════
 #  FUNCIONES COMPARTIDAS
 # ═══════════════════════════════════════════════════════
-
-def apply_po_mapping(df, po_col, mapping):
-    df["Nº Pedido"] = df[po_col].astype(str).str.strip().map(mapping).fillna(df[po_col])
-    return df
-
-
-def apply_material_mapping(df, po_col, mapping):
-    df["Material"] = df[po_col].astype(str).str.strip().map(mapping).fillna(df[po_col])
-    return df
-
-
-def apply_doc_type(df, code_col):
-    df["Tipo de documento"] = df[code_col].map(DOC_TYPE_MAP)
-    return df
-
 
 def apply_critico(df):
     df["Crítico"] = df["Tipo de documento"].map(CRITICO_MAP).fillna("No")

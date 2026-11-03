@@ -397,19 +397,6 @@ class DataTable(ctk.CTkFrame):
                 # Cabecera alineada igual que el contenido
                 self.tree.heading(col, anchor=a)
 
-    def freeze_widths(self) -> None:
-        """Desactiva el auto-stretch de columnas para que aparezca scroll horizontal."""
-        for col in self._columns:
-            self.tree.column(col, stretch=False)
-        self._suelos_fijos = {c: self._preferidos.get(c, int(self.tree.column(c, "width")))
-                              for c in self._columns}
-
-    def set_columns_stretch(self, mapping: dict[str, bool]) -> None:
-        """Activa/desactiva stretch por columna (la que estira absorbe el hueco)."""
-        for col, val in mapping.items():
-            if col in self._columns:
-                self.tree.column(col, stretch=bool(val))
-
     def autofit_columns(self, min_w: int = 46, max_w: int = 360,
                         padding: int = 26, max_per: dict[str, int] | None = None) -> None:
         """Ajusta los anchos al contenido y los comprime para que la tabla
@@ -589,22 +576,6 @@ class DataTable(ctk.CTkFrame):
         if list(self.tree.item(iid, "values")) != recortados:
             self.tree.item(iid, values=recortados)
 
-    def _pedir_recorte(self, _e=None) -> None:
-        """Agrupa los recortes: redimensionar dispara decenas de eventos."""
-        if self._recorte_pendiente is not None:
-            try:
-                self.after_cancel(self._recorte_pendiente)
-            except Exception:  # noqa: BLE001
-                pass
-        try:
-            self._recorte_pendiente = self.after(80, self._recorte_diferido)
-        except tk.TclError:          # la ventana se está cerrando
-            self._recorte_pendiente = None
-
-    def _recorte_diferido(self) -> None:
-        self._recorte_pendiente = None
-        self.recortar_celdas()
-
     @staticmethod
     def _recortar(texto: str, ancho: int, fuente) -> str:
         if ancho <= 10 or not texto or fuente.measure(texto) <= ancho:
@@ -621,6 +592,3 @@ class DataTable(ctk.CTkFrame):
     def selected_iid(self) -> str | None:
         sel = self.tree.selection()
         return sel[0] if sel else None
-
-    def selected_iids(self) -> list[str]:
-        return list(self.tree.selection())

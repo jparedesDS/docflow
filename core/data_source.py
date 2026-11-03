@@ -106,20 +106,6 @@ def clear_link(kind: str) -> None:
     set_value(f"{kind}_path", None)
 
 
-def remove_local_copy(kind: str) -> bool:
-    """Elimina la copia local data/<kind>.xlsx (sin tocar el vínculo).
-
-    Devuelve True si había archivo y se borró, False si no existía.
-    """
-    if kind not in _KINDS:
-        raise ValueError(f"kind desconocido: {kind}")
-    target = Path(_KINDS[kind])
-    if target.exists():
-        target.unlink()
-        return True
-    return False
-
-
 # ─── Estado / metadatos ──────────────────────────────────────────────────────
 
 def get_status(kind: str) -> dict:

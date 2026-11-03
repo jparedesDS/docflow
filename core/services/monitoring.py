@@ -264,14 +264,6 @@ def _build_merged_dataset() -> list[dict]:
     return result
 
 
-def get_columns() -> list[str]:
-    docs = _cached("merged", _build_merged_dataset)
-    if not docs:
-        return list(VISIBLE_COLUMNS)
-    keys = list(docs[0].keys())
-    return [c for c in MONITORING_COLUMNS if c in keys] + [c for c in keys if c not in MONITORING_COLUMNS]
-
-
 # ── KPIs ──────────────────────────────────────────────────────────────────────
 
 ESTADOS_DEVOLUCION = ("com. menores", "com. mayores", "rechazado", "comentado")
@@ -570,13 +562,3 @@ def revision_milestones(doc: dict) -> dict:
         "first_approval_rev": first_appr[0] if first_appr else None,
     }
 
-
-def file_status() -> dict:
-    """Estado de los Excels (paths efectivos)."""
-    from core import data_source
-    data_path = data_source.get_effective_path("data_erp")
-    consulta_path = data_source.get_effective_path("consulta_erp")
-    return {
-        "data_erp": {"path": data_path, "exists": os.path.exists(data_path)},
-        "consulta_erp": {"path": consulta_path, "exists": os.path.exists(consulta_path)},
-    }

@@ -45,14 +45,6 @@ def add_trusted_domain(domain: str) -> None:
         invalidate_cache()
 
 
-def remove_trusted_domain(domain: str) -> None:
-    domain = (domain or "").lower().strip()
-    from core import preferences
-    cur = [d for d in get_trusted_domains() if d != domain]
-    preferences.set_value(_TRUSTED_PREF, cur)
-    invalidate_cache()
-
-
 # ── Buzones de seguimiento (comerciales) — opt-in, SOLO LECTURA ───────────────
 # Permite saber si una oferta se respondió desde el correo de un comercial.
 # Lee únicamente la carpeta Enviados, en modo solo-lectura (EXAMINE) y con
@@ -305,19 +297,6 @@ def enrich_replies(offers: list[dict], days: int = 30) -> list[dict]:
     return _apply_replies(offers, g_msgid, g_recip)
 
 
-def fetch_ofertas(days: int = 30, force: bool = False) -> list[dict]:
-    """Carga completa (ofertas + respuestas) en una sola llamada. Cacheada.
-    Para export y uso programático; la UI usa las dos fases por separado."""
-    now = time.time()
-    hit = _cache.get(days)
-    if hit and not force and (now - hit[0]) < CACHE_TTL:
-        return hit[1]
-    out = fetch_inbox_offers(days, force=force)
-    out = enrich_replies(out, days)
-    _cache[days] = (now, out)
-    return out
-
-
 _SENT_TTL = 600  # s — el índice de Enviados (escaneo caro de carpetas) se cachea 10 min
 _sent_cache: dict[str, tuple[float, list]] = {}
 
@@ -472,14 +451,6 @@ def export_excel(ofertas: list[dict], path: str) -> str:
         ws.column_dimensions[col[0].column_letter].width = min(max(w + 2, 10), 50)
     wb.save(path)
     return path
-
-
-def portal_options() -> list[str]:
-    """Lista de portales presentes (para el filtro). Requiere cache poblada."""
-    last = max(_cache.values(), key=lambda v: v[0], default=None)
-    if not last:
-        return []
-    return sorted({o["portal"] for o in last[1]})
 
 
 def _password_for(user: str) -> str:

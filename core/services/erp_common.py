@@ -131,12 +131,6 @@ def norm_order(value) -> str:
     return found[0] if found else ""
 
 
-def same_order(a, b) -> bool:
-    """Compara pedidos ignorando formato y sufijo de suministro."""
-    na, nb = norm_order(a), norm_order(b)
-    return bool(na) and na == nb
-
-
 # ── Usuarios del ERP ──────────────────────────────────────────────────────────
 
 _users_cache = Cache(ttl=3600)

@@ -12,7 +12,6 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
-from core.config import USERS
 from core.paths import state_dir
 from core.utils.json_store import read_json, write_json
 
@@ -192,13 +191,6 @@ def record_run(schedule_id: str, status: str, recipients_count: int = 0, error: 
             return
 
 
-def get_team_users() -> list[dict]:
-    return [
-        {"initials": k, "nombre": v["nombre"], "email": v["emails"][0]}
-        for k, v in USERS.items()
-    ]
-
-
 # ── Ejecución ─────────────────────────────────────────────────────────────────
 
 def execute_schedule(schedule_id: str) -> dict:
@@ -282,19 +274,6 @@ def _detalle(result: dict) -> str:
     if result.get("errors"):
         partes.append(f"falló: {', '.join(result['errors'])}")
     return " · ".join(partes)
-
-
-def get_preview_html(schedule_id: str, personal_initials: str = "JP") -> Optional[str]:
-    sched = get_schedule(schedule_id)
-    if sched is None:
-        return None
-    if sched["type"] == "executive":
-        from core.services.weekly_summary import get_executive_preview
-        return get_executive_preview()
-    if sched["type"] == "personal":
-        from core.services.weekly_summary import get_personal_preview
-        return get_personal_preview(personal_initials)
-    return None
 
 
 # ── APScheduler integration ───────────────────────────────────────────────────

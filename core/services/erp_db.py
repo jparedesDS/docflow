@@ -159,19 +159,6 @@ def _connect():
     return conn
 
 
-def test_connection() -> tuple[bool, str]:
-    """(ok, mensaje). No modifica nada."""
-    try:
-        conn = _connect()
-        cur = conn.cursor()
-        cur.execute("SELECT current_database(), count(*) FROM public.orders;")
-        db, n = cur.fetchone()
-        cur.close(); conn.close()
-        return True, f"Conectado a {db} · {n} pedidos"
-    except Exception as exc:  # noqa: BLE001
-        return False, str(exc).splitlines()[0] if str(exc) else repr(exc)
-
-
 # Iniciales → email de la gente del ERP. `registration.profile` = 'Baja' es
 # quien ya no está: se deja fuera para no mandarle correo (son 4 hoy, entre
 # ellos una comercial). Los que no tienen ficha en registration —comerciales

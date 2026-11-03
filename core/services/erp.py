@@ -158,18 +158,6 @@ def comercial_por_pedido() -> dict:
     return idx
 
 
-# Campos de la ficha de Consulta (orden y etiqueta)
-CONSULTA_INFO_FIELDS = [
-    ("Proyecto", "Proyecto"),
-    ("Responsable", "Responsable"),
-    ("Cl. Final / Planta", "Cl. Final / Planta"),
-    ("Tipo Equipo", "Tipo Equipo"),
-    ("Nº Equipos", "Nº Equipos"),
-    ("Nº Oferta", "Nº Oferta"),
-    ("Fecha Pedido", "Fecha Pedido"),
-    ("Fecha Prevista", "Fecha Prevista"),
-]
-
 # Fases (título, columna %, columna fecha, columna observaciones)
 CONSULTA_PHASES = [
     ("Fabricación", "% Fabricación", "Fecha Fabricación", "Obs. Fabricación"),
@@ -196,21 +184,6 @@ def consulta_phases(row: dict) -> list[dict]:
 # 2) Tags & Inspecciones
 # ════════════════════════════════════════════════════════════════════════════
 
-def tags_available() -> bool:
-    """¿Responde el ERP (PostgreSQL local)? Los tags ya no vienen de un Excel."""
-    from core.services import erp_tags
-    return erp_tags.is_available()
-
-
-def tags_status() -> dict:
-    return {"source": "ERP · PostgreSQL local (tags_data.*)", "available": tags_available()}
-
-
-# Columnas resumen mostradas en la tabla de tags (Seguimiento ▸ Equipos & Tags)
-TAGS_SUMMARY_COLUMNS = [
-    "Familia", "TAG", "Tipo", "Tamaño", "Rating", "Facing", "Estado", "Fab.",
-    "Insp.", "Plano Dim.", "OTs", "Docs",
-]
 
 # Secciones de detalle (réplica de ErpTags.js DETAIL_SECTIONS)
 TAGS_DETAIL_SECTIONS = [
@@ -256,16 +229,6 @@ TAGS_DETAIL_SECTIONS = [
 ]
 
 
-def get_tags(pedido: str, estado: str = "") -> list[dict]:
-    """Equipos del pedido desde el ERP (4 familias), opcionalmente por Estado Fab."""
-    from core.services import erp_tags
-    rows = erp_tags.fetch_tags(pedido)
-    if estado:
-        e = estado.strip().lower()
-        rows = [r for r in rows if str(r.get("Estado Fab.", "")).strip().lower() == e]
-    return rows
-
-
 # ════════════════════════════════════════════════════════════════════════════
 # 3) Proyectos — tabla, dashboard y analítica
 # ════════════════════════════════════════════════════════════════════════════
@@ -273,11 +236,6 @@ def get_tags(pedido: str, estado: str = "") -> list[dict]:
 def project_list() -> list[dict]:
     """Tabla de proyectos (uno por pedido base) — reutiliza monitoring."""
     return monitoring.get_status_global()
-
-
-def project_pedidos() -> list[str]:
-    """Lista de nº de pedido base disponibles (para el selector del dashboard)."""
-    return [p["pedido"] for p in monitoring.get_status_global()]
 
 
 def project_dashboard(pedido: str) -> dict | None:
@@ -328,65 +286,6 @@ def get_seguimiento() -> list[dict]:
     """Predicción por pedido (curva-S): pct real vs esperado, fecha estimada."""
     docs = monitoring.get_monitoring_data()
     return _prediccion_pedidos(docs)
-
-
-def get_urgencias() -> dict:
-    """Top urgencias + heatmap cliente×estado."""
-    docs = monitoring.get_monitoring_data()
-    return {
-        "urgencias": _calcular_urgencias(docs),
-        "heatmap_cliente": _heatmap_cliente_estado(docs),
-    }
-
-
-def _calcular_urgencias(docs: list[dict]) -> list[dict]:
-    urgencias = []
-    for doc in docs:
-        estado = str(doc.get("Estado", "") or "").lower().strip()
-        if "aprobado" in estado:
-            continue
-        dias = _num(doc.get("Días Devolución"))
-        if dias is None or dias <= 0:
-            continue
-        critico = str(doc.get("Crítico", "") or "").lower().strip()
-        urgencias.append({
-            "pedido": str(doc.get("Nº Pedido", "") or ""),
-            "doc_eipsa": str(doc.get("Nº Doc. EIPSA", "") or ""),
-            "titulo": str(doc.get("Título", "") or ""),
-            "dias": int(dias),
-            "cliente": str(doc.get("Cliente", "") or ""),
-            "responsable": str(doc.get("Repsonsable", "") or doc.get("Responsable", "") or ""),
-            "estado": str(doc.get("Estado", "") or ""),
-            "critico": critico in ("sí", "si"),
-            "tipo": str(doc.get("Tipo Doc.", "") or ""),
-        })
-    urgencias.sort(key=lambda x: x["dias"], reverse=True)
-    return urgencias[:10]
-
-
-def _heatmap_cliente_estado(docs: list[dict]) -> list[dict]:
-    grupos: dict[str, dict] = defaultdict(lambda: {
-        "aprobado": 0, "enviado": 0, "com_menores": 0,
-        "rechazado": 0, "sin_enviar": 0, "total": 0,
-    })
-    for doc in docs:
-        cliente = str(doc.get("Cliente", "") or "").strip() or "Sin Cliente"
-        estado = str(doc.get("Estado", "") or "").lower().strip()
-        g = grupos[cliente]
-        g["total"] += 1
-        if "aprobado" in estado:
-            g["aprobado"] += 1
-        elif estado == "enviado":
-            g["enviado"] += 1
-        elif any(x in estado for x in ("com. menores", "com. mayores", "comentado")):
-            g["com_menores"] += 1
-        elif "rechazado" in estado:
-            g["rechazado"] += 1
-        else:
-            g["sin_enviar"] += 1
-    result = [{"cliente": c, **g} for c, g in grupos.items() if g["total"] > 0]
-    result.sort(key=lambda x: x["total"], reverse=True)
-    return result
 
 
 def _prediccion_for_group(docs: list[dict]) -> dict:

@@ -45,7 +45,6 @@ ESPERA_SIN_VENTANA = 45
 # Lo que se le da a JP para escribir la contraseña y aprobar el MFA.
 ESPERA_INICIO_SESION = 300
 
-_HOSTS_LOGIN = ("login.microsoftonline.com", "login.microsoft.com", "login.live.com")
 _ACEPTA_JSON = {"Accept": "application/json;odata=nometadata"}
 
 # Un único Chrome a la vez: el perfil no admite dos procesos.
