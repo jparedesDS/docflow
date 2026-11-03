@@ -268,6 +268,32 @@ def fetch_data_erp_df() -> pd.DataFrame:
     return df[DATA_COLUMNS].reset_index(drop=True)
 
 
+TEMPORAL_VIEJO = 24 * 3600   # segundos: más que cualquier refresco en curso
+
+
+def _limpiar_temporales(target: Path) -> list[Path]:
+    """Borra los «<nombre>.tmp-HHMMSS.xlsx» de `target` con más de un día: los
+    que dejó un refresco cortado de golpe (la app cerrada a medias). Los
+    recientes no, que pueden ser de otro refresco en marcha."""
+    import time
+    borrados = []
+    limite = time.time() - TEMPORAL_VIEJO
+    try:
+        candidatos = list(target.parent.glob(f"{target.stem}.tmp-*{target.suffix}"))
+    except OSError:
+        return borrados
+    for viejo in candidatos:
+        try:
+            if viejo.is_file() and viejo.stat().st_mtime < limite:
+                viejo.unlink()
+                borrados.append(viejo)
+        except OSError:
+            pass               # abierto por alguien: ya caerá en otro refresco
+    if borrados:
+        logger.info("Borrados %d temporales viejos de %s", len(borrados), target.name)
+    return borrados
+
+
 def _write_xlsx(df: pd.DataFrame, target: Path, make_backup: bool) -> str | None:
     """Vuelca el DataFrame a `target` de forma atómica (tmp + replace) y devuelve
     la ruta del backup si se hizo."""
@@ -278,10 +304,20 @@ def _write_xlsx(df: pd.DataFrame, target: Path, make_backup: bool) -> str | None
     target.parent.mkdir(parents=True, exist_ok=True)
     # Escritura atómica: tmp + replace, para que el refresco no deje al lector
     # (Documentos/reportes) con un fichero a medio escribir.
+    _limpiar_temporales(target)
     tmp = target.with_name(f"{target.stem}.tmp-{datetime.now():%H%M%S}{target.suffix}")
-    df.to_excel(tmp, index=False, engine="openpyxl")
     import os
-    os.replace(tmp, target)
+    try:
+        df.to_excel(tmp, index=False, engine="openpyxl")
+        os.replace(tmp, target)
+    except BaseException:
+        # Si falla (el destino abierto en Excel, sin espacio…), que el
+        # temporal no se quede: se acumulaban en data/ de refresco en refresco.
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
     try:
         from core.services import monitoring
         monitoring.invalidate_cache()      # el cambio se ve sin reiniciar
