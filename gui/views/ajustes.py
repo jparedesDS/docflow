@@ -159,6 +159,9 @@ class AjustesView(OrganizacionMixin, ctk.CTkFrame):
         if not val:
             return
         credentials.set(secret_key, val)
+        if secret_key == "anthropic_api_key":
+            from core.services import ia
+            ia.olvidar_clave()          # que la IA la use ya, sin esperar ni reiniciar
         entry.delete(0, "end")
         entry.configure(placeholder_text="•••• (configurada)")
         state.configure(text="✓", text_color=theme.GREEN)

@@ -19,12 +19,11 @@ Uso:
 from __future__ import annotations
 
 import tkinter as tk
-import tkinter.font as tkfont
-
-import customtkinter as ctk
 
 from gui import theme
+from gui.widgets import texto
 from gui.widgets.globo import Globo
+from gui.widgets.ui import fondo_de
 
 _CUADRO = 18          # lado del cuadro, a escala 100 %
 _ALTO = 26            # alto de cada fila: el cuadro y 4 px de aire
@@ -35,14 +34,9 @@ _COLUMNA_AIRE = 12    # entre columnas
 class Casillas(tk.Canvas):
     def __init__(self, master, items: list[tuple[str, str]], columnas: int = 3,
                  marcadas: bool = True, fuente=None, command=None):
-        super().__init__(master, bg=_fondo(master), highlightthickness=0, bd=0)
-        try:
-            self._escala = ctk.ScalingTracker.get_widget_scaling(self)
-        except Exception:  # noqa: BLE001
-            self._escala = 1.0
-        familia, tam = (fuente or theme.FONT_BODY)[:2]
-        # Como CustomTkinter: tamaño en píxeles (negativo) multiplicado por la escala
-        self._fuente = tkfont.Font(family=familia, size=-round(abs(tam) * self._escala))
+        super().__init__(master, bg=fondo_de(master), highlightthickness=0, bd=0)
+        self._escala = texto.escala_de(self)
+        self._fuente = texto.fuente_ctk(fuente or theme.FONT_BODY, self)
         self._columnas = max(1, columnas)
         self._command = command
         self._claves = [k for k, _ in items]
@@ -116,18 +110,8 @@ class Casillas(tk.Canvas):
             return None
         return clave
 
-    def _cortar(self, texto: str) -> str:
-        ancho = self._hueco_texto()
-        if ancho <= 10 or self._fuente.measure(texto) <= ancho:
-            return texto
-        lo, hi = 0, len(texto)
-        while lo < hi:                       # el prefijo más largo que cabe con «…»
-            mid = (lo + hi + 1) // 2
-            if self._fuente.measure(texto[:mid].rstrip() + "…") <= ancho:
-                lo = mid
-            else:
-                hi = mid - 1
-        return texto[:lo].rstrip() + "…"
+    def _cortar(self, cadena: str) -> str:
+        return texto.cortar(cadena, self._hueco_texto(), self._fuente)
 
     # ── Dibujo ───────────────────────────────────────────────────────────────
 
@@ -197,22 +181,6 @@ class Casillas(tk.Canvas):
         var.set(not var.get())
         if self._command:
             self._command(clave)
-
-
-def _fondo(master) -> str:
-    """El color de lo que tiene detrás (una tarjeta CTk o un marco «transparent»)."""
-    w = master
-    while w is not None:
-        try:
-            color = w.cget("fg_color")
-        except Exception:  # noqa: BLE001
-            color = None
-        if color and color != "transparent":
-            if isinstance(color, (tuple, list)):
-                color = color[1] if ctk.get_appearance_mode() == "Dark" else color[0]
-            return color
-        w = getattr(w, "master", None)
-    return theme.BG_CARD
 
 
 def rect_redondo(c: tk.Canvas, x0, y0, x1, y1, r, **kw):

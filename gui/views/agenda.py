@@ -363,6 +363,15 @@ class AgendaView(ctk.CTkFrame):
         def worker():
             try:
                 docs = monitoring_service.get_monitoring_data()
+                if not docs:
+                    # El seguimiento sale vacío cuando no se pudo leer (el Excel
+                    # bloqueado o refrescándose, la red caída). Sincronizar con
+                    # eso daría por hechas todas las tareas de golpe.
+                    ui.en_ui(self, lambda: messagebox.showwarning(
+                        "Sincronizar",
+                        "No se pudo leer el seguimiento de documentos (sale vacío).\n"
+                        "No se ha tocado ninguna tarea: prueba otra vez en un momento."))
+                    return
                 pending = [
                     d for d in docs
                     if DEFAULT_OWNER in monitoring_service.responsables(d.get("Repsonsable"))

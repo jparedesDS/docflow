@@ -116,6 +116,18 @@ ok(lista[0]["subject"] == "P-99/001 prueba 3" and "ejemplo.test" in lista[0]["fr
 ok([e["uid"] for e in B.list_emails(limit=2)] == ["3", "2"], "y el límite se queda con los últimos")
 ok(B.contar_no_leidos() == 1, f"Inicio cuenta los no leídos sin bajarlos: {B.contar_no_leidos()}")
 
+# Si el servidor no deja leer las cabeceras, Correo tiene que enterarse: un
+# buzón vacío haría creer que no ha llegado nada
+fetch_bueno = ImapFalso.fetch
+ImapFalso.fetch = lambda self, *_a: (_ for _ in ()).throw(I.imaplib.IMAP4.abort("se cortó"))
+try:
+    B.list_emails()
+    ok(False, "una lectura fallida tenía que dar error, no una lista vacía")
+except I.imaplib.IMAP4.abort:
+    pass
+ok(I.list_since(7) == [], "Ofertas, en cambio, sigue tolerando un lote que falla")
+ImapFalso.fetch = fetch_bueno
+
 # ── Las dos marcas que se mantienen sí escriben ──────────────────────────────
 ImapFalso.aperturas.clear()
 I.mark_as_read("1")           # Correo al abrir · Devoluciones tras el aviso

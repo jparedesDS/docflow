@@ -426,9 +426,12 @@ class _IconoBoton(tk.Label):
         self._fondo = fondo_de(parent)
         self._hover = theme.DELETE_HOVER if danger else theme.BG_INPUT
         self._command = command
+        from gui.widgets.texto import fuente_ctk
         super().__init__(parent, text=glyph, bg=self._fondo, fg=text_color or theme.TEXT_MUTED,
-                         disabledforeground=theme.BORDER_STRONG, font=font or theme.font(11),
-                         padx=4, pady=1, bd=0, cursor="hand2")
+                         disabledforeground=theme.BORDER_STRONG, bd=0, cursor="hand2",
+                         # Como la pinta CustomTkinter: en Tk «a pelo» la tupla del
+                         # tema se lee en puntos y el icono salía un tercio más grande
+                         font=fuente_ctk(font or theme.font(11), parent), padx=4, pady=1)
         self.bind("<Enter>", lambda _e: self._pintar(self._hover), add="+")
         self.bind("<Leave>", lambda _e: self._pintar(self._fondo), add="+")
         self.bind("<ButtonRelease-1>", self._clic, add="+")

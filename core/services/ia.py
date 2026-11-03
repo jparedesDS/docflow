@@ -26,15 +26,34 @@ MAX_TOKENS = 2048      # el párrafo y el razonamiento que haga antes
 TIEMPO_MAX = 60        # segundos: sin él, una red atascada lo dejaría 10 minutos esperando
 
 
+_RECUERDA_CLAVE = 30          # segundos que se reutiliza la clave leída
+_clave_leida: tuple[float, str] | None = None
+
+
 def clave() -> str:
-    """La clave en este momento: guardarla en Ajustes ▸ IA vale sin reiniciar
-    (core.config la lee una sola vez, al arrancar)."""
+    """La clave actual. Se relee cada `_RECUERDA_CLAVE` segundos: guardarla en
+    Ajustes ▸ IA vale sin reiniciar (core.config la lee solo al arrancar), y
+    abrir correos no va al almacén de secretos —que puede estar en la red— en
+    cada clic."""
+    global _clave_leida
+    import time
+    ahora = time.monotonic()
+    if _clave_leida is not None and ahora - _clave_leida[0] < _RECUERDA_CLAVE:
+        return _clave_leida[1]
     from core import credentials
     try:
-        return (credentials.get("anthropic_api_key", env_fallback="ANTHROPIC_API_KEY") or "").strip()
+        valor = (credentials.get("anthropic_api_key", env_fallback="ANTHROPIC_API_KEY") or "").strip()
     except Exception as exc:  # noqa: BLE001 — sin almacén de secretos, sin IA
         logger.warning("IA: no se pudo leer la clave: %s", exc)
-        return ""
+        valor = ""
+    _clave_leida = (ahora, valor)
+    return valor
+
+
+def olvidar_clave() -> None:
+    """Que la próxima llamada vuelva a leer la clave (tras guardarla en Ajustes)."""
+    global _clave_leida
+    _clave_leida = None
 
 
 def disponible() -> bool:
@@ -63,7 +82,10 @@ def redactar(prompt: str, max_tokens: int = MAX_TOKENS) -> str | None:
         respuesta = _cliente(api_key).messages.create(
             model=MODELO,
             max_tokens=max_tokens,
-            output_config={"effort": ESFUERZO},
+            # En extra_body y no como argumento: un SDK anterior a output_config
+            # (código actualizado sin reinstalar requirements) daría TypeError y
+            # la IA caería siempre al texto de reserva sin avisar
+            extra_body={"output_config": {"effort": ESFUERZO}},
             messages=[{"role": "user", "content": prompt}],
         )
     except anthropic.AuthenticationError:

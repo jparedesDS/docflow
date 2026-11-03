@@ -180,10 +180,12 @@ def _sync_tareas(owner: str, docs: list[dict]) -> dict:
                 tarea["cerrada_a_mano"] = False
                 tarea["updatedAt"] = now
                 completed += 1
-            elif tarea.get("cerrada_a_mano", True) is not False:
+            elif docs and tarea.get("cerrada_a_mano", True) is not False:
                 # Completada a mano y el documento ya no está pendiente: lo que
                 # decidiste se cumplió. Si vuelve en esta revisión (el cliente
-                # la devuelve comentada) es trabajo nuevo y se reabre.
+                # la devuelve comentada) es trabajo nuevo y se reabre. Con una
+                # lista vacía no: más bien no se pudo leer el seguimiento, y la
+                # siguiente sincronización reabriría lo que cerraste tú.
                 tarea["cerrada_a_mano"] = False
                 reabribles += 1
         else:

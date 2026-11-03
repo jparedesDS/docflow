@@ -48,7 +48,9 @@ def list_emails(folder: str = "INBOX", filter: str = "all", limit: int = 200) ->
                  "from": _decode_header_value(c["msg"].get("From", "")),
                  "date": c["date"],
                  "is_read": "\\Seen" in c["flags"]}
-                for c in imap_service.cabeceras_en_lote(conn, uids, _CAMPOS)]
+                # fallar: si no se puede leer, que Correo lo diga en vez de
+                # enseñar un buzón vacío
+                for c in imap_service.cabeceras_en_lote(conn, uids, _CAMPOS, fallar=True)]
     finally:
         try:
             conn.close()

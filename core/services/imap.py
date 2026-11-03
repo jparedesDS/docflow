@@ -238,7 +238,8 @@ _IMAP_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
 _SECUENCIA = re.compile(rb"\s*(\d+)\s+\(")
 
 
-def cabeceras_en_lote(conn, seqs: list[bytes], campos: str, lote: int = 250) -> list[dict]:
+def cabeceras_en_lote(conn, seqs: list[bytes], campos: str, lote: int = 250,
+                      fallar: bool = False) -> list[dict]:
     """Las cabeceras de `seqs` en pocas peticiones (de `lote` en `lote`), en el
     mismo orden que `seqs`: [{seq, flags, msg, date}].
 
@@ -248,13 +249,18 @@ def cabeceras_en_lote(conn, seqs: list[bytes], campos: str, lote: int = 250) -> 
       · el servidor puede colar avisos de OTROS correos (b'12 (FLAGS (\\Seen))',
         si alguien marca uno mientras tanto): esos empiezan por su número y se
         ignoran, o darían por leído al correo equivocado.
-    Un lote que falla se salta (se apunta en el log) y sigue el resto."""
+    Un lote que falla se salta (se apunta en el log) y sigue el resto. Con
+    `fallar`, si no sale ninguno el error se lanza: una lista vacía haría
+    creer que no hay correo cuando lo que pasa es que no se pudo leer."""
     por_seq: dict[bytes, dict] = {}
+    ultimo_error, alguno_bien = None, False
     for i in range(0, len(seqs), lote):
         try:
             _, md = conn.fetch(b",".join(seqs[i:i + lote]), campos)
+            alguno_bien = True
         except Exception as exc:  # noqa: BLE001
             logger.warning("IMAP: no se pudo leer un lote de cabeceras: %s", exc)
+            ultimo_error = exc
             continue
         ultimo = None
         for item in md or []:
@@ -277,6 +283,8 @@ def cabeceras_en_lote(conn, seqs: list[bytes], campos: str, lote: int = 250) -> 
             ultimo = por_seq[m.group(1)] = {
                 "seq": m.group(1).decode(), "flags": cab.decode(errors="replace"),
                 "msg": msg, "date": date_iso}
+    if fallar and ultimo_error is not None and not alguno_bien:
+        raise ultimo_error
     return [por_seq[s] for s in seqs if s in por_seq]
 
 

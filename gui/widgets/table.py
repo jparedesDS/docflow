@@ -18,7 +18,7 @@ from tkinter import ttk
 import customtkinter as ctk
 
 from gui import theme
-from gui.widgets import columnas
+from gui.widgets import columnas, texto
 from gui.widgets.globo import Globo
 
 # Estilo único por proceso — un contador para que cada DataTable tenga su
@@ -589,17 +589,8 @@ class DataTable(ctk.CTkFrame):
             self.tree.item(iid, values=recortados)
 
     @staticmethod
-    def _recortar(texto: str, ancho: int, fuente) -> str:
-        if ancho <= 10 or not texto or fuente.measure(texto) <= ancho:
-            return texto
-        bajo, alto = 0, len(texto)
-        while bajo < alto:                        # el corte más largo que entra
-            medio = (bajo + alto + 1) // 2
-            if fuente.measure(texto[:medio] + "…") <= ancho:
-                bajo = medio
-            else:
-                alto = medio - 1
-        return (texto[:bajo].rstrip() + "…") if bajo else "…"
+    def _recortar(cadena: str, ancho: int, fuente) -> str:
+        return texto.cortar(cadena, ancho, fuente)
 
     def selected_iid(self) -> str | None:
         sel = self.tree.selection()

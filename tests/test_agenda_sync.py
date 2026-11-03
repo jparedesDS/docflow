@@ -83,6 +83,14 @@ try:
     ok(tarea(PLA, rev="1") is None,
        f"la borrada sigue sin volver tras una lectura vacía y la sincronización de otro: {res}")
 
+    # ── Una lectura vacía no borra la marca de «completada a mano» ──────────
+    A.marcar_tarea(tarea(ESP)["id"], True)
+    A.sync_tareas("JP", [])
+    A.sync_tareas("JP", nueva)
+    ok(tarea(ESP)["estado"] == "completada",
+       "la completada a mano sigue así tras una sincronización vacía y otra normal")
+    A.marcar_tarea(tarea(ESP)["id"], False)
+
     # ── Completada a mano, sale de pendiente y vuelve en la misma revisión ──
     # (la enviaste y el cliente la devuelve comentada): es trabajo nuevo
     A.marcar_tarea(tarea(CAL)["id"], True)

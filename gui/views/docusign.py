@@ -17,7 +17,6 @@ Las llamadas a la API de DocuSign corren en hilos.
 import logging
 import threading
 import tkinter as tk
-import tkinter.font as tkfont
 from datetime import datetime
 
 import customtkinter as ctk
@@ -25,7 +24,8 @@ from tkinter import filedialog, messagebox
 
 from core.services import docusign as ds
 from gui import theme
-from gui.widgets import ui
+from gui.widgets import texto, ui
+from gui.widgets.casillas import rect_redondo
 
 logger = logging.getLogger(__name__)
 
@@ -94,22 +94,11 @@ class _ListaSobres(ctk.CTkFrame):
 
     def __init__(self, master, on_select):
         super().__init__(master, fg_color="transparent")
-        from gui.widgets.casillas import rect_redondo
-        self._rect = rect_redondo
         self._on_select = on_select
-        try:
-            self._escala = ctk.ScalingTracker.get_widget_scaling(self)
-        except Exception:  # noqa: BLE001
-            self._escala = 1.0
-
-        def fuente(f):
-            familia, tam = f[:2]
-            peso = "bold" if len(f) > 2 and "bold" in f[2:] else "normal"
-            return tkfont.Font(family=familia, size=-round(abs(tam) * self._escala), weight=peso)
-
-        self._f_asunto = fuente(theme.FONT_SMALL_BOLD)
-        self._f_sub = fuente(theme.FONT_TINY)
-        self._f_ini = fuente(theme.font(9, "bold"))
+        self._escala = texto.escala_de(self)
+        self._f_asunto = texto.fuente_ctk(theme.FONT_SMALL_BOLD, self)
+        self._f_sub = texto.fuente_ctk(theme.FONT_TINY, self)
+        self._f_ini = texto.fuente_ctk(theme.font(9, "bold"), self)
         self._sobres: list[dict] = []
         self._cajas: list[tuple[int, int, str]] = []     # (y0, y1, id) de cada tarjeta
         self._seleccionado: str | None = None
@@ -139,8 +128,8 @@ class _ListaSobres(ctk.CTkFrame):
         self._pintar()
 
     def seleccionar(self, id_sobre: str | None) -> None:
-        self._seleccionado = id_sobre
-        self._pintar()
+        antes, self._seleccionado = self._seleccionado, id_sobre
+        self._repintar(antes, id_sobre)
 
     # ── Dibujo ───────────────────────────────────────────────────────────────
 
@@ -152,19 +141,8 @@ class _ListaSobres(ctk.CTkFrame):
             self._ancho = e.width
             self._pintar()
 
-    def _cortar(self, texto: str, ancho: int, fuente) -> str:
-        if ancho <= 10 or fuente.measure(texto) <= ancho:
-            return texto
-        bajo, alto = 0, len(texto)
-        while bajo < alto:
-            medio = (bajo + alto + 1) // 2
-            if fuente.measure(texto[:medio].rstrip() + "…") <= ancho:
-                bajo = medio
-            else:
-                alto = medio - 1
-        return texto[:bajo].rstrip() + "…"
-
     def _pintar(self) -> None:
+        """La lista entera: al mostrarla y al cambiar de ancho."""
         c = self.canvas
         c.delete("all")
         self._cajas = []
@@ -177,11 +155,22 @@ class _ListaSobres(ctk.CTkFrame):
             c.configure(scrollregion=(0, 0, ancho, self._px(120)))
             return
         y = 0
-        for env in self._sobres:
-            y = self._tarjeta(env, y, ancho) + self._px(self._HUECO)
+        for i, env in enumerate(self._sobres):
+            y1 = self._tarjeta(env, y, ancho, f"t{i}")
+            self._cajas.append((y, y1, env.get("id")))
+            y = y1 + self._px(self._HUECO)
         c.configure(scrollregion=(0, 0, ancho, y))
 
-    def _tarjeta(self, env: dict, y0: int, ancho: int) -> int:
+    def _repintar(self, *ids) -> None:
+        """Solo las tarjetas que cambian (hover, selección): con toda la lista
+        cada movimiento del ratón volvía a medir y dibujar todos los sobres."""
+        ancho = self._ancho or self.canvas.winfo_width()
+        for i, (y0, _y1, ident) in enumerate(self._cajas):
+            if ident is not None and ident in ids:
+                self.canvas.delete(f"t{i}")
+                self._tarjeta(self._sobres[i], y0, ancho, f"t{i}")
+
+    def _tarjeta(self, env: dict, y0: int, ancho: int, tag: str) -> int:
         c, px = self.canvas, self._px
         pad = px(self._PAD)
         firmantes = env.get("recipients") or []
@@ -190,10 +179,9 @@ class _ListaSobres(ctk.CTkFrame):
         y1 = y0 + alto
         ident = env.get("id")
         sel, encima = ident == self._seleccionado, ident == self._encima
-        self._rect(c, 1, y0 + 1, ancho - 2, y1, px(10),
-                   fill=theme.ACCENT_SOFT if sel else theme.BG_CARD,
-                   outline=ACCENT_DS if sel else (theme.BORDER_STRONG if encima else theme.BORDER),
-                   width=1)
+        rect_redondo(c, 1, y0 + 1, ancho - 2, y1, px(10), tags=tag, width=1,
+                     fill=theme.ACCENT_SOFT if sel else theme.BG_CARD,
+                     outline=ACCENT_DS if sel else (theme.BORDER_STRONG if encima else theme.BORDER))
         x0, x1 = pad + 2, ancho - pad - 2
 
         # Línea 1: asunto + estado
@@ -201,22 +189,23 @@ class _ListaSobres(ctk.CTkFrame):
         etiqueta = f"  {ds.status_label(estado)}  "
         ancho_eti = self._f_sub.measure(etiqueta)
         yl = y0 + pad + px(self._ALTO_TEXTO) / 2
-        self._rect(c, x1 - ancho_eti, yl - px(11), x1, yl + px(11), px(8),
-                   fill=theme.BG_INPUT, outline=theme.BG_INPUT)
+        rect_redondo(c, x1 - ancho_eti, yl - px(11), x1, yl + px(11), px(8), tags=tag,
+                     fill=theme.BG_INPUT, outline=theme.BG_INPUT)
         c.create_text(x1 - ancho_eti / 2, yl, text=etiqueta.strip(), font=self._f_sub,
-                      fill=ds.status_color(estado))
+                      fill=ds.status_color(estado), tags=tag)
         asunto = env.get("subject") or "Sin asunto"
-        c.create_text(x0, yl, anchor="w", font=self._f_asunto, fill=theme.TEXT_MAIN,
-                      text=self._cortar(asunto, x1 - ancho_eti - px(8) - x0, self._f_asunto))
+        c.create_text(x0, yl, anchor="w", font=self._f_asunto, fill=theme.TEXT_MAIN, tags=tag,
+                      text=texto.cortar(asunto, x1 - ancho_eti - px(8) - x0, self._f_asunto))
 
         # Línea 2: remitente + fecha
         y2 = y0 + pad + px(self._ALTO_TEXTO) + px(2) + px(self._ALTO_SUB) / 2
         fecha = _fmt_date(env.get("sent_at"))
         ancho_fecha = self._f_sub.measure(fecha)
-        c.create_text(x1, y2, anchor="e", text=fecha, font=self._f_sub, fill=theme.TEXT_MUTED)
+        c.create_text(x1, y2, anchor="e", text=fecha, font=self._f_sub, fill=theme.TEXT_MUTED,
+                      tags=tag)
         remitente = env.get("sender_name") or env.get("sender") or "—"
-        c.create_text(x0, y2, anchor="w", font=self._f_sub, fill=theme.TEXT_MUTED,
-                      text=self._cortar(remitente, x1 - ancho_fecha - px(8) - x0, self._f_sub))
+        c.create_text(x0, y2, anchor="w", font=self._f_sub, fill=theme.TEXT_MUTED, tags=tag,
+                      text=texto.cortar(remitente, x1 - ancho_fecha - px(8) - x0, self._f_sub))
 
         # Línea 3: firmantes
         if firmantes:
@@ -227,21 +216,20 @@ class _ListaSobres(ctk.CTkFrame):
                 col = _signer_color(r.get("status"))
                 # Borde fino: Tk no suaviza, y con 2 px el círculo sale dentado
                 c.create_oval(x + 1, ya + 1, x + d - 1, ya + d - 1, fill=theme.BG_INPUT,
-                              outline=col, width=1)
+                              outline=col, width=1, tags=tag)
                 c.create_text(x + d / 2, ya + d / 2, text=_initials(r.get("name", "")),
-                              font=self._f_ini, fill=col)
+                              font=self._f_ini, fill=col, tags=tag)
                 x += d + px(3)
             if len(firmantes) > 6:
                 c.create_text(x + px(2), ya + d / 2, anchor="w", text=f"+{len(firmantes) - 6}",
-                              font=self._f_sub, fill=theme.TEXT_MUTED)
-        self._cajas.append((y0, y1, ident))
+                              font=self._f_sub, fill=theme.TEXT_MUTED, tags=tag)
         return y1
 
     # ── Ratón ────────────────────────────────────────────────────────────────
 
     def _sobre_en(self, e) -> dict | None:
         y = self.canvas.canvasy(e.y)
-        for (y0, y1, ident), env in zip(self._cajas, self._sobres):
+        for (y0, y1, _ident), env in zip(self._cajas, self._sobres):
             if y0 <= y <= y1:
                 return env
         return None
@@ -258,8 +246,8 @@ class _ListaSobres(ctk.CTkFrame):
 
     def _resaltar(self, ident: str | None) -> None:
         if ident != self._encima:
-            self._encima = ident
-            self._pintar()
+            antes, self._encima = self._encima, ident
+            self._repintar(antes, ident)
 
 
 # ════════════════════════════════════════════════════════════════════════════

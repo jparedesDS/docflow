@@ -53,8 +53,10 @@ from core import credentials  # noqa: E402
 
 leer_real, cliente_real = credentials.get, ia._cliente
 credentials.get = lambda k, env_fallback=None: "  guardada-ahora  " if k == "anthropic_api_key" else ""
+ia.olvidar_clave()
 ok(ia.clave() == "guardada-ahora", f"la clave recién guardada se usa ya: {ia.clave()!r}")
 credentials.get = leer_real
+ia.olvidar_clave()
 real = cliente_real("clave-falsa")
 ok(real.timeout == ia.TIEMPO_MAX and real.max_retries == 2,
    f"con tiempo máximo, para que una red atascada no lo cuelgue: {real.timeout}, {real.max_retries}")
@@ -77,7 +79,8 @@ ok(ia.redactar("resume") == "La semana va bien.",
    "el texto sale aunque la respuesta empiece por el razonamiento")
 kw = cliente.llamadas[0]
 ok(kw["model"] == "claude-haiku-5-5", f"con el Haiku actual: {kw['model']}")
-ok(kw["output_config"] == {"effort": "low"}, f"esfuerzo bajo: {kw.get('output_config')}")
+ok(kw["extra_body"] == {"output_config": {"effort": "low"}},
+   f"esfuerzo bajo, en extra_body para cualquier versión del SDK: {kw.get('extra_body')}")
 ok(kw["max_tokens"] >= 1024, f"con margen para pensar y escribir: {kw['max_tokens']}")
 ok(not {"temperature", "top_p", "top_k", "thinking"} & set(kw),
    f"sin parámetros que este modelo rechaza: {sorted(kw)}")
