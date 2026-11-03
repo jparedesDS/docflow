@@ -16,6 +16,8 @@ Las llamadas a la API de DocuSign corren en hilos.
 
 import logging
 import threading
+import tkinter as tk
+import tkinter.font as tkfont
 from datetime import datetime
 
 import customtkinter as ctk
@@ -24,7 +26,6 @@ from tkinter import filedialog, messagebox
 from core.services import docusign as ds
 from gui import theme
 from gui.widgets import ui
-from gui.widgets.scrollframe import ScrollFrame
 
 logger = logging.getLogger(__name__)
 
@@ -72,14 +73,193 @@ def _badge(parent, status: str):
                         fg_color=theme.BG_INPUT, corner_radius=8, height=22)
 
 
-def _bind_click(widget, cmd) -> None:
-    widget.bind("<Button-1>", lambda e: cmd())
-    for ch in widget.winfo_children():
-        _bind_click(ch, cmd)
-
-
 def _section(parent, text: str):
     return ui.section_header(parent, text, ACCENT_DS)
+
+
+class _ListaSobres(ctk.CTkFrame):
+    """La lista de sobres, dibujada en un solo lienzo.
+
+    Antes cada sobre era una tarjeta de CTkFrames y CTkLabels (con un círculo
+    por firmante): unas 25 ventanas de Windows por sobre, más de mil con la
+    bandeja normal, y volver a DocuSign tardaba ~600 ms en pintarlas. Aquí se
+    ven igual —asunto, estado, remitente, fecha y firmantes— pero son trazos.
+    """
+
+    _ALTO_TEXTO = 18
+    _ALTO_SUB = 16
+    _AVATAR = 22
+    _PAD = 10
+    _HUECO = 8
+
+    def __init__(self, master, on_select):
+        super().__init__(master, fg_color="transparent")
+        from gui.widgets.casillas import rect_redondo
+        self._rect = rect_redondo
+        self._on_select = on_select
+        try:
+            self._escala = ctk.ScalingTracker.get_widget_scaling(self)
+        except Exception:  # noqa: BLE001
+            self._escala = 1.0
+
+        def fuente(f):
+            familia, tam = f[:2]
+            peso = "bold" if len(f) > 2 and "bold" in f[2:] else "normal"
+            return tkfont.Font(family=familia, size=-round(abs(tam) * self._escala), weight=peso)
+
+        self._f_asunto = fuente(theme.FONT_SMALL_BOLD)
+        self._f_sub = fuente(theme.FONT_TINY)
+        self._f_ini = fuente(theme.font(9, "bold"))
+        self._sobres: list[dict] = []
+        self._cajas: list[tuple[int, int, str]] = []     # (y0, y1, id) de cada tarjeta
+        self._seleccionado: str | None = None
+        self._encima: str | None = None
+        self._vacio = ""
+        self._ancho = 0
+
+        self.canvas = tk.Canvas(self, bg=theme.BG_PAGE, highlightthickness=0, bd=0,
+                                yscrollincrement=20)
+        # La de CustomTkinter, como el resto de la app (la de Tk sale blanca)
+        barra = ctk.CTkScrollbar(self, orientation="vertical", command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=barra.set)
+        self.canvas.pack(side="left", fill="both", expand=True)
+        barra.pack(side="right", fill="y")
+        c = self.canvas
+        c.bind("<Configure>", self._al_redimensionar)
+        c.bind("<MouseWheel>", lambda e: c.yview_scroll(int(-e.delta / 120) * 2, "units"))
+        c.bind("<Button-1>", self._clic)
+        c.bind("<Motion>", self._mover)
+        c.bind("<Leave>", lambda _e: self._resaltar(None))
+
+    # ── API ──────────────────────────────────────────────────────────────────
+
+    def mostrar(self, sobres: list[dict], seleccionado: str | None, vacio: str = "") -> None:
+        self._sobres, self._seleccionado, self._vacio = list(sobres), seleccionado, vacio
+        self.canvas.yview_moveto(0)
+        self._pintar()
+
+    def seleccionar(self, id_sobre: str | None) -> None:
+        self._seleccionado = id_sobre
+        self._pintar()
+
+    # ── Dibujo ───────────────────────────────────────────────────────────────
+
+    def _px(self, n: float) -> int:
+        return round(n * self._escala)
+
+    def _al_redimensionar(self, e) -> None:
+        if e.width != self._ancho:
+            self._ancho = e.width
+            self._pintar()
+
+    def _cortar(self, texto: str, ancho: int, fuente) -> str:
+        if ancho <= 10 or fuente.measure(texto) <= ancho:
+            return texto
+        bajo, alto = 0, len(texto)
+        while bajo < alto:
+            medio = (bajo + alto + 1) // 2
+            if fuente.measure(texto[:medio].rstrip() + "…") <= ancho:
+                bajo = medio
+            else:
+                alto = medio - 1
+        return texto[:bajo].rstrip() + "…"
+
+    def _pintar(self) -> None:
+        c = self.canvas
+        c.delete("all")
+        self._cajas = []
+        ancho = self._ancho or c.winfo_width()
+        if ancho <= 20:
+            return
+        if not self._sobres:
+            c.create_text(ancho / 2, self._px(60), text=f"✒\n{self._vacio}", justify="center",
+                          font=self._f_asunto, fill=theme.TEXT_MUTED)
+            c.configure(scrollregion=(0, 0, ancho, self._px(120)))
+            return
+        y = 0
+        for env in self._sobres:
+            y = self._tarjeta(env, y, ancho) + self._px(self._HUECO)
+        c.configure(scrollregion=(0, 0, ancho, y))
+
+    def _tarjeta(self, env: dict, y0: int, ancho: int) -> int:
+        c, px = self.canvas, self._px
+        pad = px(self._PAD)
+        firmantes = env.get("recipients") or []
+        alto = (pad + px(self._ALTO_TEXTO) + px(2) + px(self._ALTO_SUB)
+                + (px(8) + px(self._AVATAR) if firmantes else 0) + pad)
+        y1 = y0 + alto
+        ident = env.get("id")
+        sel, encima = ident == self._seleccionado, ident == self._encima
+        self._rect(c, 1, y0 + 1, ancho - 2, y1, px(10),
+                   fill=theme.ACCENT_SOFT if sel else theme.BG_CARD,
+                   outline=ACCENT_DS if sel else (theme.BORDER_STRONG if encima else theme.BORDER),
+                   width=1)
+        x0, x1 = pad + 2, ancho - pad - 2
+
+        # Línea 1: asunto + estado
+        estado = env.get("status", "")
+        etiqueta = f"  {ds.status_label(estado)}  "
+        ancho_eti = self._f_sub.measure(etiqueta)
+        yl = y0 + pad + px(self._ALTO_TEXTO) / 2
+        self._rect(c, x1 - ancho_eti, yl - px(11), x1, yl + px(11), px(8),
+                   fill=theme.BG_INPUT, outline=theme.BG_INPUT)
+        c.create_text(x1 - ancho_eti / 2, yl, text=etiqueta.strip(), font=self._f_sub,
+                      fill=ds.status_color(estado))
+        asunto = env.get("subject") or "Sin asunto"
+        c.create_text(x0, yl, anchor="w", font=self._f_asunto, fill=theme.TEXT_MAIN,
+                      text=self._cortar(asunto, x1 - ancho_eti - px(8) - x0, self._f_asunto))
+
+        # Línea 2: remitente + fecha
+        y2 = y0 + pad + px(self._ALTO_TEXTO) + px(2) + px(self._ALTO_SUB) / 2
+        fecha = _fmt_date(env.get("sent_at"))
+        ancho_fecha = self._f_sub.measure(fecha)
+        c.create_text(x1, y2, anchor="e", text=fecha, font=self._f_sub, fill=theme.TEXT_MUTED)
+        remitente = env.get("sender_name") or env.get("sender") or "—"
+        c.create_text(x0, y2, anchor="w", font=self._f_sub, fill=theme.TEXT_MUTED,
+                      text=self._cortar(remitente, x1 - ancho_fecha - px(8) - x0, self._f_sub))
+
+        # Línea 3: firmantes
+        if firmantes:
+            d = px(self._AVATAR)
+            ya = y0 + pad + px(self._ALTO_TEXTO) + px(2) + px(self._ALTO_SUB) + px(8)
+            x = x0
+            for r in firmantes[:6]:
+                col = _signer_color(r.get("status"))
+                # Borde fino: Tk no suaviza, y con 2 px el círculo sale dentado
+                c.create_oval(x + 1, ya + 1, x + d - 1, ya + d - 1, fill=theme.BG_INPUT,
+                              outline=col, width=1)
+                c.create_text(x + d / 2, ya + d / 2, text=_initials(r.get("name", "")),
+                              font=self._f_ini, fill=col)
+                x += d + px(3)
+            if len(firmantes) > 6:
+                c.create_text(x + px(2), ya + d / 2, anchor="w", text=f"+{len(firmantes) - 6}",
+                              font=self._f_sub, fill=theme.TEXT_MUTED)
+        self._cajas.append((y0, y1, ident))
+        return y1
+
+    # ── Ratón ────────────────────────────────────────────────────────────────
+
+    def _sobre_en(self, e) -> dict | None:
+        y = self.canvas.canvasy(e.y)
+        for (y0, y1, ident), env in zip(self._cajas, self._sobres):
+            if y0 <= y <= y1:
+                return env
+        return None
+
+    def _clic(self, e) -> None:
+        env = self._sobre_en(e)
+        if env is not None:
+            self._on_select(env)
+
+    def _mover(self, e) -> None:
+        env = self._sobre_en(e)
+        self.canvas.configure(cursor="hand2" if env else "")
+        self._resaltar(env.get("id") if env else None)
+
+    def _resaltar(self, ident: str | None) -> None:
+        if ident != self._encima:
+            self._encima = ident
+            self._pintar()
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -229,8 +409,8 @@ class DocusignView(ctk.CTkFrame):
         self.list_status = ctk.CTkLabel(left, text="", font=theme.FONT_TINY,
                                         text_color=theme.TEXT_MUTED, anchor="w")
         self.list_status.pack(fill="x", pady=(0, theme.SPACE_1))
-        self.list_scroll = ScrollFrame(left)
-        self.list_scroll.pack(fill="both", expand=True)
+        self.lista = _ListaSobres(left, on_select=self._select)
+        self.lista.pack(fill="both", expand=True)
 
         self.detail = ctk.CTkFrame(split, fg_color=theme.BG_CARD, corner_radius=12,
                                    border_width=1, border_color=theme.BORDER)
@@ -300,59 +480,10 @@ class DocusignView(ctk.CTkFrame):
         return rows
 
     def _render_list(self) -> None:
-        for w in self.list_scroll.winfo_children():
-            w.destroy()
-        self._card_widgets = {}  # id sobre → frame de la tarjeta
         rows = self._filtered()
-        if not rows:
-            ui.empty_state(self.list_scroll, "No se encontraron sobres", icon="✒")
-            self.list_status.configure(text="0 sobres", text_color=theme.TEXT_MUTED)
-            return
-        for env in rows:
-            self._list_item(env)
-        self.list_status.configure(text=f"{len(rows)} sobre(s)", text_color=theme.TEXT_MUTED)
-
-    def _list_item(self, env: dict) -> None:
-        selected = env.get("id") == self._selected_id
-        card = ctk.CTkFrame(
-            self.list_scroll, corner_radius=10, border_width=1,
-            fg_color=theme.ACCENT_SOFT if selected else theme.BG_CARD,
-            border_color=ACCENT_DS if selected else theme.BORDER)
-        card.pack(fill="x", pady=(0, theme.SPACE_2))
-        self._card_widgets[env.get("id")] = card
-        inner = ctk.CTkFrame(card, fg_color="transparent")
-        inner.pack(fill="x", padx=theme.SPACE_3, pady=theme.SPACE_2)
-
-        # Línea 1: asunto + estado
-        l1 = ctk.CTkFrame(inner, fg_color="transparent")
-        l1.pack(fill="x")
-        subj = env.get("subject") or "Sin asunto"
-        ctk.CTkLabel(l1, text=subj if len(subj) <= 46 else subj[:46] + "…",
-                     font=theme.FONT_SMALL_BOLD, text_color=theme.TEXT_MAIN, anchor="w").pack(
-            side="left", fill="x", expand=True)
-        _badge(l1, env.get("status", "")).pack(side="right")
-
-        # Línea 2: remitente + fecha
-        l2 = ctk.CTkFrame(inner, fg_color="transparent")
-        l2.pack(fill="x", pady=(2, 0))
-        ctk.CTkLabel(l2, text=env.get("sender_name") or env.get("sender") or "—",
-                     font=theme.FONT_TINY, text_color=theme.TEXT_MUTED, anchor="w").pack(
-            side="left", fill="x", expand=True)
-        ctk.CTkLabel(l2, text=_fmt_date(env.get("sent_at")), font=theme.FONT_TINY,
-                     text_color=theme.TEXT_MUTED).pack(side="right")
-
-        # Línea 3: avatares de firmantes
-        recips = env.get("recipients") or []
-        if recips:
-            l3 = ctk.CTkFrame(inner, fg_color="transparent")
-            l3.pack(fill="x", pady=(theme.SPACE_2, 0))
-            for r in recips[:6]:
-                _avatar(l3, r, size=22).pack(side="left", padx=(0, 3))
-            if len(recips) > 6:
-                ctk.CTkLabel(l3, text=f"+{len(recips) - 6}", font=theme.FONT_TINY,
-                             text_color=theme.TEXT_MUTED).pack(side="left", padx=(2, 0))
-
-        _bind_click(card, lambda e=env: self._select(e))
+        self.lista.mostrar(rows, self._selected_id, vacio="No se encontraron sobres")
+        self.list_status.configure(text=f"{len(rows)} sobre(s)" if rows else "0 sobres",
+                                   text_color=theme.TEXT_MUTED)
 
     # ── Detalle (inline) ─────────────────────────────────────────────────────
 
@@ -368,21 +499,12 @@ class DocusignView(ctk.CTkFrame):
         ctk.CTkLabel(box, text="Haz clic en un sobre para ver su información,\nfirmantes e historial.",
                      font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED, justify="center").pack(pady=(2, 0))
 
-    def _set_card_selected(self, card, selected: bool) -> None:
-        if card is None or not card.winfo_exists():
-            return
-        card.configure(fg_color=theme.ACCENT_SOFT if selected else theme.BG_CARD,
-                       border_color=ACCENT_DS if selected else theme.BORDER)
-
     def _select(self, env: dict) -> None:
         new_id = env.get("id")
         if new_id == self._selected_id:
             return
-        # Solo restila la tarjeta anterior y la nueva — NO reconstruye la lista.
-        cards = getattr(self, "_card_widgets", {})
-        self._set_card_selected(cards.get(self._selected_id), False)
         self._selected_id = new_id
-        self._set_card_selected(cards.get(new_id), True)
+        self.lista.seleccionar(new_id)
         self._show_detail_loading()
 
         def worker():

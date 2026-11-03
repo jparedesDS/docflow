@@ -151,14 +151,14 @@ class Casillas(tk.Canvas):
         encima = clave == self._encima
         if self.vars[clave].get():
             color = theme.ACCENT_HOVER if encima else theme.ACCENT
-            _rect_redondo(self, x0, y, x0 + lado, y + lado, self._px(4),
+            rect_redondo(self, x0, y, x0 + lado, y + lado, self._px(4),
                           fill=color, outline=color, tags=etiqueta)
             self.create_line(x0 + lado * 0.25, y + lado * 0.52, x0 + lado * 0.43, y + lado * 0.70,
                              x0 + lado * 0.76, y + lado * 0.32, fill=theme.TEXT_ON_ACCENT,
                              width=g, capstyle="round", joinstyle="round", tags=etiqueta)
         else:
             borde = theme.ACCENT if encima else theme.BORDER_STRONG
-            _rect_redondo(self, x0 + g / 2, y + g / 2, x0 + lado - g / 2, y + lado - g / 2,
+            rect_redondo(self, x0 + g / 2, y + g / 2, x0 + lado - g / 2, y + lado - g / 2,
                           self._px(4), fill="", outline=borde, width=g, tags=etiqueta)
         visto = self._cortar(self._textos[clave])
         self._vistos[clave] = visto
@@ -215,7 +215,7 @@ def _fondo(master) -> str:
     return theme.BG_CARD
 
 
-def _rect_redondo(c: tk.Canvas, x0, y0, x1, y1, r, **kw):
+def rect_redondo(c: tk.Canvas, x0, y0, x1, y1, r, **kw):
     """Rectángulo de esquinas redondeadas como un polígono suavizado."""
     puntos = [x0 + r, y0, x1 - r, y0, x1, y0, x1, y0 + r, x1, y1 - r, x1, y1,
               x1 - r, y1, x0 + r, y1, x0, y1, x0, y1 - r, x0, y0 + r, x0, y0]
