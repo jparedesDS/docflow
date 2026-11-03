@@ -343,9 +343,8 @@ class AgendaView(ctk.CTkFrame):
                 wraplength=max(200, e.width - izq - der - 8)), add="+")
 
     def _toggle_tarea_done(self, t: dict, done: bool) -> None:
-        nuevo = "completada" if done else "pendiente"
         try:
-            agenda_service.update("tareas", t["id"], {"estado": nuevo})
+            agenda_service.marcar_tarea(t["id"], done)
             self._reload_tareas()
         except Exception as exc:
             logger.exception("Error toggling tarea")
@@ -383,7 +382,8 @@ class AgendaView(ctk.CTkFrame):
             "Sincronización completada",
             f"✓ Creadas: {res['created']}\n"
             f"✓ Actualizadas: {res['updated']}\n"
-            f"✓ Marcadas completadas: {res['completed']}",
+            f"✓ Marcadas completadas: {res['completed']}\n"
+            f"✓ Reabiertas: {res.get('reopened', 0)}",
         )
         self._reload_tareas()
 
@@ -623,6 +623,10 @@ class TareaEditor(_BaseEditor):
             "fecha_limite": self.ent_fecha.get().strip(),
             "estado": self.cmb_estado.get(),
         }
+        # Cambiar el estado aquí es decidirlo a mano, como el check (la
+        # sincronización lo respeta); editar otra cosa no toca esa marca
+        if self._tarea and payload["estado"] != self._tarea.get("estado"):
+            payload["cerrada_a_mano"] = payload["estado"] == "completada"
         try:
             if self._tarea:
                 agenda_service.update("tareas", self._tarea["id"], payload)

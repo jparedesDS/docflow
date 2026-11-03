@@ -19,6 +19,11 @@ AGENDA_FILE = str(state_dir() / "agenda_data.json")
 TIPOS = ("notas", "reuniones", "tareas")
 _DEFAULT = {"notas": [], "reuniones": [], "tareas": []}
 
+# Las tareas automáticas que se borraron a mano, por documento y revisión
+# (`source_doc_id`): la sincronización no las vuelve a crear. Una revisión
+# nueva del documento es otra clave, y esa sí trae tarea.
+DESCARTADAS = "tareas_descartadas"
+
 ESTADOS_PENDIENTES = {"sin enviar", "", "com. menores", "com. mayores", "comentado", "rechazado"}
 DEFAULT_OWNER = "JP"
 
@@ -86,12 +91,26 @@ def delete(tipo: str, item_id: str) -> bool:
         raise ValueError(f"Tipo inválido: {tipo}")
     with _mutex:
         data = _load()
-        before = len(data[tipo])
+        borradas = [it for it in data[tipo] if it.get("id") == item_id]
+        if not borradas:
+            return False
         data[tipo] = [it for it in data[tipo] if it.get("id") != item_id]
-        if len(data[tipo]) < before:
-            _save(data)
-            return True
-    return False
+        if tipo == "tareas":
+            descartadas = data.setdefault(DESCARTADAS, [])
+            for t in borradas:
+                sid = t.get("source_doc_id")
+                if t.get("auto_generated") and sid and sid not in descartadas:
+                    descartadas.append(sid)
+        _save(data)
+    return True
+
+
+def marcar_tarea(item_id: str, hecha: bool) -> dict | None:
+    """Completar o reabrir una tarea a mano. Lo que decide quien la usa manda
+    sobre la sincronización: una automática completada a mano no se reabre
+    aunque su documento siga pendiente en esa revisión."""
+    return update("tareas", item_id, {"estado": "completada" if hecha else "pendiente",
+                                      "cerrada_a_mano": bool(hecha)})
 
 
 # ── Tareas (con owner) ────────────────────────────────────────────────────────
@@ -135,7 +154,7 @@ def _sync_tareas(owner: str, docs: list[dict]) -> dict:
         pending_by_source[sid] = doc
 
     existing_ids: set[str] = set()
-    completed = updated = created = 0
+    completed = updated = created = reopened = 0
     now = _now()
 
     for tarea in data["tareas"]:
@@ -149,6 +168,7 @@ def _sync_tareas(owner: str, docs: list[dict]) -> dict:
         if sid not in pending_by_source:
             if tarea.get("estado") != "completada":
                 tarea["estado"] = "completada"
+                tarea["cerrada_a_mano"] = False
                 tarea["updatedAt"] = now
                 completed += 1
         else:
@@ -162,13 +182,19 @@ def _sync_tareas(owner: str, docs: list[dict]) -> dict:
                 tarea["descripcion"] = new_desc
                 tarea["updatedAt"] = now
                 updated += 1
-            if tarea.get("estado") == "completada":
+            # La completó la sincronización y el documento vuelve a estar
+            # pendiente: se reabre. Si la completaste tú, se respeta. Las de
+            # antes de esta marca (sin ella) no se sabe quién las cerró: se
+            # respetan, como hasta ahora, en que casi nunca se reabrían.
+            if tarea.get("estado") == "completada" and tarea.get("cerrada_a_mano", True) is False:
                 tarea["estado"] = "pendiente"
                 tarea["updatedAt"] = now
+                reopened += 1      # sin contarla no se guardaba: no se reabría nunca
 
-    # Crear nuevas
+    # Crear nuevas (salvo las que borraste: esa revisión ya no trae tarea)
+    descartadas = data.get(DESCARTADAS) or []
     for sid, doc in pending_by_source.items():
-        if sid in existing_ids:
+        if sid in existing_ids or sid in descartadas:
             continue
         estado = (doc.get("Estado") or "").strip().lower()
         prioridad = "alta" if estado in {"rechazado", "com. mayores", "comentado"} else "media"
@@ -187,6 +213,7 @@ def _sync_tareas(owner: str, docs: list[dict]) -> dict:
             "fecha_limite": str(doc.get("Fecha Prevista", "") or ""),
             "asignado": owner,
             "auto_generated": True,
+            "cerrada_a_mano": False,
             "source_doc_id": sid,
             "owner": owner,
             "id": str(uuid.uuid4()),
@@ -199,7 +226,15 @@ def _sync_tareas(owner: str, docs: list[dict]) -> dict:
         data["tareas"].append(new_task)
         created += 1
 
-    if completed or updated or created:
+    # Las descartadas cuyo documento ya no está pendiente en esa revisión no
+    # van a volver: se olvidan, para que la lista no crezca sin fin
+    vigentes = [sid for sid in descartadas if sid in pending_by_source]
+    podadas = len(vigentes) != len(descartadas)
+    if podadas:
+        data[DESCARTADAS] = vigentes
+
+    if completed or updated or created or reopened or podadas:
         _save(data)
 
-    return {"created": created, "completed": completed, "updated": updated}
+    return {"created": created, "completed": completed, "updated": updated,
+            "reopened": reopened}
