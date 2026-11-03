@@ -43,9 +43,18 @@ def can_parse(sender: str) -> bool:
 # parser necesita para saber de qué pedido se trata.
 
 
+# El código de un transmittal acaba en «-T-<número>» («…-HS-EI-T-0039»). Los
+# avisos del proyecto llevan en los corchetes el pedido y no un transmittal
+# —«[PRY&001-CI-PO-0021] Notification of vendor document delay / submission»—
+# y no traen documentos que archivar: se tomaban por devolución.
+_CODIGO_TRANSMITTAL = re.compile(r"-T-\d+$")
+
+
 def matches_subject(subject: str) -> bool:
     code = extract_transmittal_code(subject or "")
     if not code or code.count("-") < 2:
+        return False
+    if not _CODIGO_TRANSMITTAL.search(code):
         return False
     if _get_project_key(code) in DOCSPACE_PROJECT_MAP:
         return True
