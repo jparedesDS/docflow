@@ -96,13 +96,22 @@ def delete(tipo: str, item_id: str) -> bool:
             return False
         data[tipo] = [it for it in data[tipo] if it.get("id") != item_id]
         if tipo == "tareas":
-            descartadas = data.setdefault(DESCARTADAS, [])
             for t in borradas:
                 sid = t.get("source_doc_id")
+                descartadas = _descartadas(data, t.get("owner") or DEFAULT_OWNER)
                 if t.get("auto_generated") and sid and sid not in descartadas:
                     descartadas.append(sid)
         _save(data)
     return True
+
+
+def _descartadas(data: dict, owner: str) -> list[str]:
+    """Las automáticas que `owner` borró a mano (cada uno las suyas: la
+    sincronización de uno no puede olvidar las del otro)."""
+    por_owner = data.get(DESCARTADAS)
+    if not isinstance(por_owner, dict):
+        por_owner = data[DESCARTADAS] = {}
+    return por_owner.setdefault(owner, [])
 
 
 def marcar_tarea(item_id: str, hecha: bool) -> dict | None:
@@ -154,7 +163,7 @@ def _sync_tareas(owner: str, docs: list[dict]) -> dict:
         pending_by_source[sid] = doc
 
     existing_ids: set[str] = set()
-    completed = updated = created = reopened = 0
+    completed = updated = created = reopened = reabribles = 0
     now = _now()
 
     for tarea in data["tareas"]:
@@ -171,6 +180,12 @@ def _sync_tareas(owner: str, docs: list[dict]) -> dict:
                 tarea["cerrada_a_mano"] = False
                 tarea["updatedAt"] = now
                 completed += 1
+            elif tarea.get("cerrada_a_mano", True) is not False:
+                # Completada a mano y el documento ya no está pendiente: lo que
+                # decidiste se cumplió. Si vuelve en esta revisión (el cliente
+                # la devuelve comentada) es trabajo nuevo y se reabre.
+                tarea["cerrada_a_mano"] = False
+                reabribles += 1
         else:
             doc = pending_by_source[sid]
             new_desc = (
@@ -192,7 +207,7 @@ def _sync_tareas(owner: str, docs: list[dict]) -> dict:
                 reopened += 1      # sin contarla no se guardaba: no se reabría nunca
 
     # Crear nuevas (salvo las que borraste: esa revisión ya no trae tarea)
-    descartadas = data.get(DESCARTADAS) or []
+    descartadas = _descartadas(data, owner)
     for sid, doc in pending_by_source.items():
         if sid in existing_ids or sid in descartadas:
             continue
@@ -227,13 +242,16 @@ def _sync_tareas(owner: str, docs: list[dict]) -> dict:
         created += 1
 
     # Las descartadas cuyo documento ya no está pendiente en esa revisión no
-    # van a volver: se olvidan, para que la lista no crezca sin fin
-    vigentes = [sid for sid in descartadas if sid in pending_by_source]
-    podadas = len(vigentes) != len(descartadas)
-    if podadas:
-        data[DESCARTADAS] = vigentes
+    # van a volver: se olvidan, para que la lista no crezca sin fin. Con una
+    # lista vacía no: eso es más bien que no se pudo leer el seguimiento, y se
+    # olvidarían todas de golpe.
+    podadas = False
+    if docs:
+        vigentes = [sid for sid in descartadas if sid in pending_by_source]
+        podadas = len(vigentes) != len(descartadas)
+        descartadas[:] = vigentes
 
-    if completed or updated or created or reopened or podadas:
+    if completed or updated or created or reopened or reabribles or podadas:
         _save(data)
 
     return {"created": created, "completed": completed, "updated": updated,

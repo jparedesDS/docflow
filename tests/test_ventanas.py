@@ -142,4 +142,21 @@ def fin_transicion(antes):
 root.after(200, abrir)
 root.after(15000, root.quit)
 root.mainloop()
+
+# ── La geometría guardada por la versión anterior (en píxeles de pantalla) ──
+# A 125 %, «1600x1000» de antes son 1280x800 sin escalar; tomarlo tal cual
+# abría la ventana un 25 % más grande la primera vez tras actualizar.
+from gui.app import DocFlowLiteApp  # noqa: E402
+
+pedido = []
+encajar_real, escala_real = ventanas.encajar_principal, ventanas.escala
+ventanas.encajar_principal = lambda win, w, h, x=None, y=None, **_k: pedido.append((w, h, x, y))
+ventanas.escala = lambda win: 1.25
+falsa = type("AppFalsa", (), {"WIDTH": 1280, "HEIGHT": 820})()
+DocFlowLiteApp._restore_geometry(falsa, "1600x1000+120+0", en_pantalla=True)
+DocFlowLiteApp._restore_geometry(falsa, "1280x800+120+0")
+ventanas.encajar_principal, ventanas.escala = encajar_real, escala_real
+ok(pedido == [(1280, 800, 120, 0), (1280, 800, 120, 0)],
+   f"lo de antes se pasa a sin escalar y lo nuevo se toma tal cual: {pedido}")
+
 print("FALLOS:", fallos)

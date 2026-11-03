@@ -4,11 +4,8 @@ Port simplificado de inbox_service del DocFlow grande. El análisis con IA de un
 correo (`analizar`) es opcional: solo funciona con la clave de Ajustes ▸ IA.
 """
 
-import email as email_lib
 import imaplib
 import logging
-import re
-from email.header import decode_header
 from email.utils import parsedate_to_datetime
 
 from core.config import IMAP_HOST, IMAP_PASS, IMAP_PORT, IMAP_USER
@@ -16,21 +13,8 @@ from core.services import imap as imap_service
 
 logger = logging.getLogger(__name__)
 
-_LOTE = 250
 _CAMPOS = "(FLAGS BODY.PEEK[HEADER.FIELDS (SUBJECT FROM DATE)])"
-
-
-def _decode_header_value(value) -> str:
-    if not value:
-        return ""
-    parts = decode_header(value)
-    result = []
-    for data, charset in parts:
-        if isinstance(data, bytes):
-            result.append(data.decode(charset or "utf-8", errors="replace"))
-        else:
-            result.append(data)
-    return "".join(result)
+_decode_header_value = imap_service._decode_header_value
 
 
 def _connect(folder: str = "INBOX", escribir: bool = False) -> imaplib.IMAP4_SSL:
@@ -59,38 +43,12 @@ def list_emails(folder: str = "INBOX", filter: str = "all", limit: int = 200) ->
 
         # En lote y solo las tres cabeceras que se enseñan: antes era una
         # petición al servidor por correo (hasta 200) con la cabecera entera.
-        por_seq: dict[str, dict] = {}
-        for i in range(0, len(uids), _LOTE):
-            _, md = conn.fetch(b",".join(uids[i:i + _LOTE]), _CAMPOS)
-            ultimo = None
-            for item in md or []:
-                if isinstance(item, bytes):
-                    # Lo que el servidor manda tras la cabecera: hay servidores
-                    # que ponen aquí los FLAGS y no delante
-                    if ultimo is not None and b"\\Seen" in item:
-                        ultimo["is_read"] = True
-                    continue
-                if not (isinstance(item, tuple) and len(item) >= 2 and item[1]):
-                    continue
-                info = item[0].decode(errors="replace") if isinstance(item[0], bytes) else str(item[0])
-                m = re.match(r"\s*(\d+)", info)
-                if not m:
-                    continue
-                msg = email_lib.message_from_bytes(item[1])
-                date_str = msg.get("Date", "")
-                try:
-                    date_iso = parsedate_to_datetime(date_str).isoformat()
-                except Exception:
-                    date_iso = date_str
-                ultimo = por_seq[m.group(1)] = {
-                    "uid": m.group(1),
-                    "subject": _decode_header_value(msg.get("Subject", "")),
-                    "from": _decode_header_value(msg.get("From", "")),
-                    "date": date_iso,
-                    "is_read": "\\Seen" in info,
-                }
-        # El servidor responde en su orden: se devuelven en el de `uids`
-        return [por_seq[u.decode()] for u in uids if u.decode() in por_seq]
+        return [{"uid": c["seq"],
+                 "subject": _decode_header_value(c["msg"].get("Subject", "")),
+                 "from": _decode_header_value(c["msg"].get("From", "")),
+                 "date": c["date"],
+                 "is_read": "\\Seen" in c["flags"]}
+                for c in imap_service.cabeceras_en_lote(conn, uids, _CAMPOS)]
     finally:
         try:
             conn.close()

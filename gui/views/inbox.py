@@ -23,7 +23,7 @@ class InboxView(ctk.CTkFrame):
         super().__init__(master, fg_color=theme.BG_PAGE, **kwargs)
         self._emails: list[dict] = []
         self._current_uid: str | None = None
-        self._analisis: dict[str, str] = {}      # uid → análisis IA ya hecho
+        self._analisis: dict[tuple, str] = {}    # correo → análisis IA ya hecho
         self._search_after_id = None
         self._build_layout()
         self._reload()
@@ -278,13 +278,13 @@ class InboxView(ctk.CTkFrame):
         ui.tooltip(self.btn_ia,
                    "Resume el correo, qué piden y el siguiente paso. Manda el correo a "
                    "Anthropic (Claude)." if hay_ia else
-                   "Guarda la clave de IA en Ajustes ▸ IA y reinicia para activar el análisis.")
+                   "Guarda la clave de IA en Ajustes ▸ IA para activar el análisis.")
 
         # Donde aparece el análisis, entre las acciones y el mensaje
         self._ia_host = ctk.CTkFrame(self.detail, fg_color="transparent", height=0)
         self._ia_host.pack(fill="x", padx=18)
-        if d["uid"] in self._analisis:
-            self._pintar_analisis(self._analisis[d["uid"]])
+        if self._clave_analisis(d) in self._analisis:
+            self._pintar_analisis(self._analisis[self._clave_analisis(d)])
 
         # Body
         ctk.CTkLabel(
@@ -316,19 +316,26 @@ class InboxView(ctk.CTkFrame):
 
     # ── Análisis IA ──────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _clave_analisis(d: dict) -> tuple:
+        """Qué correo es: el número solo es su posición en el buzón, y cambia
+        si se borra o se mueve uno anterior. Con asunto y fecha, un análisis
+        guardado no acaba enseñándose en otro correo."""
+        return d["uid"], d.get("subject", ""), d.get("date", "")
+
     def _analizar(self, d: dict) -> None:
-        uid = d["uid"]
+        uid, clave = d["uid"], self._clave_analisis(d)
         self.btn_ia.configure(state="disabled", text="🤖 Analizando…")
 
         def worker():
             texto = inbox_service.analizar(d)
-            ui.en_ui(self, lambda: self._analisis_listo(uid, texto))
+            ui.en_ui(self, lambda: self._analisis_listo(uid, clave, texto))
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _analisis_listo(self, uid: str, texto: str | None) -> None:
+    def _analisis_listo(self, uid: str, clave: tuple, texto: str | None) -> None:
         if texto:
-            self._analisis[uid] = texto            # al volver al correo sigue ahí
+            self._analisis[clave] = texto          # al volver al correo sigue ahí
         if uid != self._current_uid:
             return                                 # ya se está leyendo otro
         try:

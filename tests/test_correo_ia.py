@@ -137,6 +137,18 @@ try:
        "al volver al primero, el análisis sigue ahí")
     ok(llamadas == ["7"], f"sin llamar otra vez a la IA: {llamadas}")
 
+    # Si se borra un correo anterior, otro pasa a ocupar el número 7: el
+    # análisis guardado no se le enseña a él
+    B.get_email_detail = lambda uid, folder="INBOX": dict(
+        {**OTRO, "uid": "7", "subject": "Otro correo que ahora es el 7"} if uid == "7" else OTRO)
+    vista._open_detail_uid("8")
+    esperar(lambda: vista._current_uid == "8")
+    vista._open_detail_uid("7")
+    ok(esperar(lambda: vista._current_uid == "7" and vista._ia_host.winfo_exists()),
+       "se abre el correo que ahora ocupa el 7")
+    ok(not textos(vista._ia_host),
+       f"y no trae el análisis del que estaba antes en ese número: {textos(vista._ia_host)}")
+
     # Si la IA no contesta, el botón vuelve y no se pinta nada
     B.analizar = lambda d: None
     vista._open_detail_uid("8")

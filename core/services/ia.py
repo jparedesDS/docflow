@@ -23,11 +23,18 @@ logger = logging.getLogger(__name__)
 MODELO = "claude-haiku-5-5"
 ESFUERZO = "low"
 MAX_TOKENS = 2048      # el párrafo y el razonamiento que haga antes
+TIEMPO_MAX = 60        # segundos: sin él, una red atascada lo dejaría 10 minutos esperando
 
 
 def clave() -> str:
-    from core.config import ANTHROPIC_API_KEY
-    return (ANTHROPIC_API_KEY or "").strip()
+    """La clave en este momento: guardarla en Ajustes ▸ IA vale sin reiniciar
+    (core.config la lee una sola vez, al arrancar)."""
+    from core import credentials
+    try:
+        return (credentials.get("anthropic_api_key", env_fallback="ANTHROPIC_API_KEY") or "").strip()
+    except Exception as exc:  # noqa: BLE001 — sin almacén de secretos, sin IA
+        logger.warning("IA: no se pudo leer la clave: %s", exc)
+        return ""
 
 
 def disponible() -> bool:
@@ -37,7 +44,7 @@ def disponible() -> bool:
 
 def _cliente(api_key: str):
     import anthropic
-    return anthropic.Anthropic(api_key=api_key)
+    return anthropic.Anthropic(api_key=api_key, timeout=TIEMPO_MAX, max_retries=2)
 
 
 def redactar(prompt: str, max_tokens: int = MAX_TOKENS) -> str | None:

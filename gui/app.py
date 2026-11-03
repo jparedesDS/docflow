@@ -43,7 +43,8 @@ class DocFlowLiteApp(ctk.CTk):
         # ventana cae dentro de la pantalla visible (si la posición guardada
         # apuntaba a otro monitor que ahora no existe, la recentra).
         from core import preferences as _pref
-        self._restore_geometry(_pref.get("window_geometry"))
+        self._restore_geometry(_pref.get("window_geometry"),
+                               en_pantalla=_pref.get("window_geometry_v") != self._GEOMETRIA_V)
         self.minsize(1000, 640)
 
         self._views: dict[str, ctk.CTkFrame] = {}
@@ -165,10 +166,18 @@ class DocFlowLiteApp(ctk.CTk):
 
     # ── Persistencia de estado (geometría + última sección) ──────────────────
 
-    def _restore_geometry(self, geo) -> None:
+    # Formato de `window_geometry`: 2 = tamaño sin escalar (geometry() de CTk).
+    # Lo guardado antes, sin versión, iba en píxeles de pantalla (winfo_geometry).
+    _GEOMETRIA_V = 2
+
+    def _restore_geometry(self, geo, en_pantalla: bool = False) -> None:
         """Aplica una geometría segura: tamaño razonable y SIEMPRE dentro de la
         pantalla visible (recentra si la posición guardada queda fuera, p.ej.
-        un segundo monitor que ahora no existe en sesión remota)."""
+        un segundo monitor que ahora no existe en sesión remota).
+
+        `en_pantalla`: el tamaño viene en píxeles de pantalla (lo que guardaba
+        la versión anterior); se pasa a sin escalar, o a 125 % la ventana
+        saldría un 25 % más grande la primera vez tras actualizar."""
         import re
         from gui.widgets import ventanas
         w, h = self.WIDTH, self.HEIGHT
@@ -177,6 +186,9 @@ class DocFlowLiteApp(ctk.CTk):
         if m:
             w, h = int(m.group(1)), int(m.group(2))
             x, y = int(m.group(3)), int(m.group(4))
+            if en_pantalla:
+                e = ventanas.escala(self)
+                w, h = round(w / e), round(h / e)
         # Tamaño dentro del escritorio (sin la barra de tareas); si la posición
         # falta o se sale, centrada.
         ventanas.encajar_principal(self, max(w, 900), max(h, 600), x, y)
@@ -188,6 +200,7 @@ class DocFlowLiteApp(ctk.CTk):
             if self.state() == "normal":  # no guardar geometría si está maximizada/iconificada
                 # geometry() de CTk: tamaño sin escalar, como lo espera _restore_geometry
                 _pref.set_value("window_geometry", self.geometry())
+                _pref.set_value("window_geometry_v", self._GEOMETRIA_V)
         except Exception:
             pass
         if self._current:

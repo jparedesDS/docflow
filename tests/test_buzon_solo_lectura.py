@@ -65,6 +65,10 @@ class ImapFalso:
                         b" FLAGS (\\Seen))"]
             else:
                 out += [(s + b" (FLAGS (" + self.buzon.get(s, b"") + b") BODY[] {10}", cab), b")"]
+            if s == b"2":
+                # Un aviso del servidor sobre OTRO correo, colado en medio: no
+                # debe dar por leído al 2, que va justo delante
+                out.append(b"9 (FLAGS (\\Seen))")
         return "OK", out
 
     def store(self, *args):

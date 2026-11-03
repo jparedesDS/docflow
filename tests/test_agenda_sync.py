@@ -72,8 +72,24 @@ try:
 
     # ── La lista de borradas no crece sin fin ───────────────────────────────
     datos = A._load()
-    ok("P-99/001_99-001-PLG-0002_0" not in datos.get(A.DESCARTADAS, []),
+    ok("P-99/001_99-001-PLG-0002_0" not in A._descartadas(datos, "JP"),
        f"la Rev. 0 ya no está pendiente: se olvida: {datos.get(A.DESCARTADAS)}")
+
+    # ── Pero no por una lectura vacía, ni por la sincronización de otro ─────
+    A.delete("tareas", tarea(PLA, rev="1")["id"])
+    A.sync_tareas("JP", [])                                 # no se pudo leer el seguimiento
+    A.sync_tareas("EC", [doc("99-001-LIS-0009")])           # otro usuario, sus documentos
+    res = A.sync_tareas("JP", nueva)
+    ok(tarea(PLA, rev="1") is None,
+       f"la borrada sigue sin volver tras una lectura vacía y la sincronización de otro: {res}")
+
+    # ── Completada a mano, sale de pendiente y vuelve en la misma revisión ──
+    # (la enviaste y el cliente la devuelve comentada): es trabajo nuevo
+    A.marcar_tarea(tarea(CAL)["id"], True)
+    A.sync_tareas("JP", [doc(PLA, rev="1"), doc(ESP)])     # el CAL se envía
+    A.sync_tareas("JP", [doc(CAL, estado="Comentado"), doc(PLA, rev="1"), doc(ESP)])
+    ok(tarea(CAL)["estado"] == "pendiente",
+       "si vuelve pendiente tras haber salido, se reabre aunque la cerraras tú")
 
     # ── Las de antes de la marca: completadas, se respetan ──────────────────
     # (hasta ahora casi nunca se reabrían; no se sabe si las cerraste tú)
@@ -86,9 +102,10 @@ try:
     ok(tarea(ESP)["estado"] == "completada", "una completada de antes no se reabre de golpe")
 
     # ── Borrar una tarea hecha a mano no apunta nada ────────────────────────
+    antes = list(A._descartadas(A._load(), "JP"))
     propia = A.create_tarea("JP", {"titulo": "Llamar al cliente", "estado": "pendiente"})
     A.delete("tareas", propia["id"])
-    ok(A._load().get(A.DESCARTADAS, []) == [], "las tareas propias no se apuntan como descartadas")
+    ok(A._descartadas(A._load(), "JP") == antes, "las tareas propias no se apuntan como descartadas")
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 

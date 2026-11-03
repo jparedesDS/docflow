@@ -963,11 +963,14 @@ def _rev_del_anulado(dev_dir: Path, n: int | None, letter: str, codes: list[str]
     # Donde está el documento: la revisión que el VOID dice anular y, si no
     # está en ninguna de ellas, la última (el correlativo como número: rev10
     # va después de rev2, y no se fía del orden en que Windows las lista).
-    con_documento = [(sub, num, rev) for sub, num, rev, _suf in subs if tiene_el_documento(sub)]
-    con_documento.sort(key=lambda t: (t[1] if t[1] is not None else -1, t[2], t[0].name.lower()))
-    elegida = (next((sub for sub, num, rev in reversed(con_documento) if es_la_anulada(num, rev)),
-                    None)
-               or (con_documento[-1][0] if con_documento else None))
+    # De la más nueva a la más vieja y parando en la primera que lo tiene:
+    # mirar dentro de cada revisión es recorrer la red, y se evita en lo posible.
+    recientes = sorted(subs, key=lambda t: (t[1] if t[1] is not None else -1, t[2],
+                                            t[0].name.lower()), reverse=True)
+    elegida = (next((sub for sub, num, rev, _suf in recientes
+                     if es_la_anulada(num, rev) and tiene_el_documento(sub)), None)
+               or next((sub for sub, _num, _rev, _suf in recientes if tiene_el_documento(sub)),
+                       None))
     if elegida is None and nuestra is not None:
         elegida = next((sub for sub, num, rev, _suf in subs
                         if _es_de_la_revision(num, rev, nuestra, cliente)), None)

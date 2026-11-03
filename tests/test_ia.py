@@ -48,6 +48,17 @@ def respuesta(*bloques, stop="end_turn"):
 PENSADO = NS(type="thinking", thinking="", signature="firma")
 TEXTO = NS(type="text", text="  La semana va bien.  ")
 
+# ── La clave se lee en el momento (guardarla en Ajustes vale sin reiniciar) ─
+from core import credentials  # noqa: E402
+
+leer_real, cliente_real = credentials.get, ia._cliente
+credentials.get = lambda k, env_fallback=None: "  guardada-ahora  " if k == "anthropic_api_key" else ""
+ok(ia.clave() == "guardada-ahora", f"la clave recién guardada se usa ya: {ia.clave()!r}")
+credentials.get = leer_real
+real = cliente_real("clave-falsa")
+ok(real.timeout == ia.TIEMPO_MAX and real.max_retries == 2,
+   f"con tiempo máximo, para que una red atascada no lo cuelgue: {real.timeout}, {real.max_retries}")
+
 cliente = None
 ia._cliente = lambda _key: cliente
 ia.clave = lambda: "clave-de-prueba"           # nunca una de verdad

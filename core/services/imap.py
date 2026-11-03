@@ -235,6 +235,50 @@ def list_unread(folder="INBOX", imap_user=None, imap_pass=None):
 _IMAP_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
+_SECUENCIA = re.compile(rb"\s*(\d+)\s+\(")
+
+
+def cabeceras_en_lote(conn, seqs: list[bytes], campos: str, lote: int = 250) -> list[dict]:
+    """Las cabeceras de `seqs` en pocas peticiones (de `lote` en `lote`), en el
+    mismo orden que `seqs`: [{seq, flags, msg, date}].
+
+    Dos cosas de la respuesta de un FETCH en lote que hay que tener en cuenta:
+      · algunos servidores ponen los FLAGS detrás de la cabecera, en un trozo
+        aparte (b' FLAGS (\\Seen))'): cuentan para el correo de delante;
+      · el servidor puede colar avisos de OTROS correos (b'12 (FLAGS (\\Seen))',
+        si alguien marca uno mientras tanto): esos empiezan por su número y se
+        ignoran, o darían por leído al correo equivocado.
+    Un lote que falla se salta (se apunta en el log) y sigue el resto."""
+    por_seq: dict[bytes, dict] = {}
+    for i in range(0, len(seqs), lote):
+        try:
+            _, md = conn.fetch(b",".join(seqs[i:i + lote]), campos)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("IMAP: no se pudo leer un lote de cabeceras: %s", exc)
+            continue
+        ultimo = None
+        for item in md or []:
+            if isinstance(item, bytes):
+                if ultimo is not None and not _SECUENCIA.match(item):
+                    ultimo["flags"] += " " + item.decode(errors="replace")
+                continue
+            if not (isinstance(item, tuple) and len(item) >= 2 and item[1]):
+                continue
+            cab = item[0] if isinstance(item[0], bytes) else str(item[0]).encode()
+            m = _SECUENCIA.match(cab)
+            if not m:
+                continue
+            msg = email.message_from_bytes(item[1])
+            date_str = msg.get("Date", "")
+            try:
+                date_iso = parsedate_to_datetime(date_str).isoformat()
+            except Exception:  # noqa: BLE001
+                date_iso = date_str
+            ultimo = por_seq[m.group(1)] = {
+                "seq": m.group(1).decode(), "flags": cab.decode(errors="replace"),
+                "msg": msg, "date": date_iso}
+    return [por_seq[s] for s in seqs if s in por_seq]
+
 
 def list_since(days=30, folder="INBOX", imap_user=None, imap_pass=None, limit=300):
     """Lista los correos recibidos en los últimos `days` días (cabeceras + flag leído).
@@ -250,39 +294,24 @@ def list_since(days=30, folder="INBOX", imap_user=None, imap_pass=None, limit=30
         _, data = conn.search(None, "SINCE", since)
         uids = data[0].split() if data and data[0] else []
         uids = list(reversed(uids))[:limit]
-        results = []
         fields = ("(FLAGS BODY.PEEK[HEADER.FIELDS "
                   "(FROM SUBJECT DATE MESSAGE-ID REPLY-TO RETURN-PATH AUTHENTICATION-RESULTS CONTENT-TYPE)])")
-        for i in range(0, len(uids), 250):              # descarga en LOTE
-            batch = b",".join(uids[i:i + 250])
-            try:
-                _, md = conn.fetch(batch, fields)
-            except Exception:
-                continue
-            for item in md:
-                if not (isinstance(item, tuple) and len(item) >= 2 and item[1]):
-                    continue
-                info = item[0].decode(errors="replace") if isinstance(item[0], bytes) else str(item[0])
-                seq = (re.match(r"\s*(\d+)", info) or [None, ""])[1]
-                msg = email.message_from_bytes(item[1])
-                date_str = msg.get("Date", "")
-                try:
-                    date_iso = parsedate_to_datetime(date_str).isoformat()
-                except Exception:
-                    date_iso = date_str
-                results.append({
-                    "uid": seq,
-                    "subject": _decode_header_value(msg.get("Subject", "")),
-                    "from": _decode_header_value(msg.get("From", "")),
-                    "date": date_iso,
-                    "is_read": "\\Seen" in info,
-                    "is_answered": "\\Answered" in info,
-                    "message_id": (msg.get("Message-ID", "") or "").strip(),
-                    "auth_results": "; ".join(msg.get_all("Authentication-Results", []) or []),
-                    "reply_to": _decode_header_value(msg.get("Reply-To", "")),
-                    "return_path": msg.get("Return-Path", ""),
-                    "is_report": msg.get_content_type() == "multipart/report",
-                })
+        results = []
+        for c in cabeceras_en_lote(conn, uids, fields):
+            msg = c["msg"]
+            results.append({
+                "uid": c["seq"],
+                "subject": _decode_header_value(msg.get("Subject", "")),
+                "from": _decode_header_value(msg.get("From", "")),
+                "date": c["date"],
+                "is_read": "\\Seen" in c["flags"],
+                "is_answered": "\\Answered" in c["flags"],
+                "message_id": (msg.get("Message-ID", "") or "").strip(),
+                "auth_results": "; ".join(msg.get_all("Authentication-Results", []) or []),
+                "reply_to": _decode_header_value(msg.get("Reply-To", "")),
+                "return_path": msg.get("Return-Path", ""),
+                "is_report": msg.get_content_type() == "multipart/report",
+            })
         return results
     finally:
         try:
