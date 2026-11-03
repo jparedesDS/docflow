@@ -933,7 +933,9 @@ def _rev_del_anulado(dev_dir: Path, n: int | None, letter: str, codes: list[str]
     Esa carpeta de revisión se busca, por orden:
       1. Donde YA está archivado el documento (aunque cuelgue de una subcarpeta
          suya: «rev0\\ap rev 0\\12-05-2025»). Es la pista buena, porque dice la
-         revisión que el cliente cancela y no hay que deducirla.
+         revisión que el cliente cancela y no hay que deducirla. Si está en
+         varias, la de la revisión que trae el VOID; si no coincide ninguna, la
+         última, que es la vigente y la que se anula.
       2. La de su revisión: la de detrás del guion («rev2-A»), y si las carpetas
          de ese pedido no la llevan, la que tiene ese número («rev0», «rev1»),
          donde el número SÍ es la revisión.
@@ -951,7 +953,21 @@ def _rev_del_anulado(dev_dir: Path, n: int | None, letter: str, codes: list[str]
         except OSError:
             return False
 
-    elegida = next((sub for sub, _num, _rev, _suf in subs if tiene_el_documento(sub)), None)
+    def es_la_anulada(num: int | None, rev: str) -> bool:
+        if nuestra is not None and _es_de_la_revision(num, rev, nuestra, cliente):
+            return True
+        if rev:
+            return bool(rev_text) and rev == rev_text
+        return n is not None and num == n
+
+    # Donde está el documento: la revisión que el VOID dice anular y, si no
+    # está en ninguna de ellas, la última (el correlativo como número: rev10
+    # va después de rev2, y no se fía del orden en que Windows las lista).
+    con_documento = [(sub, num, rev) for sub, num, rev, _suf in subs if tiene_el_documento(sub)]
+    con_documento.sort(key=lambda t: (t[1] if t[1] is not None else -1, t[2], t[0].name.lower()))
+    elegida = (next((sub for sub, num, rev in reversed(con_documento) if es_la_anulada(num, rev)),
+                    None)
+               or (con_documento[-1][0] if con_documento else None))
     if elegida is None and nuestra is not None:
         elegida = next((sub for sub, num, rev, _suf in subs
                         if _es_de_la_revision(num, rev, nuestra, cliente)), None)

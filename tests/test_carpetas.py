@@ -634,6 +634,29 @@ try:
     ok(len(res["archived"]) == 1 and
        Path(res["archived"][0][1]).parent.name == "rev0-D VOID",
        f"sin revisión archivada, carpeta propia: {res['archived']} / {res['skipped']}")
+
+    # Archivado en varias revisiones: va a la que el VOID anula y, si no es
+    # ninguna de ellas, a la última. Antes iba a la primera que listaba Windows,
+    # por orden alfabético («rev0-A», y «rev10-C» antes que «rev2-…»).
+    dev = tecnico / "dev cál y pla"
+    for carpeta in ("rev0-A", "rev1-B", "rev10-C"):
+        (dev / carpeta).mkdir(exist_ok=True)
+        (dev / carpeta / "V-1000110910-0300.pdf").write_bytes(b"%PDF-" + carpeta.encode())
+    (dev / "rev2-A").mkdir()
+    tres = {**ANULADO, "Doc. EIPSA": "98-066-S05-ESP-0300",
+            "Doc. Cliente": "V-1000110910-0300", "Rev.": "1", "_rev_cliente": "B"}
+    varias = tmp / "varias.zip"
+    with zipfile.ZipFile(varias, "w") as zf:
+        zf.writestr("V-1000110910-0300.pdf", b"%PDF-anulado-B")
+    res = D.archive_return(varias, [tres], "P-24/066")
+    ok(len(res["archived"]) == 1 and Path(res["archived"][0][1]).parent == dev / "rev1-B" / "VOID",
+       f"en varias revisiones, la que anula: {res['archived']} / {res['skipped']}")
+    res = D.archive_return(varias, [{**tres, "Rev.": "11", "_rev_cliente": "E"}], "P-24/066")
+    ok(len(res["archived"]) == 1 and Path(res["archived"][0][1]).parent == dev / "rev10-C" / "VOID",
+       f"y si no es ninguna, la última (rev10 después de rev2): {res['archived']} / {res['skipped']}")
+    for carpeta in ("rev0-A", "rev1-B", "rev10-C"):
+        ok((dev / carpeta / "V-1000110910-0300.pdf").read_bytes() == b"%PDF-" + carpeta.encode(),
+           f"el PDF de {carpeta} sigue intacto")
 finally:
     D.tecnico_dir = tecnico_real
     shutil.rmtree(tmp, ignore_errors=True)
