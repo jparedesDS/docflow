@@ -9,7 +9,6 @@ from __future__ import annotations
 import html
 import logging
 
-from core.config import ANTHROPIC_API_KEY
 from core.paths import resource_path, state_dir
 from core.services import monitoring as monitoring_service
 
@@ -59,21 +58,10 @@ def _es_critico(d) -> bool:
 
 
 def _ask_haiku(prompt: str) -> str | None:
-    """Llama a Claude Haiku; devuelve el texto o None (sin key / fallo de red)."""
-    if not (ANTHROPIC_API_KEY or "").strip():
-        return None
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY.strip())
-        msg = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=512,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return msg.content[0].text.strip()
-    except Exception as exc:
-        logger.warning("Haiku falló, usando fallback: %s", exc)
-        return None
+    """El texto de Claude (core.services.ia) o None: sin clave, si falla o si no
+    contesta entero. Quien llama pone entonces su párrafo de reserva."""
+    from core.services import ia
+    return ia.redactar(prompt)
 
 
 def _esc(v) -> str:

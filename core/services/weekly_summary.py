@@ -12,7 +12,7 @@ import os
 import time
 from datetime import date, datetime, timedelta
 
-from core.config import ANTHROPIC_API_KEY, USERS
+from core.config import USERS
 from core.services import monitoring as monitoring_service
 from core.services import smtp as smtp_service
 
@@ -530,21 +530,9 @@ def _fallback_paragraph(data: dict) -> str:
 
 
 def _generate_ai_paragraph(data: dict) -> str:
-    api_key = (ANTHROPIC_API_KEY or "").strip()
-    if not api_key:
-        return _fallback_paragraph(data)
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-        message = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=512,
-            messages=[{"role": "user", "content": _build_ai_prompt(data)}],
-        )
-        return message.content[0].text
-    except Exception as exc:
-        logger.warning("Anthropic falló, usando fallback: %s", exc)
-        return _fallback_paragraph(data)
+    """El párrafo de Claude (core.services.ia) o, sin clave o si falla, el de reserva."""
+    from core.services import ia
+    return ia.redactar(_build_ai_prompt(data)) or _fallback_paragraph(data)
 
 
 # ── API pública ───────────────────────────────────────────────────────────────
