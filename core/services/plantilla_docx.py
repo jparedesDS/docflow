@@ -3,7 +3,7 @@
 Las portadas de los clientes son una tabla de «ETIQUETA : valor»:
 
     | WOOD DWG. N°   | : | V-1234AB00A-1100-300-DL-001 |
-    | VENDOR DOC. Nº | : | 26-062-DL-0001              |
+    | VENDOR DOC. Nº | : | 99-062-DL-0001              |
 
 Así que aquí se hacen dos cosas: leer esas etiquetas (para poder emparejarlas
 una vez con los campos del ERP) y escribir el valor de cada una conservando el

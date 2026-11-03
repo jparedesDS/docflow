@@ -217,7 +217,7 @@ def folder_link_html(folder: str, depth: int = 1, prefijo: str = "") -> str:
             f'style="color:inherit;text-decoration:underline;">📂 {escape(prefijo + label)}</a>')
 
 
-# Carpeta de pedido dentro de una ruta: «P-26-031-S01 - TR-SILLENO…», «PA-26-004…»
+# Carpeta de pedido dentro de una ruta: «P-99-031-S01 - TR-ALFA…», «PA-26-004…»
 _PEDIDO_DIR_RE = re.compile(r"^PA?-\s*\d{2}\s*-\s*\d{3}\b", re.I)
 
 

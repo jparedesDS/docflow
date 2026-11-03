@@ -109,9 +109,9 @@ ok(D.pedido_con_suministro("P-26/001", [{"Doc. EIPSA": "26-001-S02-ESP-0001"},
 ok(D.pedido_con_suministro("P-26/412", [{"Doc. EIPSA": "23-037-PRC-0006"}]) == "P-26/412",
    "un pedido sin suministro se queda como está")
 
-ok(D.sufijo_de({"Doc. EIPSA": "26-031-S01-PLG-0005"}) == "S01", "el suministro del código")
+ok(D.sufijo_de({"Doc. EIPSA": "99-031-S01-PLG-0005"}) == "S01", "el suministro del código")
 ok(D.sufijo_de({"Supp.": "S02", "Doc. EIPSA": ""}) == "S02", "y el del ERP")
-ok(D.sufijo_de({"Doc. EIPSA": "26-031-PLG-0005"}) == "", "el documento base no lo lleva")
+ok(D.sufijo_de({"Doc. EIPSA": "99-031-PLG-0005"}) == "", "el documento base no lo lleva")
 
 # ── Las carpetas que ofrece «Nuevo pedido» ─────────────────────────────────
 # El código va al Excel de importación como nº de documento EIPSA
@@ -347,7 +347,7 @@ tecnico_real = D.tecnico_dir
 try:
     tecnicos = {}
     for supp in ("S00", "S01", "S02"):
-        t = tmp / f"P-26-031-{supp} - TR-SILLENO" / "2-Tecnico"
+        t = tmp / f"P-99-031-{supp} - TR-ALFA" / "2-Tecnico"
         (t / "env planos").mkdir(parents=True)
         tecnicos[f"P-26/031-{supp}"] = t
     tecnicos["P-26/031"] = tecnicos["P-26/031-S00"]    # el pedido a secas es el S00
@@ -359,9 +359,9 @@ try:
                 "Tipo de documento": "Planos", "Rev.": "1", "_rev_cliente": "B",
                 "Estado": "C - REVIEWED WITH MINOR COMMENTS"}
 
-    PLANOS = [plano("26-031-PLG-0005", "S00", "SLN.5024-2000-1057410920-C16-0001"),
-              plano("26-031-S01-PLG-0005", "S01", "SLN.5024-2000-1057410920-C16-0002"),
-              plano("26-031-S02-PLG-0005", "S02", "SLN.5024-2000-1057410920-C16-0003")]
+    PLANOS = [plano("99-031-PLG-0005", "S00", "CLI.1000-2000-1000010920-C16-0001"),
+              plano("99-031-S01-PLG-0005", "S01", "CLI.1000-2000-1000010920-C16-0002"),
+              plano("99-031-S02-PLG-0005", "S02", "CLI.1000-2000-1000010920-C16-0003")]
 
     paquete = tmp / "10571-TRSEI-V-14021.zip"
     with zipfile.ZipFile(paquete, "w") as zf:
@@ -372,13 +372,13 @@ try:
     caidos = {Path(dest).parts[-5]: Path(dest).parent.name for _, dest in res["archived"]}
     ok(not res["skipped"] and len(res["archived"]) == 3, f"los tres se colocan: {res['skipped']}")
     # Primera devolución que hay de cada uno (nuestra 0) y TR la llama B
-    ok(caidos == {"P-26-031-S00 - TR-SILLENO": "rev 0-B com",
-                  "P-26-031-S01 - TR-SILLENO": "rev 0-B com",
-                  "P-26-031-S02 - TR-SILLENO": "rev 0-B com"},
+    ok(caidos == {"P-99-031-S00 - TR-ALFA": "rev 0-B com",
+                  "P-99-031-S01 - TR-ALFA": "rev 0-B com",
+                  "P-99-031-S02 - TR-ALFA": "rev 0-B com"},
        f"cada plano en la carpeta de SU suministro: {caidos}")
 
     # Y el suministro que no tiene carpeta no se lleva por delante a los demás
-    suelto = plano("26-031-S09-PLG-0007", "S09", "SLN.5024-2000-1057410920-C16-0009")
+    suelto = plano("99-031-S09-PLG-0007", "S09", "CLI.1000-2000-1000010920-C16-0009")
     otro = tmp / "suelto.zip"
     with zipfile.ZipFile(otro, "w") as zf:
         zf.writestr(suelto["Doc. Cliente"] + ".pdf", b"%PDF-9")
@@ -390,8 +390,8 @@ try:
 
     # Con un solo suministro en el correo, los documentos que no lo dicen van
     # con el resto (un plano de S01 y su índice sin código de suministro)
-    sin_supp = {"Nº Pedido": "P-26/031", "Doc. EIPSA": "26-031-PLG-0009",
-                "Doc. Cliente": "SLN.5024-2000-1057410920-C16-0010",
+    sin_supp = {"Nº Pedido": "P-26/031", "Doc. EIPSA": "99-031-PLG-0009",
+                "Doc. Cliente": "CLI.1000-2000-1000010920-C16-0010",
                 "Título": "OVERALL DRAWING", "Tipo de documento": "Planos", "Rev.": "1",
                 "_rev_cliente": "B", "Estado": "C - REVIEWED WITH MINOR COMMENTS"}
     solo_s01 = tmp / "solo-s01.zip"
@@ -399,7 +399,7 @@ try:
         zf.writestr(sin_supp["Doc. Cliente"] + ".pdf", b"%PDF-10")
     res = D.archive_return(solo_s01, [sin_supp, PLANOS[1]], "P-26/031")
     ok(len(res["archived"]) == 1 and
-       Path(res["archived"][0][1]).parts[-5] == "P-26-031-S01 - TR-SILLENO",
+       Path(res["archived"][0][1]).parts[-5] == "P-99-031-S01 - TR-ALFA",
        f"sigue al único suministro del correo: {res['archived']}")
 finally:
     D.tecnico_dir = tecnico_real
@@ -414,7 +414,7 @@ finally:
 tmp = Path(tempfile.mkdtemp())
 tecnico_real = D.tecnico_dir
 try:
-    tecnico = tmp / "P-26-062-S00 - WOOD-ONUBA" / "2-Tecnico"
+    tecnico = tmp / "P-99-062-S00 - CLIENTE-BETA" / "2-Tecnico"
     envio = tecnico / "env. Cálculos" / "REV 0"
     envio.mkdir(parents=True)
     (tecnico / "dev. Cálculos").mkdir()
@@ -423,7 +423,7 @@ try:
     def calculo(num, estado):
         codigo = f"V-2401HG04A-2206-300-OEFO-{num:04d}-CAL-001"
         (envio / f"{codigo}.PDF").write_bytes(b"enviado")
-        return {"Nº Pedido": "P-26/062", "Supp.": "S00", "Doc. EIPSA": f"26-062-CAL-{num:04d}",
+        return {"Nº Pedido": "P-26/062", "Supp.": "S00", "Doc. EIPSA": f"99-062-CAL-{num:04d}",
                 "Doc. Cliente": codigo, "Título": "CALCULATIONS", "Rev.": "0",
                 "Estado": estado, "Tipo de documento": ""}
 
@@ -485,7 +485,7 @@ try:
     def plano(num, estado):
         codigo = f"V-2401HG04A-2206-300-OUFE-{num:04d}-DWG-001"
         (tecnico / "env. Planos" / "rev0" / f"{codigo}.PDF").write_bytes(b"enviado")
-        return {"Nº Pedido": "P-26/062", "Supp.": "S00", "Doc. EIPSA": f"26-062-DWG-{num:04d}",
+        return {"Nº Pedido": "P-26/062", "Supp.": "S00", "Doc. EIPSA": f"99-062-DWG-{num:04d}",
                 "Doc. Cliente": codigo, "Título": "OVERALL DRAWING", "Rev.": "0",
                 "Estado": estado, "Tipo de documento": ""}
 
@@ -532,7 +532,7 @@ finally:
 tmp = Path(tempfile.mkdtemp())
 tecnico_real = D.tecnico_dir
 try:
-    tecnico = tmp / "P-24-070-S00 - HYUNDAI" / "2-Tecnico"
+    tecnico = tmp / "P-98-070-S00 - CLIENTE-GAMMA" / "2-Tecnico"
     (tecnico / "env Painting and Coating" / "rev1 IFC").mkdir(parents=True)
     (tecnico / "env Painting and Coating" / "rev1 IFC"
      / "VD-CI0021-022_1 PAINTING AND COATING PROCEDURE.pdf").write_bytes(b"enviado")
@@ -583,25 +583,25 @@ finally:
 tmp = Path(tempfile.mkdtemp())
 tecnico_real = D.tecnico_dir
 try:
-    tecnico = tmp / "P-24-066-S05 - TR-SINOPEC" / "2-Tecnico"
+    tecnico = tmp / "P-98-066-S05 - TR-DELTA" / "2-Tecnico"
     (tecnico / "env cál y pla" / "rev 0").mkdir(parents=True)
-    (tecnico / "env cál y pla" / "rev 0" / "V-1065110910-0209.pdf").write_bytes(b"%PDF-enviado")
+    (tecnico / "env cál y pla" / "rev 0" / "V-1000110910-0209.pdf").write_bytes(b"%PDF-enviado")
     # El aprobado cuelga de una subcarpeta hecha a mano dentro de la revisión
     aprobado = tecnico / "dev cál y pla" / "rev0-A" / "AProbados"
     aprobado.mkdir(parents=True)
-    (aprobado / "V-1065110910-0209.pdf").write_bytes(b"%PDF-aprobado")
+    (aprobado / "V-1000110910-0209.pdf").write_bytes(b"%PDF-aprobado")
     (tecnico / "dev cál y pla" / "rev1-B").mkdir()
     D.tecnico_dir = lambda pedido: tecnico if pedido == "P-24/066-S05" else None
 
     ANULADO = {"Nº Pedido": "P-24/066", "Supp.": "S05",
-               "Doc. EIPSA": "24-066-S05-ESP-0053", "Doc. Cliente": "V-1065110910-0209",
+               "Doc. EIPSA": "98-066-S05-ESP-0053", "Doc. Cliente": "V-1000110910-0209",
                "Título": "SPECIFICATION AND TECHNICAL DATA 889-260-FE -00311",
                "Tipo de documento": "Cálculos y Planos", "Rev.": "0",
                "_rev_cliente": "A", "Estado": "VOID"}
 
-    paquete = tmp / "10651-TSOOK-1065110910-00081.zip"
+    paquete = tmp / "10001-TSOOK-1000110910-00081.zip"
     with zipfile.ZipFile(paquete, "w") as zf:
-        zf.writestr("V-1065110910-0209.pdf", b"%PDF-anulado")
+        zf.writestr("V-1000110910-0209.pdf", b"%PDF-anulado")
 
     res = D.archive_return(paquete, [ANULADO], "P-24/066", email_raw=b"correo",
                            email_date="2026-10-01")
@@ -609,7 +609,7 @@ try:
     destino = Path(res["archived"][0][1])
     ok(destino.parent.name == "VOID" and destino.parent.parent.name == "rev0-A",
        f"en rev0-A\\VOID, con el aprobado al lado: {destino.parent}")
-    ok((aprobado / "V-1065110910-0209.pdf").read_bytes() == b"%PDF-aprobado",
+    ok((aprobado / "V-1000110910-0209.pdf").read_bytes() == b"%PDF-aprobado",
        "sin tocar el PDF aprobado, que es el mismo nombre de fichero")
     ok(destino.read_bytes() == b"%PDF-anulado", "y con el documento anulado dentro")
     ok((destino.parent / "dev 2026-10-01.eml").is_file(), "el correo queda en la carpeta VOID")
@@ -625,11 +625,11 @@ try:
        "volver a archivarlo no duplica nada")
 
     # Sin carpeta de esa revisión, la anulación abre la suya con sufijo VOID
-    otra = {**ANULADO, "Doc. EIPSA": "24-066-S05-ESP-0099",
-            "Doc. Cliente": "V-1065110910-0299", "Rev.": "3", "_rev_cliente": "D"}
+    otra = {**ANULADO, "Doc. EIPSA": "98-066-S05-ESP-0099",
+            "Doc. Cliente": "V-1000110910-0299", "Rev.": "3", "_rev_cliente": "D"}
     suelto = tmp / "otro.zip"
     with zipfile.ZipFile(suelto, "w") as zf:
-        zf.writestr("V-1065110910-0299.pdf", b"%PDF-anulado-3")
+        zf.writestr("V-1000110910-0299.pdf", b"%PDF-anulado-3")
     res = D.archive_return(suelto, [otra], "P-24/066")
     ok(len(res["archived"]) == 1 and
        Path(res["archived"][0][1]).parent.name == "rev0-D VOID",
@@ -648,22 +648,22 @@ tecnico_real = D.tecnico_dir
 try:
     tecnicos = {}
     for _supp, _envio in (("S02", "ENVÍO CÁLCULOS"), ("S03", "ENV CÁL Y PLA")):
-        t = tmp / f"P-26-027-{_supp} - TR-ADNOC" / "2-Tecnico"
+        t = tmp / f"P-99-027-{_supp} - TR-SIGMA" / "2-Tecnico"
         (t / _envio / "REV 0").mkdir(parents=True)
-        tecnicos[f"P-26/027-{_supp}"] = t
-    tecnicos["P-26/027"] = tmp / "P-26-027-S00 - TR-ADNOC" / "2-Tecnico"
-    tecnicos["P-26/027"].mkdir(parents=True)
+        tecnicos[f"P-99/027-{_supp}"] = t
+    tecnicos["P-99/027"] = tmp / "P-99-027-S00 - TR-SIGMA" / "2-Tecnico"
+    tecnicos["P-99/027"].mkdir(parents=True)
     D.tecnico_dir = lambda pedido: tecnicos.get(pedido)
 
-    _s02 = D.scan_folders(tecnicos["P-26/027-S02"])
+    _s02 = D.scan_folders(tecnicos["P-99/027-S02"])
     ok([(f["kind"], f["name"]) for f in _s02] == [("env", "CÁLCULOS")],
        f"«ENVÍO CÁLCULOS» es la carpeta de envío de cálculos: {_s02}")
     ok([f["kind"] for f in D.scan_folders(tmp / "no existe")] == [], "y sin 2-Tecnico, ninguna")
 
     def calculo(supp, cliente):
-        envio = next(p for p in tecnicos[f"P-26/027-{supp}"].iterdir() if p.is_dir())
+        envio = next(p for p in tecnicos[f"P-99/027-{supp}"].iterdir() if p.is_dir())
         (envio / "REV 0" / f"{cliente}.pdf").write_bytes(b"enviado")
-        return {"Nº Pedido": "P-26/027", "Doc. EIPSA": f"26-027-{supp}-PLG-0005",
+        return {"Nº Pedido": "P-99/027", "Doc. EIPSA": f"99-027-{supp}-PLG-0005",
                 "Doc. Cliente": cliente, "Tipo de documento": "", "Rev.": "1",
                 "Título": "DATASHEET, SIZING CALCULATION AND DIMENSIONAL DRAWING",
                 "Estado": "C - REVIEWED WITH MINOR COMMENTS"}
@@ -674,7 +674,7 @@ try:
         for d in DOCS:
             zf.writestr(d["Doc. Cliente"] + ".pdf", b"%PDF-" + d["Doc. Cliente"].encode())
 
-    res = D.archive_return(paquete, DOCS, "P-26/027")
+    res = D.archive_return(paquete, DOCS, "P-99/027")
     ok(len(res["archived"]) == 2 and not res["skipped"],
        f"los dos se colocan: {res['archived']} / {res['skipped']}")
     caidos = {Path(dest).parts[-5]: f"{Path(dest).parent.parent.name}\\{Path(dest).parent.name}"
@@ -682,22 +682,22 @@ try:
     # Y el número de la carpeta de envío es el orden, no la revisión: lo enviado
     # desde «ENVÍO CÁLCULOS\REV 0» en revisión 1 vuelve a «rev0-1 com», que es
     # como está a mano la del S00 del mismo pedido («dev cál pla\rev0-1 COM»).
-    ok(caidos == {"P-26-027-S02 - TR-ADNOC": "dev CÁLCULOS\\rev 0-1 com",
-                  "P-26-027-S03 - TR-ADNOC": "dev CÁL Y PLA\\rev 0-1 com"},
+    ok(caidos == {"P-99-027-S02 - TR-SIGMA": "dev CÁLCULOS\\rev 0-1 com",
+                  "P-99-027-S03 - TR-SIGMA": "dev CÁL Y PLA\\rev 0-1 com"},
        f"cada uno en la carpeta dev de su envío: {caidos}")
 
     # Y si calcular la carpeta de uno revienta, los demás se colocan igual
     _destino_real = D._destino
 
     def _revienta(doc, folders, **kw):
-        if str(doc.get("Doc. EIPSA", "")).startswith("26-027-S02"):
+        if str(doc.get("Doc. EIPSA", "")).startswith("99-027-S02"):
             raise TypeError("a propósito, para la prueba")
         return _destino_real(doc, folders, **kw)
 
     D._destino = _revienta
     logging.disable(logging.CRITICAL)
     try:
-        res = D.archive_return(paquete, DOCS, "P-26/027")
+        res = D.archive_return(paquete, DOCS, "P-99/027")
     finally:
         logging.disable(logging.NOTSET)
         D._destino = _destino_real

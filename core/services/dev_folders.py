@@ -75,7 +75,7 @@ logger = logging.getLogger(__name__)
 
 # `env`/`dev`, y también la palabra entera: hay pedidos —en 2026 todavía— con
 # «ENVÍO CÁLCULOS» o «DEVOLUCIÓN PLANOS». Sin reconocerlas, ese suministro se
-# quedaba sin ninguna carpeta (P-26/027-S02) y no había de dónde sacar ni el
+# quedaba sin ninguna carpeta (P-99/027-S02) y no había de dónde sacar ni el
 # nombre de la carpeta dev ni la revisión de la que salió el documento.
 _KIND_RE = re.compile(r"^(env(?:[ií]os?)?|dev(?:ol(?:uci[oó]n(?:es)?)?)?)\.?\s+(.+?)\s*$", re.I)
 # `rev<N>[-<revisión>][ <sufijo>]`. El sufijo se captura libre (AP, com, COM,
@@ -269,7 +269,7 @@ class _DevolucionesArchivadas:
         if iguales:
             return str(max(iguales))
         # La siguiente a la última: el número de las carpetas manda. Contarlas no
-        # vale cuando falta alguna —en el 26-031-ESP-0003 la 1 fue una anulación
+        # vale cuando falta alguna —en el 99-031-ESP-0003 la 1 fue una anulación
         # sin carpeta de devolución (0-A, 2-B, 3-C): contando, la D salía 3 y
         # es la 4—. Solo si ninguna lleva número («revB com») se cuentan.
         numeros = [partes[0] for partes in revisiones.values() if partes[0] is not None]
@@ -425,7 +425,7 @@ class _PorSuministro:
         y no se agrupa: alguien lo ha dicho a propósito.
       · Un documento que no diga de cuál es se va al suministro del resto,
         cuando el correo trae uno solo; si el correo los mezcla, al pedido a
-        secas, que es donde TR nombra el documento base (26-031-PLG-0005).
+        secas, que es donde TR nombra el documento base (99-031-PLG-0005).
     """
 
     def __init__(self, pedido: str, docs: list[dict]) -> None:
@@ -651,7 +651,7 @@ def _dev_folder_for(folders: list[dict], name: str, style_dotted: bool, tecnico:
     abrir una segunda al lado.
 
     `tecnico` es dónde crearla si no está. Lo dice el llamador y no las carpetas
-    que ya hay: un suministro puede no tener ninguna —el S02 del P-26/027 solo
+    que ya hay: un suministro puede no tener ninguna —el S02 del P-99/027 solo
     tenía «ENVÍO CÁLCULOS»— y entonces esto reventaba («NoneType / str») y se
     perdía el reparto del paquete entero.
     """
@@ -927,8 +927,8 @@ def _rev_del_anulado(dev_dir: Path, n: int | None, letter: str, codes: list[str]
     de la anulación lejos del documento— sino que va a una subcarpeta «VOID» de
     la carpeta de revisión que cancela, que es como se archiva a mano:
 
-        dev cál y pla\\rev0-A\\AProbados\\V-1065110910-0209.pdf   ← lo aprobado
-        dev cál y pla\\rev0-A\\VOID\\V-1065110910-0209.pdf        ← la anulación
+        dev cál y pla\\rev0-A\\AProbados\\V-1000110910-0209.pdf   ← lo aprobado
+        dev cál y pla\\rev0-A\\VOID\\V-1000110910-0209.pdf        ← la anulación
 
     Esa carpeta de revisión se busca, por orden:
       1. Donde YA está archivado el documento (aunque cuelgue de una subcarpeta

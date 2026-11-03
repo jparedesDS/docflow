@@ -29,14 +29,14 @@ def ok(condicion: bool, texto: str) -> None:
 
 
 # ── El asunto ─────────────────────────────────────────────────────────────────
-ASUNTO = ("Wood Transmittal TL-2401HG04A-VDC-6696 -  1DD5598E - Moeve Energy Park "
-          "La Rabida - Huelva  - CALCULATIONS - PO: 7011419725 - Vendor: EIPSA, S.A.")
+ASUNTO = ("Wood Transmittal TL-1234AB00A-VDC-6696 -  0AA0000A - Planta de Ejemplo "
+          "Norte - Ejemplo  - CALCULATIONS - PO: 7000100010 - Vendor: EIPSA, S.A.")
 datos = prodoc.parse_subject(ASUNTO)
-ok(datos["code"] == "TL-2401HG04A-VDC-6696", f"el código sale del asunto: {datos['code']}")
-ok(datos["po"] == "7011419725", f"y el PO del cliente: {datos['po']}")
+ok(datos["code"] == "TL-1234AB00A-VDC-6696", f"el código sale del asunto: {datos['code']}")
+ok(datos["po"] == "7000100010", f"y el PO del cliente: {datos['po']}")
 
 # ── Los enlaces del pie del correo ────────────────────────────────────────────
-BASE = ("https://Intranet.fwiberia.fwc.com/Intranet/aplicaciones/s1015/VndrDocs"
+BASE = ("https://Intranet.ejemplo.test/Intranet/aplicaciones/s1015/VndrDocs"
         "/DistributionVndr/vndDownloadZIPMail.cfm?")
 CORREO = f"""
 <table><tr><td>
@@ -58,12 +58,12 @@ ok(not prodoc.has_download("<p>2I - FOR INFORMATION ONLY</p>"),
 # ── La página puente ──────────────────────────────────────────────────────────
 # El portal redirige a una página cuyo script pega «https:» al ctl=, lo corta en
 # «.zip» y pulsa el enlace. Sin seguirla a mano, el transmittal no bajaba
-# (TL-2401HG04A-VDC-6696 y -6697, el 2026-10-08).
-PUENTE = ("https://intranet.fwiberia.fwc.com/Intranet/aplicaciones/s1015/downloadDocs"
-          "/vndDownloadZIPMail.htm?ctl=//intranet.fwiberia.fwc.com/Intranet/aplicaciones"
-          "/s1015/DownLoadDocs/VndrDocsDownload/E20C3516%5CTL-2401HG04A-VDC-6696_1.zip")
-ZIP_REAL = ("https://intranet.fwiberia.fwc.com/Intranet/aplicaciones/s1015/DownLoadDocs"
-            "/VndrDocsDownload/E20C3516%5CTL-2401HG04A-VDC-6696_1.zip")
+# (TL-1234AB00A-VDC-6696 y -6697, el 2026-10-08).
+PUENTE = ("https://intranet.ejemplo.test/Intranet/aplicaciones/s1015/downloadDocs"
+          "/vndDownloadZIPMail.htm?ctl=//intranet.ejemplo.test/Intranet/aplicaciones"
+          "/s1015/DownLoadDocs/VndrDocsDownload/E20C3516%5CTL-1234AB00A-VDC-6696_1.zip")
+ZIP_REAL = ("https://intranet.ejemplo.test/Intranet/aplicaciones/s1015/DownLoadDocs"
+            "/VndrDocsDownload/E20C3516%5CTL-1234AB00A-VDC-6696_1.zip")
 
 ok(prodoc._url_del_zip(PUENTE) == ZIP_REAL,
    f"la URL del zip sale del ctl=: {prodoc._url_del_zip(PUENTE)}")
@@ -155,8 +155,8 @@ try:
                                                cuerpo=zip_de_prueba())),
     ])
     prodoc.http.session = lambda *a, **k: portal
-    ruta = prodoc.download(f"{BASE}TOKEN1ra", tmp, "TL-2401HG04A-VDC-6696")
-    ok(ruta.name == "TL-2401HG04A-VDC-6696.zip", f"el paquete queda como el código: {ruta.name}")
+    ruta = prodoc.download(f"{BASE}TOKEN1ra", tmp, "TL-1234AB00A-VDC-6696")
+    ok(ruta.name == "TL-1234AB00A-VDC-6696.zip", f"el paquete queda como el código: {ruta.name}")
     ok(zipfile.is_zipfile(ruta), "y es un zip de verdad")
     ok(portal.pedidas[-1] == ZIP_REAL, f"se ha seguido a la URL del zip: {portal.pedidas[-1]}")
     with zipfile.ZipFile(ruta) as zf:

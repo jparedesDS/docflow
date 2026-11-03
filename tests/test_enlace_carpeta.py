@@ -53,9 +53,9 @@ ok("<a " not in suelto, f"ruta relativa sin enlace: {suelto}")
 # Las carpetas se llaman igual en los tres, así que los enlaces del correo se
 # leerían idénticos: delante va el suministro.
 PED = r"M:\base de datos de pedidos\Año 2026\2026 Pedidos"
-TRES = [rf"{PED}\P-26-031-S00 - TR-SILLENO - RO - 10574\2-Tecnico\dev planos\rev1-B com",
-        rf"{PED}\P-26-031-S01 - TR-SILLENO - RO -10574\2-Tecnico\dev planos\rev1-B com",
-        rf"{PED}\P-26-031-S02 - TR-SILLENO - ORIFICIOS - 10574\2-Tecnico\dev planos\rev1-B com"]
+TRES = [rf"{PED}\P-99-031-S00 - TR-ALFA - RO - 10000\2-Tecnico\dev planos\rev1-B com",
+        rf"{PED}\P-99-031-S01 - TR-ALFA - RO -10000\2-Tecnico\dev planos\rev1-B com",
+        rf"{PED}\P-99-031-S02 - TR-ALFA - ORIFICIOS - 10000\2-Tecnico\dev planos\rev1-B com"]
 html = enlaces_guardado(TRES)
 ok(html.count("<a ") == 3, f"un enlace por carpeta: {html.count('<a ')}")
 for supp in ("S00", "S01", "S02"):

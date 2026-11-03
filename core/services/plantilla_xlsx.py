@@ -110,7 +110,7 @@ def _sustituir(raiz, valores: dict) -> bool:
 # celdas: la etiqueta en una columna y el valor en la de al lado.
 #
 #     A2  CLIENT          :     B2  ATLAS - PLANTA SUR
-#     A12 VENDOR DOC. N.  :     B12 26-062-DL-0001
+#     A12 VENDOR DOC. N.  :     B12 99-062-DL-0001
 #
 # Cuando la plantilla está así se leen solas y no hay que escribir marcadores.
 

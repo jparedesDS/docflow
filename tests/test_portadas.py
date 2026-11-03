@@ -146,7 +146,7 @@ try:
     shared = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
               '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="4">'
               '<si><t>CLIENT                    :</t></si><si><t>ATLAS - PLANTA SUR</t></si>'
-              '<si><t>VENDOR DOC. Nº      :</t></si><si><t>26-062-DL-0001</t></si>'
+              '<si><t>VENDOR DOC. Nº      :</t></si><si><t>99-062-DL-0001</t></si>'
               '</sst>')
     hoja = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
@@ -164,21 +164,21 @@ try:
     ok(etiquetas["CLIENT"] == "ATLAS - PLANTA SUR", "el valor de ejemplo sale de la plantilla")
 
     destino = plantilla_xlsx.rellenar(plantilla, tmp / "relleno.xlsx",
-                                      valores={"VENDOR DOC. Nº": "26-062-CAL-0002"})
+                                      valores={"VENDOR DOC. Nº": "99-062-CAL-0002"})
     with zipfile.ZipFile(destino) as z:
         hoja_rell = z.read("xl/worksheets/sheet1.xml").decode("utf-8")
-    ok("26-062-CAL-0002" in hoja_rell, "el valor nuevo se escribe en la celda de al lado")
+    ok("99-062-CAL-0002" in hoja_rell, "el valor nuevo se escribe en la celda de al lado")
     ok('s="7"' in hoja_rell, "la celda conserva su formato")
     ok("inlineStr" in hoja_rell, "se escribe dentro de la celda, no en la tabla común")
     with zipfile.ZipFile(destino) as z:
         comun = z.read("xl/sharedStrings.xml").decode("utf-8")
-    ok("26-062-DL-0001" in comun, "la tabla común no se toca (la comparten otras hojas)")
+    ok("99-062-DL-0001" in comun, "la tabla común no se toca (la comparten otras hojas)")
 
     # Una etiqueta que no se mapea se queda con lo que traía
     quedan = {e["etiqueta"]: e["valor"] for e in plantilla_xlsx.etiquetas(destino)}
     ok(quedan.get("CLIENT") == "ATLAS - PLANTA SUR",
        f"lo que no se mapea se queda como estaba: {quedan.get('CLIENT')!r}")
-    ok(quedan.get("VENDOR DOC. Nº") == "26-062-CAL-0002",
+    ok(quedan.get("VENDOR DOC. Nº") == "99-062-CAL-0002",
        f"y lo mapeado se relee bien: {quedan.get('VENDOR DOC. Nº')!r}")
 finally:
     shutil.rmtree(tmp, ignore_errors=True)

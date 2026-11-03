@@ -23,11 +23,11 @@ def ok(cond, msg):
 # Los documentos del pedido, como los da el ERP
 DOCS = [
     {"Nº Pedido": "P-26/004-S00", "Cliente": "ATLAS - ONUVA", "Nº PO": "7000100010",
-     "Nº Doc. Cliente": "V-1234AB00A-1100-300-DL-001", "Nº Doc. EIPSA": "26-062-DL-0001",
+     "Nº Doc. Cliente": "V-1234AB00A-1100-300-DL-001", "Nº Doc. EIPSA": "99-062-DL-0001",
      "Título": "DOCUMENTS LIST", "Tipo Doc.": "VDDL", "Nº Revisión": 0.0},
     {"Nº Pedido": "P-26/004-S00", "Cliente": "ATLAS - ONUVA", "Nº PO": "7000100010",
      "Nº Doc. Cliente": "V-1234AB00A-1100-300-OHFE-0014-CAL-001",
-     "Nº Doc. EIPSA": "26-062-CAL-0002", "Título": "EQUIPMENT CALCULATION - OHFE 0014",
+     "Nº Doc. EIPSA": "99-062-CAL-0002", "Título": "EQUIPMENT CALCULATION - OHFE 0014",
      "Tipo Doc.": "Cálculos", "Nº Revisión": 1.0},
 ]
 
@@ -38,7 +38,7 @@ HUECOS = [
     {"clave": "UNIT", "tipo": "etiqueta", "ejemplo": "OG"},
     {"clave": "PURCHASE ORDER N°", "tipo": "etiqueta", "ejemplo": "7000100010"},
     {"clave": "WOOD DWG. N°", "tipo": "etiqueta", "ejemplo": "V-1234AB00A-1100-300-DL-001"},
-    {"clave": "VENDOR DOC. Nº", "tipo": "etiqueta", "ejemplo": "26-062-DL-0001"},
+    {"clave": "VENDOR DOC. Nº", "tipo": "etiqueta", "ejemplo": "99-062-DL-0001"},
     {"clave": "MAT. REQ. Nº", "tipo": "etiqueta", "ejemplo": "RM-1234AB00A-1100-300"},
     {"clave": "VENDOR CAD FILE Nº", "tipo": "etiqueta",
      "ejemplo": "V-1234AB00A-1100-300-DL-001-R0.PDF"},

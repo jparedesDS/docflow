@@ -25,7 +25,7 @@ def ok(cond, msg):
 
 
 CODE = "1000100070-T-0066"
-DEV = Path(r"M:\pedidos\P-26-412\2-Tecnico\dev NDE\revC AP")
+DEV = Path(r"M:\pedidos\P-99-412\2-Tecnico\dev NDE\revC AP")
 
 tmp = Path(tempfile.mkdtemp())
 registro, archivar_real = P.PORTAL_DOWNLOADS_FILE, dev_folders.archive_return

@@ -29,7 +29,7 @@ def ok(cond, msg):
 for forma in ("1234-FE-0567", "1234-FE    -0567", "1234 FE 0567", "1234fe0567", " 1234-fe-0567 "):
     ok(T.clave_tag(forma) == "1234FE0567", f"{forma!r} es el mismo tag: {T.clave_tag(forma)!r}")
 for texto, espera in (("1234-FE-0567", True), ("ABFE   0110", True), ("FE-12", False),
-                      ("26-027", False), ("planos", False), ("", False)):
+                      ("99-027", False), ("planos", False), ("", False)):
     ok(T.parece_tag(texto) == espera, f"¿{texto!r} parece un tag? {T.parece_tag(texto)}")
 
 patron = T._patron("1234-FE    -0567")
