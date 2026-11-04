@@ -380,6 +380,33 @@ def leer_erp(entradas: list[dict]) -> dict | None:
     return out
 
 
+def _reenviado_en_disco(e: dict, desde: date) -> bool | None:
+    """¿Hay en las carpetas env del pedido un fichero de ese documento con
+    fecha de `desde` o posterior? None si no se puede mirar (sin carpeta, M:
+    caída): entonces no se sabe y manda el ERP."""
+    import os
+    from pathlib import Path
+    carpeta = str(e.get("carpeta") or "")
+    if "2-Tecnico" not in carpeta:
+        return None
+    tecnico = Path(carpeta.split("2-Tecnico")[0] + "2-Tecnico")
+    codigos = [c for c in (norm(e.get("doc_eipsa")), norm(e.get("doc_cliente"))) if len(c) >= 6]
+    try:
+        if not codigos or not tecnico.is_dir():
+            return None
+        for sub in tecnico.iterdir():
+            if not (sub.is_dir() and sub.name.lower().startswith("env")):
+                continue
+            for raiz, _dirs, ficheros in os.walk(sub):
+                for nombre in ficheros:
+                    if any(c in norm(nombre) for c in codigos):
+                        if date.fromtimestamp(os.path.getmtime(os.path.join(raiz, nombre))) >= desde:
+                            return True
+    except OSError:
+        return None
+    return False
+
+
 # Los estados que son el resultado de una devolución (no «Enviado» ni vacío)
 _RESULTADOS = {_fold(x) for x in (APROBADO, INFORMACION, COM_MENORES, COM_MAYORES, COMENTADO, RECHAZADO)}
 
@@ -425,7 +452,12 @@ def comparar(e: dict, fila: dict | None) -> dict | None:
     # aunque la revisión del ERP no se subiera (P-23/044: devuelta la 51 el 31/10,
     # enviada la 52 el 03/11 y el ERP seguía en rev 5; P-23/037, reenviado el
     # mismo día que volvió)
-    if dev and puesta and puesta >= dev and estado_erp_ahora == "enviado":
+    # Pero solo si de verdad salió algo: un «Enviado» con la fecha cambiada y
+    # el estado sin cambiar no es un reenvío (P-23/105: aprobado el 29/10 y el
+    # ERP quedó «Enviado 01/11»). Lo dice la carpeta env: un fichero del
+    # documento enviado ese día o después. Si no se puede mirar, vale el ERP.
+    if dev and puesta and puesta >= dev and estado_erp_ahora == "enviado" \
+            and _reenviado_en_disco(e, dev) is not False:
         return None
     falta = []
     if dev and not (puesta and dev - timedelta(days=_FECHA_ANTES) <= puesta

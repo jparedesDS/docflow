@@ -12,6 +12,7 @@ import shutil
 import sys
 import tempfile
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -226,6 +227,26 @@ ok(R.comparar(dev51, {"state": "Enviado", "revision": 5, "state_date": "20/10/20
    "un «Enviado» de antes de la devolución es el envío que se devolvió: falta")
 ok(R.comparar(dev51, {"state": "Enviado", "revision": 6, "state_date": "31/10/2099"}) is None,
    "reenviado el mismo día que volvió")
+# …pero si la carpeta env no tiene nada enviado desde entonces, no es un reenvío:
+# es un «Enviado» al que se le cambió la fecha sin cambiar el estado
+import os  # noqa: E402
+tec7 = tmp / "P-99-007-S00 - X" / "2-Tecnico"
+(tec7 / "env. MRB" / "rev5").mkdir(parents=True)
+(tec7 / "dev. MRB" / "rev5-51 com").mkdir(parents=True)
+viejo = tec7 / "env. MRB" / "rev5" / "99-007-DOS-0002.pdf"
+viejo.write_bytes(b"x")
+t = datetime(2099, 9, 1).timestamp()
+os.utime(viejo, (t, t))
+dev51d = dict(dev51, carpeta=str(tec7 / "dev. MRB" / "rev5-51 com"))
+f = R.comparar(dev51d, {"state": "Enviado", "revision": 5, "state_date": "01/11/2099"})
+ok(f is not None and "estado" in f["falta"], f"«Enviado» con la fecha cambiada y nada enviado después: falta: {f}")
+(tec7 / "env. MRB" / "rev6").mkdir()
+nuevo_env = tec7 / "env. MRB" / "rev6" / "99-007-DOS-0002.pdf"
+nuevo_env.write_bytes(b"y")
+t = datetime(2099, 11, 1).timestamp()
+os.utime(nuevo_env, (t, t))
+ok(R.comparar(dev51d, {"state": "Enviado", "revision": 5, "state_date": "01/11/2099"}) is None,
+   "con el fichero enviado después en env, sí es un reenvío")
 # Otro resultado del MISMO día: otra devolución que la app no vio (la segunda llegó por correo)
 cal = {"doc_eipsa": "99-007-CAL-0007", "nuestra": "1", "cliente": "B", "estado": "Aprobado", "fecha": "30/10/2099"}
 ok(R.comparar(cal, {"state": "Com. Menores", "revision": 1, "state_date": "30/10/2099"}) is None,
