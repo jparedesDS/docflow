@@ -64,14 +64,15 @@ try:
     ok(dv and dv[0]["nuestra"] == "1" and dv[0]["cliente"] == "B",
        f"nuestra 1 (la siguiente a la archivada), del cliente B: {dv}")
     ok(dv and dv[0]["pedido"] == "P-99/004-S00", f"con el suministro: {dv}")
-    ok(R.anotar(res, "2099-03-10 09:20:00") == 1, "se apunta")
-    ok(R.anotar(res, "2099-03-10 09:20:00") == 0, "rearchivar no lo apunta dos veces")
+    # capturar=False: sin ir al ERP de verdad (el 1er envío se prueba más abajo con uno falso)
+    ok(R.anotar(res, "2099-03-10 09:20:00", capturar=False) == 1, "se apunta")
+    ok(R.anotar(res, "2099-03-10 09:20:00", capturar=False) == 0, "rearchivar no lo apunta dos veces")
 
     # Sin paquete (solo el correo) también
     INFO = dict(PLANO, **{"Doc. EIPSA": "99-004-ESP-0003", "Doc. Cliente": "CLI-SPC-0002",
                           "Título": "DATA SHEET", "Rev.": "0", "Estado": "Informativo"})
     res2 = D.archive_email_only([INFO], "P-99/004", email_raw=b"correo", email_date="2099-03-11")
-    ok(R.anotar(res2, "2099-03-11") == 1 and res2["devueltos"][0]["nuestra"] == "0",
+    ok(R.anotar(res2, "2099-03-11", capturar=False) == 1 and res2["devueltos"][0]["nuestra"] == "0",
        f"la devolución sin paquete también: {res2.get('devueltos')}")
     # Un simulacro no apunta nada
     ok(not D.archive_return(paquete, [PLANO], "P-99/004", dry_run=True).get("devueltos"),
@@ -92,24 +93,51 @@ ok(res["ok"] and set(por) == {"99-004-PLG-0005", "99-004-ESP-0003"}, f"las dos p
 p = por.get("99-004-PLG-0005", {})
 ok(p.get("estado") == "Aprobado" and p.get("fecha") == "10/03/2099" and p.get("nuestra") == "1",
    f"lo que hay que poner: {p}")
-ok(p.get("falta") == ["estado", "fecha"], f"la revisión ya cuadra; faltan estado y fecha: {p.get('falta')}")
+ok(p.get("falta") == ["fecha", "estado"],
+   f"fecha y estado, en ese orden; la revisión no se toca y no es la 1ª devolución: {p.get('falta')}")
 ok(por.get("99-004-ESP-0003", {}).get("falta") == ["documento"], "el que no está en el ERP se dice")
 
 # Ya puesto, con la fecha del día que se apuntó (dos días después): cuadra
 ERP["99-004-PLG-0005"].update(state="Aprobado", state_date="12/03/2099")
 ok("99-004-PLG-0005" not in {f["doc_eipsa"] for f in R.pendientes(erp=ERP)["filas"]},
-   "con estado, revisión y fecha razonable sale de la lista")
-# La revisión del ERP no es la nuestra: no cuadra aunque el estado sí
-ERP["99-004-PLG-0005"].update(revision=2)
-f = next((x for x in R.pendientes(erp=ERP)["filas"] if x["doc_eipsa"] == "99-004-PLG-0005"), None)
-ok(f is None, "si el ERP ya va por una revisión nuestra posterior (se reenvió), esto es historia")
+   "con estado y una fecha de esos días sale de la lista")
+# Una revisión que no es la nuestra no importa: al recibir no se toca
 ERP["99-004-PLG-0005"].update(revision=0)
-f = next((x for x in R.pendientes(erp=ERP)["filas"] if x["doc_eipsa"] == "99-004-PLG-0005"), None)
-ok(f and f["falta"] == ["revision"], f"revisión anterior en el ERP: falta la revisión: {f}")
+ok("99-004-PLG-0005" not in {f["doc_eipsa"] for f in R.pendientes(erp=ERP)["filas"]},
+   "la revisión del ERP no se compara")
+# …salvo para saber que ya se reenvió: el ERP va por una revisión nuestra posterior
+ERP["99-004-PLG-0005"].update(revision=2, state="Enviado")
+ok("99-004-PLG-0005" not in {f["doc_eipsa"] for f in R.pendientes(erp=ERP)["filas"]},
+   "si el ERP ya va por una revisión nuestra posterior (se reenvió), esto es historia")
+ERP["99-004-PLG-0005"].update(revision=1)
+
+# ── 1er envío, con la primera devolución (nuestra rev 0) ─────────────────────
+# El de información es la rev 0: mientras el ERP dice «Enviado» rev 0, su fecha
+# de estado es la del primer envío, y se guarda antes de que se pise
+ERP["99-004-ESP-0003"] = {"num_doc_eipsa": "99-004-ESP-0003", "state": "Enviado", "revision": 0,
+                          "state_date": "02/03/2099", "date_first_rev": ""}
+f = next(x for x in R.pendientes(erp=ERP)["filas"] if x["doc_eipsa"] == "99-004-ESP-0003")
+ok(f["falta"] == ["fecha", "estado", "primer_envio"] and f["primer_envio"] == "02/03/2099",
+   f"1ª devolución: fecha, estado y 1er envío = la fecha del envío: {f['falta']} {f['primer_envio']}")
+ok(next(e for e in R._cargar()["devueltos"].values() if e["doc_eipsa"] == "99-004-ESP-0003")
+   .get("primer_envio") == "02/03/2099", "y se queda guardada")
+# Se pone la fecha de la devolución (la del envío se pierde en el ERP): se sigue sabiendo
+ERP["99-004-ESP-0003"].update(state="Información", state_date="11/03/2099")
+f = next(x for x in R.pendientes(erp=ERP)["filas"] if x["doc_eipsa"] == "99-004-ESP-0003")
+ok(f["falta"] == ["primer_envio"] and f["primer_envio"] == "02/03/2099", f"solo falta el 1er envío: {f}")
+ERP["99-004-ESP-0003"]["date_first_rev"] = "02/03/2099"
+ok("99-004-ESP-0003" not in {x["doc_eipsa"] for x in R.pendientes(erp=ERP)["filas"]}, "con él, cuadra")
+# Sin verlo a tiempo, no se inventa
+nuevo = {"doc_eipsa": "99-004-ESP-0009", "nuestra": "0", "estado": "Aprobado", "fecha": "10/03/2099"}
+f = R.comparar(nuevo, {"state": "Aprobado", "revision": 0, "state_date": "10/03/2099", "date_first_rev": ""})
+ok(f and f["falta"] == ["primer_envio"] and f["primer_envio"] == "", f"sin la fecha a la vista, vacío: {f}")
+# En una devolución que no es la primera no se pide
+ok(R.comparar(dict(nuevo, nuestra="2"), {"state": "Aprobado", "revision": 2, "state_date": "10/03/2099",
+                                         "date_first_rev": ""}) is None, "en la rev 2 no se pide el 1er envío")
 
 # Se busca también por el Nº del cliente (con espacios en el ERP)
 ERP2 = {"CLI:CLI-SPC-0002": {"num_doc_client": "CLI-SPC- 0002", "state": "Información", "revision": 0,
-                             "state_date": "11/03/2099"}}
+                             "state_date": "11/03/2099", "date_first_rev": "02/03/2099"}}
 ok(R.comparar(next(e for e in R._cargar()["devueltos"].values() if e["doc_cliente"] == "CLI-SPC-0002"),
               ERP2["CLI:CLI-SPC-0002"]) is None, "cuadra el que se encuentra por el Nº del cliente")
 
@@ -122,8 +150,12 @@ ok(g and g[0]["estado"] == "Aprobado" and g[0]["fecha"] == "10/03/2099", f"grupo
 xlsx = R.exportar_excel(filas, tmp / "pendiente.xlsx")
 from openpyxl import load_workbook  # noqa: E402
 ws = load_workbook(xlsx).active
-ok(ws["A1"].value == "num_doc_eipsa" and ws["D2"].value == "Aprobado" and ws["F2"].value == 1,
-   f"Excel: {[c.value for c in ws[2]]}")
+cab = [c.value for c in ws[1]]
+ok(cab[:6] == ["num_doc_eipsa", "num_doc_client", "num_order", "state_date", "state", "date_first_rev"]
+   and "revision" not in cab, f"Excel: fecha, estado, 1er envío y sin columna de revisión: {cab}")
+fila_plg = next(r for r in ws.iter_rows(min_row=2, values_only=True) if r[0] == "99-004-PLG-0005")
+ok(fila_plg[3] == "10/03/2099" and fila_plg[4] == "Aprobado" and fila_plg[5] is None,
+   f"Excel: lo que hay que poner (sin 1er envío en una rev 1): {fila_plg}")
 clave = next(x["clave"] for x in filas if x["doc_eipsa"] == "99-004-PLG-0005")
 R.ignorar(clave)
 ok(all(x["doc_eipsa"] != "99-004-PLG-0005" for x in R.pendientes(erp={})["filas"]), "la ocultada no vuelve")
@@ -160,8 +192,11 @@ root.after(10, abrir)
 root.mainloop()
 ok(len(w._filas) == 1, "la ventana enseña la pendiente")
 c = V.celdas(w._filas[0])
-ok(c["Rev"]["text"] == "2  (cli C)" and c["ERP"]["text"] == "Enviado · rev 2 · 01/03/2099"
-   and c["Estado"]["bold"], f"celdas: {c}")
+ok(c["Rev"]["text"] == "2  (cli C)" and c["ERP"]["text"] == "01/03/2099 · Enviado · rev 2"
+   and c["Estado"]["bold"] and not c["Fecha"].get("bold") and c["Primer"]["text"] == "", f"celdas: {c}")
+ok([col["key"] for col in V.COLUMNS][3:6] == ["Fecha", "Estado", "Primer"], "columnas en el orden del ERP")
+c = V.celdas(dict(w._filas[0], nuestra="0", falta=["fecha", "estado", "primer_envio"], primer_envio=""))
+ok(c["Primer"]["text"] == "? búscalo" and c["Primer"]["bold"], f"1er envío sin fecha a la vista: {c['Primer']}")
 ok("1 por registrar" in w.lbl_estado.cget("text"), f"resumen: {w.lbl_estado.cget('text')}")
 root.destroy()
 shutil.rmtree(tmp, ignore_errors=True)

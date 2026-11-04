@@ -1,21 +1,27 @@
 """Lo que el cliente ha devuelto y el ERP todavía no dice.
 
 Cada devolución que la app archiva en `dev. <Tipo>\\rev <nuestra>-<cliente> AP|COM|com|REJ`
-se apunta aquí con lo que habría que poner en el ERP:
+se apunta aquí con lo que habría que poner en el ERP, en el orden en que se
+mete en la línea del documento:
 
+  · **Fecha**: la del correo de la devolución, «dd/mm/aaaa» como la guarda el ERP.
   · **Estado**: el de la resolución, con el nombre del ERP — Aprobado,
     Com. Menores, Com. Mayores, Comentado, Rechazado; «Informativo» es
     «Información» y un VOID se propone «Eliminado», a revisar.
-  · **Nº Revisión**: la NUESTRA, la de la carpeta (desde el 0 y sumando). La
-    del cliente (A, 0, 1, B… según cada uno) no se compara con nada: solo se
-    enseña, para reconocer el documento.
-  · **Fecha**: la del correo de la devolución, «dd/mm/aaaa» como la guarda el ERP.
+  · **1er envío** (`date_first_rev`), si el ERP no lo tiene: la fecha en que
+    se envió la rev 0. Mientras el documento sigue «Enviado» en rev 0, es su
+    fecha de estado; al poner la de la devolución esa fecha se pierde, así que
+    se guarda aquí en cuanto se ve. El registro de cambios del ERP no sirve para
+    sacarla después (probado: casi nunca coincide).
+
+La **revisión no se toca**: solo cambia al ENVIAR. La nuestra (la de la
+carpeta, desde el 0) y la del cliente (A, 0, B…) se enseñan para reconocer el
+documento, y la nuestra dice cuándo una devolución ya es historia: si el ERP va
+por una revisión posterior, se volvió a enviar.
 
 Luego se compara con el ERP (solo lectura) y queda lo que no cuadra. Una línea
-sale sola cuando el ERP ya tiene ese estado y esa revisión (con la fecha de la
-devolución o de pocos días después: es el día que se apunta), o cuando el ERP
-ya va por una revisión nuestra posterior (se volvió a enviar). De cada documento
-cuenta solo su última devolución.
+sale sola cuando el ERP ya tiene ese estado, una fecha de esos días (es el día
+que se apunta) y el 1er envío. De cada documento cuenta su última devolución.
 
 El registro es local (`state/registro_erp.json`) y no escribe en el ERP.
 """
@@ -116,7 +122,7 @@ def _guardar(reg: dict) -> None:
     write_json(REGISTRO_FILE, reg)
 
 
-def anotar(archive: dict, fecha_correo: str = "", portal: str = "") -> int:
+def anotar(archive: dict, fecha_correo: str = "", portal: str = "", capturar: bool = True) -> int:
     """Apunta los documentos que `dev_folders` acaba de archivar
     (`archive["devueltos"]`). Devuelve cuántos son nuevos."""
     devueltos = (archive or {}).get("devueltos") or []
@@ -151,6 +157,9 @@ def anotar(archive: dict, fecha_correo: str = "", portal: str = "") -> int:
     if nuevos:
         _guardar(reg)
         logger.info("Registro ERP: %d devolución(es) apuntada(s)", nuevos)
+        # Ahora el ERP aún dice «Enviado»: es cuando se ve la fecha del 1er envío
+        if capturar:
+            capturar_envios()
     return nuevos
 
 
@@ -165,7 +174,7 @@ def ignorar(clave: str) -> None:
 # ── Contra el ERP ─────────────────────────────────────────────────────────────
 
 _SQL = """
-    SELECT num_doc_eipsa, num_doc_client, num_order, state, revision, state_date
+    SELECT num_doc_eipsa, num_doc_client, num_order, state, revision, state_date, date_first_rev
     FROM documentation
     WHERE upper(num_doc_eipsa) = ANY(%s)
        OR upper(regexp_replace(num_doc_client, '\\s', '', 'g')) = ANY(%s)
@@ -193,36 +202,55 @@ def leer_erp(entradas: list[dict]) -> dict | None:
     return out
 
 
+def _rev_erp(fila: dict) -> int | None:
+    try:
+        r = fila.get("revision")
+        return int(r) if r not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def envio_rev0(fila: dict | None) -> str:
+    """La fecha del envío de la rev 0, si el ERP aún la tiene a la vista: el
+    documento sigue «Enviado» en rev 0 y su fecha de estado es la del envío."""
+    if not fila or _fold(fila.get("state")).strip() != "enviado" or _rev_erp(fila) != 0:
+        return ""
+    d = _a_fecha(fila.get("state_date"))
+    return d.strftime("%d/%m/%Y") if d else ""
+
+
 def comparar(e: dict, fila: dict | None) -> dict | None:
     """Lo que falta en el ERP para esa devolución, o None si ya cuadra.
 
-    {falta: [campos], erp: {estado, revision, fecha}, motivo}."""
+    {falta: [campos, en el orden en que se meten], erp: {…}, primer_envio, motivo}.
+    `falta` puede llevar «fecha», «estado» y «primer_envio»; la revisión no:
+    no se toca al recibir."""
     if fila is None:
-        return {"falta": ["documento"], "erp": {}, "motivo": "no está en el ERP"}
+        return {"falta": ["documento"], "erp": {}, "primer_envio": "", "motivo": "no está en el ERP"}
     erp = {"estado": str(fila.get("state") or "").strip(),
            "revision": fila.get("revision"),
-           "fecha": str(fila.get("state_date") or "").strip()}
+           "fecha": str(fila.get("state_date") or "").strip(),
+           "primer_envio": str(fila.get("date_first_rev") or "").strip()}
     nuestra = e.get("nuestra", "")
     n = int(nuestra) if str(nuestra).isdigit() else None
-    try:
-        rev_erp = int(erp["revision"]) if erp["revision"] not in (None, "") else None
-    except (TypeError, ValueError):
-        rev_erp = None
-    # El ERP ya va por una revisión nuestra posterior: esto es historia
+    rev_erp = _rev_erp(fila)
+    # El ERP ya va por una revisión nuestra posterior: se reenvió, esto es historia
     if n is not None and rev_erp is not None and rev_erp > n:
         return None
     falta = []
-    if _fold(erp["estado"]) != _fold(e["estado"]):
-        falta.append("estado")
-    if n is not None and rev_erp != n:
-        falta.append("revision")
     dev, puesta = _a_fecha(e.get("fecha")), _a_fecha(erp["fecha"])
     if dev and not (puesta and dev - timedelta(days=_FECHA_ANTES) <= puesta
                     <= dev + timedelta(days=_FECHA_DESPUES)):
         falta.append("fecha")
+    if _fold(erp["estado"]) != _fold(e["estado"]):
+        falta.append("estado")
+    # El 1er envío se pone con la primera devolución (la de nuestra rev 0)
+    if n == 0 and not erp["primer_envio"]:
+        falta.append("primer_envio")
     if not falta:
         return None
-    return {"falta": falta, "erp": erp, "motivo": ""}
+    return {"falta": falta, "erp": erp, "motivo": "",
+            "primer_envio": e.get("primer_envio") or envio_rev0(fila)}
 
 
 def pendientes(erp: dict | None = "leer") -> dict:
@@ -249,6 +277,7 @@ def pendientes(erp: dict | None = "leer") -> dict:
     if erp is None:
         return {"ok": False, "motivo": "No se llega al ERP: no se puede comparar.", "filas": [],
                 "total": len(vigentes)}
+    _guardar_envios(reg, vigentes, erp)
     filas = []
     for clave, e in vigentes:
         dif = comparar(e, erp.get(_clave_doc(e)))
@@ -258,8 +287,39 @@ def pendientes(erp: dict | None = "leer") -> dict:
     return {"ok": True, "motivo": "", "filas": filas, "total": len(vigentes)}
 
 
+def _guardar_envios(reg: dict, entradas, erp: dict) -> int:
+    """Se queda con la fecha del envío de la rev 0 de los que aún la tienen a la
+    vista en el ERP: en cuanto se ponga la fecha de la devolución, se pierde."""
+    nuevas = 0
+    for _clave, e in entradas:
+        if e.get("primer_envio"):
+            continue
+        fecha = envio_rev0(erp.get(_clave_doc(e)))
+        if fecha:
+            e["primer_envio"] = fecha
+            nuevas += 1
+    if nuevas:
+        _guardar(reg)
+    return nuevas
+
+
+def capturar_envios() -> int:
+    """`_guardar_envios` sobre todo el registro, leyendo el ERP. Nunca lanza.
+    Se llama al apuntar devoluciones nuevas: es cuando el ERP aún dice «Enviado»."""
+    try:
+        reg = _cargar()
+        entradas = [(c, e) for c, e in reg["devueltos"].items() if not e.get("primer_envio")]
+        if not entradas:
+            return 0
+        erp = leer_erp([e for _c, e in entradas])
+        return _guardar_envios(reg, entradas, erp) if erp else 0
+    except Exception as exc:  # noqa: BLE001
+        logger.info("Registro ERP: no se pudo mirar el 1er envío: %s", exc)
+        return 0
+
+
 def grupos(filas: list[dict]) -> list[dict]:
-    """Las pendientes por (estado, fecha): lo que se pega de una vez en el ERP
+    """Las pendientes por (fecha, estado): lo que se pega de una vez en el ERP
     seleccionando esas filas. [{estado, fecha, filas}], los grupos grandes primero."""
     por: dict[tuple, list] = {}
     for f in filas:
@@ -277,15 +337,19 @@ def exportar_excel(filas: list[dict], destino) -> str:
     wb = Workbook()
     ws = wb.active
     ws.title = "Actualizar ERP"
-    ws.append(["num_doc_eipsa", "num_doc_client", "num_order", "state", "state_date", "revision",
-               "rev_cliente", "estado_portal", "carpeta"])
+    # En el orden en que se meten: fecha, estado y (en la primera devolución) el
+    # 1er envío. La revisión va solo para reconocer el documento, con un nombre
+    # que no es una columna del ERP: no se toca al recibir.
+    ws.append(["num_doc_eipsa", "num_doc_client", "num_order", "state_date", "state", "date_first_rev",
+               "rev_nuestra (info)", "rev_cliente (info)", "estado_portal", "carpeta"])
     for f in filas:
         if "documento" in f["falta"]:
             continue
-        ws.append([f.get("doc_eipsa"), f.get("doc_cliente"), f.get("pedido"), f.get("estado"),
-                   f.get("fecha"), int(f["nuestra"]) if str(f.get("nuestra")).isdigit() else None,
-                   f.get("cliente"), f.get("estado_portal"), f.get("carpeta")])
-    for col, ancho in zip("ABCDEFGHI", (28, 34, 14, 14, 12, 9, 11, 22, 60)):
+        primer = f.get("primer_envio", "") if "primer_envio" in f["falta"] else ""
+        ws.append([f.get("doc_eipsa"), f.get("doc_cliente"), f.get("pedido"), f.get("fecha"),
+                   f.get("estado"), primer or None, f.get("nuestra"), f.get("cliente"),
+                   f.get("estado_portal"), f.get("carpeta")])
+    for col, ancho in zip("ABCDEFGHIJ", (28, 34, 14, 12, 14, 14, 12, 12, 22, 60)):
         ws.column_dimensions[col].width = ancho
     wb.save(destino)
     return str(destino)

@@ -26,14 +26,18 @@ from gui.widgets.pilltable import PillTable
 
 logger = logging.getLogger(__name__)
 
+# En el orden en que se mete en la línea del documento: fecha, estado y, en la
+# primera devolución, el 1er envío. La revisión no se toca al recibir: se
+# enseña para reconocer el documento.
 COLUMNS = [
     {"key": "Pedido",    "label": "Pedido",        "min": 120, "anchor": "w"},
     {"key": "Documento", "label": "Documento",     "min": 230, "anchor": "w", "floor": 140},
-    {"key": "Título",    "label": "Título",        "min": 220, "anchor": "w", "stretch": True, "floor": 100},
-    {"key": "Estado",    "label": "Poner estado",  "min": 130, "anchor": "center"},
+    {"key": "Título",    "label": "Título",        "min": 200, "anchor": "w", "stretch": True, "floor": 100},
     {"key": "Fecha",     "label": "Fecha",         "min": 100, "anchor": "center"},
-    {"key": "Rev",       "label": "Rev. nuestra",  "min": 110, "anchor": "center"},
-    {"key": "ERP",       "label": "El ERP dice",   "min": 210, "anchor": "w", "floor": 120},
+    {"key": "Estado",    "label": "Estado",        "min": 130, "anchor": "center"},
+    {"key": "Primer",    "label": "1er envío",     "min": 110, "anchor": "center"},
+    {"key": "Rev",       "label": "Rev.",          "min": 90,  "anchor": "center"},
+    {"key": "ERP",       "label": "El ERP dice",   "min": 200, "anchor": "w", "floor": 120},
 ]
 
 _COLOR = {registro_erp.APROBADO: theme.GREEN, registro_erp.INFORMACION: theme.GREEN,
@@ -52,21 +56,27 @@ def celdas(f: dict) -> dict:
     if "documento" in falta:
         dice = "— no está en el ERP"
     else:
-        partes = [erp.get("estado") or "(sin estado)"]
+        partes = [erp.get("fecha") or "(sin fecha)", erp.get("estado") or "(sin estado)"]
         if erp.get("revision") not in (None, ""):
             partes.append(f"rev {erp['revision']}")
-        if erp.get("fecha"):
-            partes.append(erp["fecha"])
         dice = " · ".join(partes)
+    if "primer_envio" in falta:
+        # Sin la fecha a la vista (el ERP ya no dice «Enviado» en rev 0): a mano
+        primer = {"text": f.get("primer_envio") or "? búscalo", "bold": True,
+                  "fg": theme.TEXT_MAIN if f.get("primer_envio") else theme.AMBER}
+    else:
+        primer = {"text": "", "fg": theme.TEXT_MUTED}
     color = _COLOR.get(f.get("estado"), theme.TEXT_MAIN)
     return {
         "Pedido": {"text": f.get("pedido", "")},
         "Documento": {"text": f.get("doc_eipsa") or f.get("doc_cliente", "")},
         "Título": {"text": f.get("titulo", "")},
+        "Fecha": {"text": f.get("fecha", ""), "bold": "fecha" in falta,
+                  "fg": theme.TEXT_MAIN if "fecha" in falta else theme.TEXT_MUTED},
         "Estado": {"text": f.get("estado", ""), "pill": True, "fg": color,
                    "bold": "estado" in falta},
-        "Fecha": {"text": f.get("fecha", ""), "bold": "fecha" in falta},
-        "Rev": {"text": rev, "bold": "revision" in falta},
+        "Primer": primer,
+        "Rev": {"text": rev, "fg": theme.TEXT_MUTED},
         "ERP": {"text": dice, "fg": theme.TEXT_MUTED},
     }
 
@@ -93,10 +103,11 @@ class PendienteErpWindow(ctk.CTkToplevel):
         self.btn_recargar.pack(side="right", padx=(0, theme.SPACE_2))
         ctk.CTkLabel(
             self, anchor="w", justify="left", font=theme.FONT_SMALL, text_color=theme.TEXT_SUB,
-            text=("Lo que el cliente ha devuelto (y la app ha archivado) y el ERP aún no dice. La revisión "
-                  "es la NUESTRA, la de la carpeta «rev <nuestra>-<cliente>»; la del cliente va entre "
-                  "paréntesis.\nLas que se ponen igual van juntas: selecciónalas en el ERP y pega el valor "
-                  "de una vez. Clic derecho para copiar. Cada fila desaparece sola cuando el ERP cuadra."),
+            text=("Lo que el cliente ha devuelto (y la app ha archivado) y el ERP aún no dice, en el orden en que "
+                  "se mete: fecha, estado y, si es la primera devolución, el 1er envío (la fecha de la rev 0).\n"
+                  "La revisión no se toca: va para reconocer el documento (la nuestra y, entre paréntesis, la del "
+                  "cliente). En negrita, lo que falta. Las que llevan la misma fecha y estado van juntas para "
+                  "pegarlas de una vez. Clic derecho para copiar."),
         ).pack(fill="x", padx=theme.SPACE_5)
         self.lbl_estado = ctk.CTkLabel(self, text="", anchor="w", font=theme.FONT_SMALL_BOLD,
                                        text_color=theme.TEXT_MUTED)
@@ -129,8 +140,9 @@ class PendienteErpWindow(ctk.CTkToplevel):
             self.table.set_rows([])
             self.lbl_estado.configure(text=f"⚠ {res['motivo']}", text_color=theme.AMBER)
             return
-        filas = sorted(res["filas"], key=lambda f: ("documento" in f["falta"], f["estado"],
-                                                     f["fecha"], f.get("pedido", "")))
+        # Como se trabaja en el ERP: se busca el pedido y, dentro, cada línea
+        filas = sorted(res["filas"], key=lambda f: ("documento" in f["falta"], f.get("pedido", ""),
+                                                     f.get("doc_eipsa") or f.get("doc_cliente", "")))
         self._filas = filas
         self.table.set_rows([(f["clave"], celdas(f)) for f in filas])
         if not filas:
@@ -138,7 +150,7 @@ class PendienteErpWindow(ctk.CTkToplevel):
                 text=f"✓ El ERP cuadra con las {res['total']} devoluciones archivadas que se siguen.",
                 text_color=theme.GREEN)
             return
-        resumen = [f"{len(g['filas'])} → {g['estado']} {g['fecha']}" for g in registro_erp.grupos(filas)[:5]]
+        resumen = [f"{len(g['filas'])} → {g['fecha']} {g['estado']}" for g in registro_erp.grupos(filas)[:5]]
         sin = sum(1 for f in filas if "documento" in f["falta"])
         texto = f"{len(filas)} por registrar  ·  " + "   ·   ".join(resumen)
         if sin:
@@ -159,10 +171,13 @@ class PendienteErpWindow(ctk.CTkToplevel):
         copiar = self.table.copy_to_clipboard
         n = len(filas)
         docs = "\n".join(x.get("doc_eipsa") or x.get("doc_cliente", "") for x in filas)
-        return [
-            (f"Copiar estado «{f['estado']}»", lambda: copiar(f["estado"])),
+        items = [
             (f"Copiar fecha {f['fecha']}", lambda: copiar(f["fecha"])),
-            (f"Copiar revisión {f.get('nuestra', '')}", lambda: copiar(str(f.get("nuestra", "")))),
+            (f"Copiar estado «{f['estado']}»", lambda: copiar(f["estado"])),
+        ]
+        if "primer_envio" in f["falta"] and f.get("primer_envio"):
+            items.append((f"Copiar 1er envío {f['primer_envio']}", lambda: copiar(f["primer_envio"])))
+        return items + [
             (f"Copiar Nº de documento{'s' if n > 1 else ''} ({n})", lambda: copiar(docs)),
             ("-", None),
             ("📂  Abrir la carpeta de la devolución", lambda: self._abrir_carpeta(iid)),
