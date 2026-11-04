@@ -241,7 +241,7 @@ class _DevolucionesArchivadas:
         return max(por_carpeta.values(), key=lambda d: (d[0], len(d[1])))[2]
 
     def nuestra(self, ctx: dict, codes: list[str], nombres: list[str] | None, cliente: str,
-                mismo: tuple | None = None) -> str:
+                mismo: tuple | None = None, solo_en: Path | None = None) -> str:
         """Nuestra revisión de esta devolución, según las anteriores.
 
         · La primera devolución es la 0; la siguiente, la última ya archivada
@@ -250,10 +250,15 @@ class _DevolucionesArchivadas:
           su letra («rev1-B», «rev 1-B»), es esa misma: no suma.
         · `mismo` = (nombre, tamaño, crc) del fichero que se archiva: si ya está
           archivado (volver a descargar), su carpeta no cuenta como anterior.
+        · `solo_en`: contar solo lo de esa carpeta dev. Para un código que el
+          cliente reutilizó en un documento de otro tipo: lo del anterior no es
+          historia de éste.
         """
         revisiones: dict[tuple, tuple] = {}
         suyas: set[tuple] = set()
         for top, partes, ruta, nombre in self._del_documento(ctx, codes, nombres):
+            if solo_en is not None and _fold(str(top.parent)) != _fold(str(solo_en)):
+                continue
             ident = _identidad_rev(partes)
             if mismo and _fold(nombre) == _fold(mismo[0]) and _mismo_fichero(ruta, mismo[1], mismo[2]):
                 suyas.add(ident)
@@ -560,6 +565,15 @@ _GENERIC_WORDS = {"PROCEDURE", "PROCEDURES", "PROCEDIMIENTO", "PROCEDIMIENTOS", 
 
 
 _TIPOS_NORM: dict[str, list] | None = None
+
+
+def _tipos_de_carpeta(nombre: str) -> set[str]:
+    """Los tipos de documento que dice el nombre de una carpeta env./dev.
+    («dev Cálculos y Planos» → Cálculos, Planos, Cálculos y Planos). Vacío si
+    no dice ninguno («dev MANUFACTURING RECORD BOOK»)."""
+    carpeta = _fold(nombre)
+    return {tipo for tipo, claves in TYPE_KEYWORDS.items()
+            if any(_fold(k) in carpeta for k in claves)}
 
 
 def _palabras_del_tipo(tipo: str) -> list:
@@ -1312,8 +1326,20 @@ def _con_revisiones(destino: dict, doc: dict, ctx: dict, archivadas: _Devolucion
     """Añade al destino la revisión del cliente y la nuestra, contando las
     devoluciones anteriores del documento (`_DevolucionesArchivadas`)."""
     destino["cliente"] = revision_cliente(doc)
-    # Si el documento ya tiene devoluciones, va a la carpeta dev donde están
+    # Si el documento ya tiene devoluciones, va a la carpeta dev donde están…
     donde = archivadas.carpeta_dev(ctx, destino["codes"], nombres)
+    # …salvo que sea de OTRO tipo: el cliente puede reutilizar un código. En
+    # P-26/029 (Silleno) el R08-0001 era el documento conjunto de cálculos y
+    # planos, con sus devoluciones en «dev Cálculos y Planos», y después se usó
+    # para el catálogo: el catálogo no va ahí.
+    tipos_donde = _tipos_de_carpeta(donde.name) if donde is not None else set()
+    tipos_suya = _tipos_de_carpeta(Path(destino["dev_dir"]).name)
+    solo_en = None
+    if donde is not None and tipos_donde and tipos_suya and not (tipos_donde & tipos_suya):
+        logger.info("Archivo dev: %s no va a «%s» (sus devoluciones anteriores son de otro tipo): "
+                    "se queda en «%s»", destino["codes"][:1], donde.name, Path(destino["dev_dir"]).name)
+        # …y lo de allí tampoco cuenta para su revisión: es de otro documento
+        donde, solo_en = None, Path(destino["dev_dir"])
     if donde is not None and _fold(str(donde)) != _fold(str(destino["dev_dir"])):
         logger.info("Archivo dev: %s va a «%s», donde están sus devoluciones (no a «%s»)",
                     destino["codes"][:1], donde.name, Path(destino["dev_dir"]).name)
@@ -1324,7 +1350,7 @@ def _con_revisiones(destino: dict, doc: dict, ctx: dict, archivadas: _Devolucion
         destino["nuestra"] = str(int(propia)) if propia.isdigit() else propia
     else:
         destino["nuestra"] = archivadas.nuestra(ctx, destino["codes"], nombres,
-                                                destino["cliente"], mismo)
+                                                destino["cliente"], mismo, solo_en=solo_en)
         enviada = _rev_del_envio(ctx["folders"], destino["codes"], nombres, destino["cliente"])
         if enviada is not None and enviada > int(destino["nuestra"]):
             destino["nuestra"] = str(enviada)

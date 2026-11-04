@@ -163,6 +163,36 @@ finally:
     D.tecnico_dir = tecnico_real
     shutil.rmtree(tmp, ignore_errors=True)
 
+# ── Un código que el cliente reutiliza para otro tipo de documento ───────────
+# P-26/029 (Silleno): el R08-0001 era el documento conjunto de cálculos y planos
+# (sus devoluciones, en «dev Cálculos y Planos») y luego se usó para el catálogo.
+# El catálogo no va a la carpeta de aquel ni sigue su numeración.
+tmp = Path(tempfile.mkdtemp(prefix="revisiones_"))
+tecnico = tmp / "P-99-029-S00 - CLIENTE - VENTURIS" / "2-Tecnico"
+viejo = tecnico / "dev Cálculos y Planos"
+for nombre in ("rev0-A COM", "rev1-2 com"):
+    (viejo / nombre).mkdir(parents=True)
+    (viejo / nombre / "CLI-R08-0001.pdf").write_bytes(b"%PDF conjunto " + nombre.encode())
+D.tecnico_dir = lambda _pedido: tecnico
+try:
+    catalogo = {"Nº Pedido": "P-99/029", "Supp.": "S00", "Doc. EIPSA": "99-029-CAT-0001",
+                "Doc. Cliente": "CLI-R08-0001", "Título": "CATALOGUE", "Tipo de documento": "Catálogo",
+                "Rev.": "3", "_rev_cliente": "3", "Estado": "Aprobado"}
+    paquete = tmp / "cat.zip"
+    with zipfile.ZipFile(paquete, "w") as zf:
+        zf.writestr("CLI-R08-0001.pdf", b"%PDF-catalogo")
+    r = D.archive_return(paquete, [catalogo], "P-99/029", email_date="05-11-2099 10:00:00")
+    destino = Path(r["archived"][0][1]) if r["archived"] else None
+    ok(destino is not None and "catalog" in D._fold(destino.parent.parent.name),
+       f"el catálogo va a su carpeta, no a la de cálculos y planos: {destino}")
+    ok(destino is not None and destino.parent.name.startswith("rev 0-3"),
+       f"y empieza en nuestra 0: lo del documento anterior no es su historia: {destino and destino.parent.name}")
+    ok(D._tipos_de_carpeta("dev MANUFACTURING RECORD BOOK") == set(),
+       "una carpeta que no dice tipo no frena el «donde están sus devoluciones» (la errata de arriba)")
+finally:
+    D.tecnico_dir = tecnico_real
+    shutil.rmtree(tmp, ignore_errors=True)
+
 # ── El formato y la carpeta de las devoluciones anteriores ───────────────────
 # 1043010640-T-0047: la de envío es «env MANUFACTURIG RECORD BOOK» (errata) y
 # las devoluciones están en «dev MANUFACTURING RECORD BOOK», escritas «rev5-4
