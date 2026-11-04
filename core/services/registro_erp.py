@@ -380,6 +380,10 @@ def leer_erp(entradas: list[dict]) -> dict | None:
     return out
 
 
+# Los estados que son el resultado de una devolución (no «Enviado» ni vacío)
+_RESULTADOS = {_fold(x) for x in (APROBADO, INFORMACION, COM_MENORES, COM_MAYORES, COMENTADO, RECHAZADO)}
+
+
 def _rev_erp(fila: dict) -> int | None:
     try:
         r = fila.get("revision")
@@ -416,16 +420,23 @@ def comparar(e: dict, fila: dict | None) -> dict | None:
     if n is not None and rev_erp is not None and rev_erp > n:
         return None
     dev, puesta = _a_fecha(e.get("fecha")), _a_fecha(erp["fecha"])
-    # O dice «Enviado» de después de la devolución: también se reenvió, aunque
-    # la revisión del ERP no se subiera (P-23/044: devuelta la 51 el 31/10,
-    # enviada la 52 el 03/11 y el ERP seguía en rev 5)
-    if dev and puesta and puesta > dev and _fold(erp["estado"]).strip() == "enviado":
+    estado_erp_ahora = _fold(erp["estado"]).strip()
+    # O dice «Enviado» del día de la devolución o de después: también se reenvió,
+    # aunque la revisión del ERP no se subiera (P-23/044: devuelta la 51 el 31/10,
+    # enviada la 52 el 03/11 y el ERP seguía en rev 5; P-23/037, reenviado el
+    # mismo día que volvió)
+    if dev and puesta and puesta >= dev and estado_erp_ahora == "enviado":
         return None
     falta = []
     if dev and not (puesta and dev - timedelta(days=_FECHA_ANTES) <= puesta
                     <= dev + timedelta(days=_FECHA_DESPUES)):
         falta.append("fecha")
-    if _fold(erp["estado"]) not in {_fold(x) for x in [e["estado"], *(e.get("estado_alt") or [])]}:
+    validos = {_fold(x) for x in [e["estado"], *(e.get("estado_alt") or [])]}
+    # Un resultado de devolución con la misma fecha es otra devolución de ese día
+    # que la app no vio (CAL-0007 de Silleno: la AP por el portal y, ese mismo
+    # día, Com. Menores por correo): lo apuntado en el ERP es lo bueno
+    otra_del_dia = (dev and puesta == dev and estado_erp_ahora in _RESULTADOS)
+    if estado_erp_ahora not in validos and not otra_del_dia:
         falta.append("estado")
     # El 1er envío se pone con la primera devolución (la de nuestra rev 0)
     if n == 0 and not erp["primer_envio"]:

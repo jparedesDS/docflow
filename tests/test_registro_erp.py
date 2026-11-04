@@ -224,6 +224,14 @@ ok(R.comparar(dev51, {"state": "Enviado", "revision": 5, "state_date": "03/11/20
    "se envió la 52 después de devolverse la 51: es historia")
 ok(R.comparar(dev51, {"state": "Enviado", "revision": 5, "state_date": "20/10/2099"}) is not None,
    "un «Enviado» de antes de la devolución es el envío que se devolvió: falta")
+ok(R.comparar(dev51, {"state": "Enviado", "revision": 6, "state_date": "31/10/2099"}) is None,
+   "reenviado el mismo día que volvió")
+# Otro resultado del MISMO día: otra devolución que la app no vio (la segunda llegó por correo)
+cal = {"doc_eipsa": "99-007-CAL-0007", "nuestra": "1", "cliente": "B", "estado": "Aprobado", "fecha": "30/10/2099"}
+ok(R.comparar(cal, {"state": "Com. Menores", "revision": 1, "state_date": "30/10/2099"}) is None,
+   "Com. Menores del mismo día en el ERP: lo apuntado es lo bueno")
+f = R.comparar(cal, {"state": "Com. Menores", "revision": 1, "state_date": "28/10/2099"})
+ok(f and "estado" in f["falta"], f"de otro día sí falta: {f}")
 
 # El mismo documento devuelto dos veces el mismo día: vale cualquiera de los dos
 reg = R._cargar()
