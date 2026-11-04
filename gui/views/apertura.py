@@ -14,12 +14,14 @@ import customtkinter as ctk
 
 import re
 
+from core.services import activaciones as activaciones_service
 from core.services import apertura as apertura_service
 from core.services import comm_matrix as comm_matrix_service
 from core.services import erp_tags
 from gui import theme
 from gui.widgets import contactos, ui
 from gui.widgets.casillas import Casillas
+from gui.widgets.lista_activaciones import ListaActivaciones
 from gui.widgets.scrollframe import ScrollFrame
 
 
@@ -79,7 +81,11 @@ class AperturaView(ctk.CTkFrame):
         super().__init__(master, fg_color=theme.BG_PAGE, **kwargs)
         self._busy = False
         self._last_result: apertura_service.OrderResult | None = None
+        # La activación (tarea de la Agenda) con que se rellenó el formulario
+        self._activacion: dict | None = None
+        self._procesando: tuple[str, str] | None = None
         self._build_layout()
+        self.recargar_activaciones()
 
     # ── Layout ─────────────────────────────────────────────────────────────
 
@@ -135,6 +141,18 @@ class AperturaView(ctk.CTkFrame):
         wrapper = ScrollFrame(self)
         wrapper.pack(fill="both", expand=True,
                      padx=theme.SPACE_5, pady=(theme.SPACE_3, 0))
+
+        # ── Activaciones de Comercial que esperan ─────────────────────────
+        act_card = self._card(wrapper, "Activaciones pendientes")
+        self.lbl_act_n = ctk.CTkLabel(act_card.cabecera, text="", font=theme.FONT_SMALL,
+                                      text_color=theme.TEXT_MUTED)
+        self.lbl_act_n.pack(side="left", padx=(theme.SPACE_2, 0))
+        self.lbl_act_vacio = ctk.CTkLabel(
+            act_card,
+            text=("Ninguna. Llegan solas del correo de Comercial («ACTIVACIÓN P-26/…»); "
+                  "pulsa una para rellenar el formulario."),
+            font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED, anchor="w", justify="left")
+        self.lista_act = ListaActivaciones(act_card, al_elegir=self.usar_activacion)
 
         # ── 1 · Datos del pedido ──────────────────────────────────────────
         card = self._card(wrapper, "1 · Datos del pedido")
@@ -447,7 +465,69 @@ class AperturaView(ctk.CTkFrame):
 
     # ── Acciones ───────────────────────────────────────────────────────────
 
+    # ── Activaciones ──────────────────────────────────────────────────────
+
+    def recargar_activaciones(self) -> None:
+        """Vuelve a leer de la Agenda las activaciones sin abrir."""
+        try:
+            tareas = activaciones_service.pendientes()
+        except Exception:  # noqa: BLE001 — la Agenda es un JSON local; que no tumbe la vista
+            logger.exception("No se pudieron leer las activaciones")
+            tareas = []
+        self.lista_act.poner(tareas)
+        self.lbl_act_n.configure(text=f"{len(tareas)}" if tareas else "")
+        pad = dict(fill="x", padx=theme.SPACE_4, pady=(0, theme.SPACE_3))
+        if tareas:
+            self.lbl_act_vacio.pack_forget()
+            self.lista_act.pack(**pad)
+        else:
+            self.lista_act.pack_forget()
+            self.lbl_act_vacio.pack(anchor="w", **pad)
+
+    def usar_activacion(self, t: dict) -> None:
+        """Rellena el formulario con una activación y localiza el pedido."""
+        act = t.get("activacion") or {}
+        pedido = (t.get("pedido") or "").replace("/", "-")
+        self._activacion = t
+        self.lista_act.elegir(t.get("id"))
+        if apertura_service.is_pa_pedido(pedido):
+            self._set_result_text(
+                f"✉ Activación {t.get('pedido', '')} · {t.get('cliente', '')}\n\n"
+                "Es un pedido de Almacén (PA): «Nuevo pedido» todavía solo abre pedidos P.\n"
+                "Ábrelo a mano y marca la tarea como hecha en la Agenda.")
+            return
+        self.var_pedido.set(pedido)
+        self.var_suffix.set(t.get("supp") or "S00")
+        self.var_sref.set(act.get("po", ""))
+        self.var_cliente.set(t.get("cliente", ""))
+        self.var_material.set("")
+        try:
+            recibido = datetime.fromisoformat(t.get("recibido") or "")
+            self.var_f_entrada.set(recibido.strftime("%Y-%m-%d"))
+        except ValueError:
+            pass
+        # Ya aquí, por si no se llega a localizar la carpeta (M: caída)
+        if act.get("entrega") and act["entrega"] > self.var_f_entrada.get():
+            self.var_f_prevista.set(act["entrega"])
+        self._on_locate()
+
+    def _texto_activacion(self) -> str:
+        t = self._activacion or {}
+        act = t.get("activacion") or {}
+        lineas = [f"✉ Activación de {t.get('remitente') or 'Comercial'} ({t.get('fecha_limite', '')}):"]
+        datos = [f"PO {act['po']}"] if act.get("po") else []
+        if act.get("entrega"):
+            datos.append(f"entrega {act['entrega']}" + (f" ({act['plazo']})" if act.get("plazo") else ""))
+        if act.get("documentacion"):
+            datos.append(f"Documentación: {act['documentacion']}")
+        if datos:
+            lineas.append("   " + " · ".join(datos))
+        lineas += [f"   {n}" for n in t.get("notas") or []]
+        return "\n".join(lineas)
+
     def _on_clear(self) -> None:
+        self._activacion = None
+        self.lista_act.elegir(None)
         self.var_pedido.set("P-26-")
         self.var_suffix.set("S00")
         self.var_sref.set("")
@@ -523,7 +603,13 @@ class AperturaView(ctk.CTkFrame):
             )
             return
 
-        pedido_dir = apertura_service.find_existing_pedido_dir(folder_id, año, base_dir=base)
+        act = self._activacion
+        if act is not None and (act.get("pedido") or "").replace("/", "-").upper() != folder_id.upper():
+            act = self._activacion = None            # el pedido se cambió a mano
+            self.lista_act.elegir(None)
+        # Con una activación manda su suministro: S04 no va en la carpeta de S00
+        buscado = f"{folder_id}-{act['supp']}" if act and act.get("supp") else folder_id
+        pedido_dir = apertura_service.find_existing_pedido_dir(buscado, año, base_dir=base)
         if pedido_dir is None:
             self._set_result_text(
                 f"❌ No se encontró carpeta para {folder_id} en\n"
@@ -540,7 +626,7 @@ class AperturaView(ctk.CTkFrame):
             self.var_cliente.set(meta["cliente"])
         if meta.get("material"):
             self.var_material.set(meta["material"])
-        if meta.get("suffix"):
+        if meta.get("suffix") and not (act and act.get("supp")):
             self.var_suffix.set(meta["suffix"])
 
         tecnico = apertura_service.find_tecnico_dir(pedido_dir)
@@ -550,6 +636,20 @@ class AperturaView(ctk.CTkFrame):
         )
 
         erp_msg = self._fill_from_erp(folder_id, self.var_suffix.get())
+        act_msg = ""
+        if act:
+            # Lo que dice el correo de Comercial prevalece sobre el ERP
+            datos = act.get("activacion") or {}
+            if datos.get("po"):
+                self.var_sref.set(datos["po"])
+            aviso = ""
+            if datos.get("entrega"):
+                if datos["entrega"] > self.var_f_entrada.get().strip():
+                    self.var_f_prevista.set(datos["entrega"])
+                else:
+                    aviso = (f"\n   ⚠ La entrega del correo ({datos['entrega']}) no es posterior a la "
+                             "entrada: no se ha puesto. Revísala.")
+            act_msg = self._texto_activacion() + aviso + "\n\n"
 
         # Pre-cargar Communication Matrix si ya hay datos guardados
         # Key en matrix = "P-XX/YYY" (sin sufijo S00)
@@ -569,6 +669,7 @@ class AperturaView(ctk.CTkFrame):
             )
 
         self._set_result_text(
+            act_msg +
             f"✅ Pedido localizado.\n\n"
             f"📁 {pedido_dir}\n\n"
             f"   Cliente:  {meta.get('cliente', '—')}\n"
@@ -667,6 +768,7 @@ class AperturaView(ctk.CTkFrame):
             return
 
         self._busy = True
+        self._procesando = (pedido, suffix)
         self.btn_create.configure(state="disabled", text="Procesando…")
         self._set_result_text(f"⏳ Procesando pedido {pedido}…")
 
@@ -766,6 +868,7 @@ class AperturaView(ctk.CTkFrame):
         assert result is not None
         self._last_result = result
         self.btn_open.configure(state="normal")
+        cerradas = self._cerrar_activacion()
 
         lang_lbl = {"es": "Español", "en": "English"}.get(result.vddl_lang, result.vddl_lang)
         lines = [
@@ -796,6 +899,8 @@ class AperturaView(ctk.CTkFrame):
             )
         if cm_error:
             lines.append(f"⚠ Comm. Matrix: NO guardada — {cm_error}")
+        for t in cerradas:
+            lines.append(f"✉ Activación cerrada en la Agenda: {t.get('titulo', '')}")
 
         if result.warnings:
             lines.append("")
@@ -812,6 +917,23 @@ class AperturaView(ctk.CTkFrame):
                 + "\n".join(f"• {w}" for w in result.warnings),
                 parent=self,
             )
+
+    def _cerrar_activacion(self) -> list[dict]:
+        """Procesado el pedido, su activación deja de estar pendiente."""
+        pedido, suffix = self._procesando or ("", "")
+        self._procesando = None
+        try:
+            cerradas = activaciones_service.cerrar(pedido, suffix)
+        except Exception:  # noqa: BLE001 — el pedido ya está hecho; la tarea, a mano
+            logger.exception("No se pudo cerrar la activación de %s", pedido)
+            return []
+        if cerradas:
+            self._activacion = None
+            self.recargar_activaciones()
+            agenda_view = getattr(self.winfo_toplevel(), "_views", {}).get("agenda")
+            if agenda_view is not None and hasattr(agenda_view, "_reload_all"):
+                agenda_view._reload_all()
+        return cerradas
 
     def _set_result_text(self, text: str) -> None:
         self.txt_result.configure(state="normal")

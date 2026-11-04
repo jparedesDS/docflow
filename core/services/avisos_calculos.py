@@ -74,9 +74,15 @@ def es_asunto_de_aviso(asunto: str) -> bool:
     return bool(_RE_ASUNTO.search(limpio) or _RE_ASUNTO_PLANOS.search(limpio))
 
 
+def _busqueda(asunto: str) -> bool:
+    """Los avisos de Técnico y, en la misma pasada, las activaciones de Comercial."""
+    from core.services import activaciones
+    return es_asunto_de_aviso(asunto) or activaciones.es_asunto(asunto)
+
+
 # Qué asuntos se buscan. Se filtra aquí y no en el servidor: éste busca sobre la
 # cabecera sin descodificar, y si Outlook pone «Cálculos» en base64 no la encuentra.
-BUSQUEDA = es_asunto_de_aviso
+BUSQUEDA = _busqueda
 
 
 # ── Leer un aviso ─────────────────────────────────────────────────────────────
@@ -378,15 +384,19 @@ def buzones() -> list[dict]:
 
 
 def revisar(completo: bool = False, owner: str = agenda.DEFAULT_OWNER,
-            docs: list[dict] | None = None, buscar=None, cuentas: list[dict] | None = None) -> dict:
-    """Busca avisos nuevos (cálculos y planos) y los pasa a la Agenda.
+            docs: list[dict] | None = None, buscar=None, cuentas: list[dict] | None = None,
+            base_pedidos=None) -> dict:
+    """Busca avisos nuevos (cálculos y planos) y activaciones de pedidos, y los
+    pasa a la Agenda.
 
     completo=False mira solo la bandeja de entrada (rápido); True también las
     carpetas de los pedidos. Con `docs` (el seguimiento de documentos) no se
     crea tarea de lo que ya se envió y se cierran las que ya están enviadas.
     Un correo que llega a los dos buzones tiene el mismo Message-ID: cuenta una
-    vez. `buscar` y `cuentas` existen para las pruebas.
+    vez. Las activaciones ya abiertas (Planning o VDDL en su 00 DOCUMENTACIÓN)
+    se cierran. `buscar`, `cuentas` y `base_pedidos` existen para las pruebas.
     """
+    from core.services import activaciones
     if buscar is None:
         from core.services import imap as imap_service
         buscar = imap_service.buscar_asunto
@@ -398,7 +408,8 @@ def revisar(completo: bool = False, owner: str = agenda.DEFAULT_OWNER,
     reg = _cargar_registro()
     vistos: dict = reg["vistos"]
     ya_en_agenda = {t.get("source_msgid") for t in agenda.get_tareas(owner)
-                    if t.get("origen") in ORIGENES and t.get("source_msgid")}
+                    if (t.get("origen") in ORIGENES or t.get("origen") == activaciones.ORIGEN)
+                    and t.get("source_msgid")}
     conocidos = set(vistos) | ya_en_agenda
 
     correos, errores = [], []
@@ -418,7 +429,7 @@ def revisar(completo: bool = False, owner: str = agenda.DEFAULT_OWNER,
     correos = sorted(correos, key=lambda c: c.get("date") or "")
 
     hoy = date.today().isoformat()
-    nuevas, actualizadas = [], []
+    nuevas, actualizadas, activadas = [], [], []
     for c in correos:
         clave = c.get("message_id") or f"{c.get('subject', '')}|{c.get('date', '')}"
         if clave in conocidos:
@@ -428,6 +439,17 @@ def revisar(completo: bool = False, owner: str = agenda.DEFAULT_OWNER,
         texto = c.get("texto")
         if texto is None:
             texto = texto_del_correo(c["msg"]) if c.get("msg") is not None else ""
+        act = activaciones.analizar(c.get("subject", ""), texto, c.get("from", ""),
+                                    c.get("date", ""), clave)
+        if act is not None:
+            de = act["remitente_correo"]
+            if (interno and _dominio(de) != interno) or de in propios:
+                continue
+            if activaciones.existe(owner, act["pedido"], act["supp"]):
+                continue                      # reenviada: ya está
+            activadas.append(agenda.create_tarea(owner, activaciones.tarea_de(act, owner)))
+            logger.info("Activación %s → tarea en la Agenda", act["pedido_completo"])
+            continue
         aviso = analizar(c.get("subject", ""), texto, c.get("from", ""),
                          c.get("date", ""), c.get("message_id", ""))
         if aviso is None:
@@ -461,5 +483,10 @@ def revisar(completo: bool = False, owner: str = agenda.DEFAULT_OWNER,
         reg["ultimo_completo"] = datetime.now().isoformat(timespec="seconds")
     _guardar_registro(reg)
     cerradas = cerrar_enviados(owner, docs) if docs is not None else []
+    try:
+        abiertas = activaciones.cerrar_abiertas(owner, base_dir=base_pedidos)
+    except Exception as exc:  # noqa: BLE001 — sin M: se cierran otro día
+        logger.info("Activaciones: no se pudo mirar si ya están abiertas: %s", exc)
+        abiertas = []
     return {"nuevas": nuevas, "actualizadas": actualizadas, "cerradas": cerradas,
-            "errores": errores}
+            "activaciones": activadas, "abiertas": abiertas, "errores": errores}

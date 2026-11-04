@@ -196,12 +196,12 @@ class AjustesView(OrganizacionMixin, ctk.CTkFrame):
         (self.sw_notif.select if pref.get("notifications", True) else self.sw_notif.deselect)()
         arow = ctk.CTkFrame(s, fg_color="transparent")
         arow.pack(fill="x", pady=theme.SPACE_1)
-        ctk.CTkLabel(arow, text="Avisos de cálculos", font=theme.FONT_SMALL,
+        ctk.CTkLabel(arow, text="Avisos del correo", font=theme.FONT_SMALL,
                      text_color=theme.TEXT_SUB, anchor="w", width=170).pack(side="left")
         self.sw_avisos = ctk.CTkSwitch(arow, text="", onvalue=True, offvalue=False)
         self.sw_avisos.pack(side="left")
         (self.sw_avisos.select if pref.get("avisos_calculos", True) else self.sw_avisos.deselect)()
-        ctk.CTkLabel(arow, text="Los correos de «Cálculos realizados» crean una tarea en la Agenda",
+        ctk.CTkLabel(arow, text="Los «Cálculos realizados» de Técnico y las «ACTIVACIÓN» de Comercial crean una tarea en la Agenda",
                      font=theme.FONT_TINY, text_color=theme.TEXT_MUTED, anchor="w").pack(
             side="left", padx=(theme.SPACE_2, 0))
 

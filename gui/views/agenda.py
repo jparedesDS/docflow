@@ -64,7 +64,7 @@ class AgendaView(ctk.CTkFrame):
                   command=self._sync_tareas).pack(side="right", padx=(theme.SPACE_2, 0))
         app = self.winfo_toplevel()
         if hasattr(app, "revisar_avisos"):
-            ui.button(hdr.actions, "✉  Buscar avisos de Técnico", "outline", size="sm",
+            ui.button(hdr.actions, "✉  Buscar avisos", "outline", size="sm",
                       command=lambda: app.revisar_avisos(manual=True)).pack(
                 side="right", padx=(theme.SPACE_2, 0))
 
@@ -291,6 +291,10 @@ class AgendaView(ctk.CTkFrame):
         if t.get("carpeta"):
             ui.icon_button(row, "📁", command=lambda: _abrir_carpeta(t["carpeta"])
                            ).pack(side="right", padx=1)
+        app = self.winfo_toplevel()
+        if t.get("origen") == "activacion" and not is_done and hasattr(app, "abrir_activacion"):
+            ui.icon_button(row, "✚", command=lambda: app.abrir_activacion(t)
+                           ).pack(side="right", padx=1)
 
         fecha = t.get("fecha_limite") or ""
         if fecha:
@@ -317,10 +321,17 @@ class AgendaView(ctk.CTkFrame):
             if t.get("cerrada_sola"):
                 de += f" · enviados al cliente ({t['cerrada_sola']})"
             pie.append(de)
+        if t.get("origen") == "activacion":
+            de = "✉ Activación de Comercial"
+            if t.get("remitente"):
+                de += f" · {t['remitente']}"
+            if t.get("cerrada_sola"):
+                de += f" · {t.get('cerrada_por') or 'abierto'} ({t['cerrada_sola']})"
+            pie.append(de)
         desc = (t.get("descripcion") or "").strip()
         # Las notas de un aviso son lo que hay que tener en cuenta al subirlo:
         # se ven enteras (o casi), no en 150 caracteres
-        tope = 420 if t.get("origen") in ("calculos", "planos") else 150
+        tope = 420 if t.get("origen") in ("calculos", "planos", "activacion") else 150
         if desc and not is_done:
             pie.append(desc if len(desc) <= tope else desc[:tope] + "…")
         lineas = ["  ·  ".join(pie)] if pie else []

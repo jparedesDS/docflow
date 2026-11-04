@@ -371,10 +371,15 @@ class DocFlowLiteApp(ctk.CTk):
     def _avisos_mostrar(self, res: dict, manual: bool = False) -> None:
         """Recarga la Agenda y avisa de lo nuevo, lo actualizado y lo cerrado."""
         nuevas, actualizadas, cerradas = res["nuevas"], res["actualizadas"], res["cerradas"]
-        if nuevas or actualizadas or cerradas:
+        activadas, abiertas = res.get("activaciones") or [], res.get("abiertas") or []
+        if nuevas or actualizadas or cerradas or activadas or abiertas:
             view = self._views.get("agenda")
             if view is not None and hasattr(view, "_reload_all"):
                 view._reload_all()
+        if activadas or abiertas:
+            view = self._views.get("apertura")
+            if view is not None and hasattr(view, "recargar_activaciones"):
+                view.recargar_activaciones()
 
         avisar = self.notifier is not None and (manual or self._notif_on)
         if not avisar:
@@ -404,10 +409,36 @@ class DocFlowLiteApp(ctk.CTk):
                 "Documentación enviada",
                 "Cerrada en la Agenda: " + ", ".join(t["titulo"] for t in cerradas[:4]),
                 kind="success", native=False, on_click=ir)
-        if manual and not (nuevas or actualizadas or cerradas):
+        for t in activadas[:4]:
+            act = t.get("activacion") or {}
+            datos = [f"PO {act['po']}"] if act.get("po") else []
+            if act.get("entrega"):
+                datos.append("entrega " + "-".join(reversed(act["entrega"].split("-"))))
+            self.notifier.notify(
+                f"Pedido activado · {t['titulo'].split(' ', 2)[-1]}",
+                " · ".join(datos) + ("\n" if datos else "")
+                + "Pulsa para abrirlo en Nuevo pedido. Tarea añadida a la Agenda.",
+                kind="info", duration_ms=12_000, on_click=lambda t=t: self.abrir_activacion(t))
+        if len(activadas) > 4:
+            self.notifier.notify(f"{len(activadas) - 4} activaciones más",
+                                 "Están en Nuevo pedido ▸ Activaciones y en la Agenda.",
+                                 kind="info", duration_ms=10_000,
+                                 on_click=lambda: self.navigate("apertura"))
+        if manual and not (nuevas or actualizadas or cerradas or activadas):
             self.notifier.notify("Sin avisos nuevos",
-                                 "No hay avisos de cálculos ni de planos por pasar a la Agenda.",
+                                 "No hay avisos de cálculos, de planos ni activaciones por pasar a la Agenda.",
                                  kind="info", native=False)
+
+    def abrir_activacion(self, tarea: dict) -> None:
+        """Lleva a «Nuevo pedido» con el formulario relleno con esa activación."""
+        from core import auth
+        if not auth.can_view(self.current_user, "apertura"):
+            self.navigate("agenda")
+            return
+        self.navigate("apertura")
+        view = self._views.get("apertura") or self._make_view("apertura")
+        if view is not None and hasattr(view, "usar_activacion"):
+            view.usar_activacion(tarea)
 
     # ── Layout ────────────────────────────────────────────────────────────────
 

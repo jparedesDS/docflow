@@ -246,7 +246,10 @@ HELP: dict[str, dict] = {
         "pasos": [
             "Escribe el Nº de pedido (P-26/023): cliente y material se completan solos desde el ERP.",
             "«Localizar pedido» comprueba si ya existe la carpeta.",
-            "«Procesar pedido» crea las carpetas y documentos; «Abrir carpeta» para verlo."
+            "«Procesar pedido» crea las carpetas y documentos; «Abrir carpeta» para verlo.",
+            "Arriba, «Activaciones pendientes»: los correos «ACTIVACIÓN P-26/…» de Comercial. "
+            "Pulsa una y el formulario se rellena con el pedido, el suministro, la PO y la "
+            "fecha de entrega; al procesarlo, su tarea de la Agenda se cierra sola."
         ],
         "atajos": [],
     },
@@ -260,7 +263,9 @@ HELP: dict[str, dict] = {
             "y crea la tarea «Subir cálculos» con la carpeta (📁), la revisión y sus notas. "
             "Lo mismo con los planos: la respuesta «Ya están hechos los planos…» crea "
             "«Subir planos» con la carpeta y la revisión de los cálculos. "
-            "«Buscar avisos de Técnico» lo mira ahora mismo.",
+            "Las activaciones de Comercial («ACTIVACIÓN P-26/…») crean «Abrir pedido …»: "
+            "✚ la lleva a Nuevo pedido con todo relleno. "
+            "«Buscar avisos» lo mira ahora mismo.",
             "Si hay avisos que solo te llegan a ti, pon tu buzón en Ajustes ▸ Correo ▸ "
             "Buzón personal (solo lectura).",
             "Las respuestas a ese correo se añaden a la tarea; y la tarea se cierra sola cuando el "

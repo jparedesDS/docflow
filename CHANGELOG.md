@@ -5,6 +5,13 @@ los commits; aquí queda lo que cambió la forma de trabajar.
 
 ## Octubre y noviembre 2026
 
+- **Activaciones de pedidos**: los correos «ACTIVACIÓN P-26/…» de Comercial
+  (al buzón compartido o al personal, una vez aunque lleguen a los dos) crean
+  «Abrir pedido …» en la Agenda con la PO, la entrega, el plazo y lo que piden
+  de documentación. En «Nuevo pedido» salen arriba: pulsar una rellena el
+  formulario (pedido, suministro, S.REF, fechas) y localiza la carpeta de ese
+  suministro. Se cierran solas al procesar el pedido o cuando su
+  00 DOCUMENTACIÓN ya tiene un Planning o un VDDL de después del correo.
 - **Carpetas de devolución**: nuestra revisión ya no se lee del ERP (se rellena
   a mano y se salta revisiones) sino de lo archivado: `rev<nuestra>-<cliente>`,
   con el formato de las carpetas hermanas y en la carpeta `dev.` donde ya están
