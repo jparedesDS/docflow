@@ -18,7 +18,9 @@ los commits; aquí queda lo que cambió la forma de trabajar.
   devolución, el 1er envío (la fecha de la rev 0, que se guarda mientras el
   ERP aún dice «Enviado»). La revisión no se toca al recibir: la nuestra y la
   del cliente solo se enseñan. Se cruza con el ERP en solo lectura y se
-  exporta a Excel.
+  exporta a Excel. La lista de Devoluciones tiene columna **ERP** («✓ hecho»
+  / «falta») por correo, y lo archivado antes del registro se recupera de las
+  carpetas `dev.` y el zip de cada descarga, sin tocar nada.
 - **Nuevo pedido abre también los de Almacén (PA)**: su carpeta en
   «Pedidos Almacen», sin suministro, y el VDDL numerado como el ERP
   (`PA-26-125-CAL-0001`). Y un suministro con carpeta propia (S04) se procesa

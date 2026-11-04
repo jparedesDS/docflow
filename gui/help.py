@@ -172,6 +172,9 @@ HELP: dict[str, dict] = {
             "en la línea: fecha, estado y, si es la primera devolución, el 1er envío (la fecha de la rev 0, que la "
             "app guarda mientras el ERP aún dice «Enviado»). La revisión no se toca: se enseña para reconocer el "
             "documento. Cada fila desaparece sola cuando el ERP cuadra.",
+            "La columna «ERP» dice, por correo, si sus documentos ya están en el ERP: «✓ hecho», «falta» "
+            "(clic derecho ▸ Ver qué falta) o «—» si la app no archivó sus documentos (portal sin descarga, "
+            "o el fichero no lleva el Nº del cliente).",
             "«⤓ Descargar devolución» (Técnicas Reunidas y AYESA): baja el zip del portal y lo guarda con el "
             "correo en 00 TRANS Y RES \\ NNN (fecha) del pedido; además copia cada PDF devuelto a su carpeta "
             "2-Tecnico \\ dev. <Tipo> \\ rev <nuestra>-<cliente> AP|COM|com (la crea si no existe). Con la descarga automática activa se hace solo.",

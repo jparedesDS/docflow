@@ -160,6 +160,78 @@ clave = next(x["clave"] for x in filas if x["doc_eipsa"] == "99-004-PLG-0005")
 R.ignorar(clave)
 ok(all(x["doc_eipsa"] != "99-004-PLG-0005" for x in R.pendientes(erp={})["filas"]), "la ocultada no vuelve")
 
+# ── La columna «ERP» de Devoluciones: por correo (código del transmittal) ────
+def _dv(doc, nuestra="1", estado="Aprobado"):
+    return {"doc_eipsa": doc, "doc_cliente": "", "nuestra": nuestra, "estado": estado,
+            "pedido": "P-99/005", "titulo": "", "cliente": "B", "carpeta": ""}
+
+
+ok(R.anotar({"devueltos": [_dv("99-005-CAL-0001"), _dv("99-005-PLG-0002")]}, "2099-05-02",
+            capturar=False, codigo="TR-99-0001") == 2, "dos documentos de un transmittal")
+ok(R.anotar({"devueltos": [_dv("99-004-PLG-0005", "1")]}, "2099-03-10", capturar=False,
+            codigo="TR-99-0000") == 0, "un rearchivo no es nuevo…")
+ok(next(e for e in R._cargar()["devueltos"].values() if e["doc_eipsa"] == "99-004-PLG-0005")
+   .get("codigo") == "TR-99-0000", "…pero se queda con el código del transmittal")
+ERP3 = {"99-005-CAL-0001": {"state": "Aprobado", "revision": 1, "state_date": "02/05/2099"},
+        "99-005-PLG-0002": {"state": "Enviado", "revision": 1, "state_date": "20/04/2099"}}
+st = R.estado_por_codigo(erp=ERP3)
+ok(st.get("TR-99-0001") == {"total": 2, "faltan": 1}, f"uno hecho y otro no: {st}")
+ERP3["99-005-PLG-0002"].update(state="Aprobado", state_date="03/05/2099")
+ok(R.estado_por_codigo(erp=ERP3).get("TR-99-0001") == {"total": 2, "faltan": 0}, "los dos hechos")
+ok(R.estado_por_codigo(erp=None) is None, "sin ERP no se sabe")
+
+# ── Lo archivado antes de que hubiera registro ───────────────────────────────
+base = tmp / "P-99-006-S00 - CLIENTE" / "2-Tecnico"
+com = base / "dev. Planos" / "rev 1-B com"
+com.mkdir(parents=True)
+(com / "CLI-DWG-0061.pdf").write_bytes(b"x" * 10)          # de otra devolución, otro tamaño
+(com / "CLI-DWG-0061_1.pdf").write_bytes(b"y" * 25)        # el de ésta, guardado al lado
+ap = base / "dev. Cálculos" / "rev 0-0 AP"
+ap.mkdir(parents=True)
+(ap / "CLI-CAL-0062-R0.pdf").write_bytes(b"z" * 7)
+zp = tmp / "tr.zip"
+with zipfile.ZipFile(zp, "w") as zf:
+    zf.writestr("CLI-DWG-0061.pdf", b"y" * 25)
+    zf.writestr("CLI-CAL-0062-R0.pdf", b"z" * 7)
+    zf.writestr("NO-ES-DE-NADIE.pdf", b"?")
+eml = tmp / "dev.eml"
+eml.write_bytes(b"Date: Fri, 30 Oct 2099 13:25:08 +0100\r\nSubject: x\r\n\r\ncuerpo")
+DESCARGAS = {"TR-99-0006": {"pedido": "P-99/006", "zip": str(zp), "eml": str(eml), "when": "2099-11-02T08:00:00",
+                            "portal": "tr", "dev_folders": [str(com), str(ap)]}}
+SEGUIMIENTO = [{"Nº Pedido": "P-99/006-S00", "Nº Doc. EIPSA": "99-006-PLG-0001", "Nº Doc. Cliente": "CLI-DWG-0061"},
+               {"Nº Pedido": "P-99/006-S00", "Nº Doc. EIPSA": "99-006-CAL-0002", "Nº Doc. Cliente": "CLI-CAL-0062"}]
+ok(R.recuperar_archivado(docs=SEGUIMIENTO, descargas=DESCARGAS) == 2, "recupera los dos documentos")
+rec = {e["doc_eipsa"]: e for e in R._cargar()["devueltos"].values() if e.get("codigo") == "TR-99-0006"}
+p, c = rec.get("99-006-PLG-0001", {}), rec.get("99-006-CAL-0002", {})
+ok(p.get("estado") == "Com. Menores" and p.get("nuestra") == "1" and p.get("cliente") == "B",
+   f"de la carpeta «rev 1-B com», aunque el fichero se guardara como _1: {p}")
+ok(p.get("fecha") == "30/10/2099" and p.get("recibido") == "2099-10-30T13:25:08",
+   f"la fecha y la hora del correo, no las de la descarga: {p.get('fecha')} {p.get('recibido')}")
+ok(c.get("estado") == "Aprobado" and c.get("estado_alt") == ["Información"] and c.get("nuestra") == "0",
+   f"un AP recuperado vale como Aprobado o Información: {c}")
+ok(R.comparar(c, {"state": "Información", "revision": 0, "state_date": "30/10/2099",
+                  "date_first_rev": "01/10/2099"}) is None, "y si el ERP dice Información, cuadra")
+ok(R.recuperar_archivado(docs=SEGUIMIENTO, descargas=DESCARGAS) == 0, "cada transmittal se mira una vez")
+ok(R._rev_de_carpeta(base / "dev. Planos" / "rev0" / "com. mayores") == ("0", "", "Com. Mayores"),
+   "resolución en subcarpeta")
+ok(R._rev_de_carpeta(base / "rev0-A" / "VOID") is None, "un VOID no se recupera")
+
+from gui.views.devoluciones.lista import _CARGANDO, DevolucionesView  # noqa: E402
+
+lista = DevolucionesView.__new__(DevolucionesView)      # solo la celda, sin buzón
+correo = {"download": {"code": "TR-99-0001"}}
+lista._erp = _CARGANDO
+ok(lista._estado_erp(correo)[1]["text"] == "…", "mientras consulta")
+lista._erp = {"TR-99-0001": {"total": 2, "faltan": 0}}
+ok(lista._estado_erp(correo)[1]["text"] == "✓  hecho", "hecho")
+lista._erp = {"TR-99-0001": {"total": 3, "faltan": 2}}
+ok(lista._estado_erp(correo)[1]["text"] == "faltan 2 de 3", "lo que falta")
+lista._erp = {"TR-99-0001": {"total": 1, "faltan": 1}}
+ok(lista._estado_erp(correo)[1]["text"] == "falta", "uno solo")
+ok(lista._estado_erp({"download": {"code": "OTRO"}})[1]["text"] == "—", "sin documentos archivados")
+lista._erp = None
+ok(lista._estado_erp(correo)[1]["text"] == "sin ERP", "sin ERP")
+
 # ── La ventana ────────────────────────────────────────────────────────────────
 import customtkinter as ctk  # noqa: E402
 

@@ -122,15 +122,17 @@ def _guardar(reg: dict) -> None:
     write_json(REGISTRO_FILE, reg)
 
 
-def anotar(archive: dict, fecha_correo: str = "", portal: str = "", capturar: bool = True) -> int:
+def anotar(archive: dict, fecha_correo: str = "", portal: str = "", capturar: bool = True,
+           codigo: str = "") -> int:
     """Apunta los documentos que `dev_folders` acaba de archivar
-    (`archive["devueltos"]`). Devuelve cuántos son nuevos."""
+    (`archive["devueltos"]`). `codigo` es el del transmittal: une la devolución
+    con su correo en la lista. Devuelve cuántos son nuevos."""
     devueltos = (archive or {}).get("devueltos") or []
     if not devueltos:
         return 0
     reg = _cargar()
     fecha = _fecha_erp(fecha_correo) or date.today().strftime("%d/%m/%Y")
-    nuevos = 0
+    nuevos, cambiado = 0, False
     for d in devueltos:
         if not (norm(d.get("doc_eipsa")) or norm(d.get("doc_cliente"))):
             continue
@@ -145,15 +147,28 @@ def anotar(archive: dict, fecha_correo: str = "", portal: str = "", capturar: bo
             "estado_portal": str(d.get("estado") or ""),
             "estado": estado_erp(d.get("estado") or ""),
             "fecha": fecha,
+            "recibido": _momento(fecha_correo),
             "carpeta": str(d.get("carpeta") or ""),
             "portal": portal,
+            "codigo": codigo,
             "anotado": datetime.now().isoformat(timespec="seconds"),
         }
+        if d.get("recuperado"):
+            # Sacado de la carpeta: «AP» no distingue aprobado de informativo
+            entrada["recuperado"] = True
+            if entrada["estado"] == APROBADO:
+                entrada["estado_alt"] = [INFORMACION]
         clave = f"{_clave_doc(entrada)}|{nuestra}|{entrada['estado']}"
         if clave in reg["devueltos"]:
-            continue                 # la misma devolución, otra vez (rearchivo)
+            # La misma devolución, otra vez (rearchivo): como mucho, se le pone el código
+            if codigo and not reg["devueltos"][clave].get("codigo"):
+                reg["devueltos"][clave]["codigo"] = codigo
+                cambiado = True
+            continue
         reg["devueltos"][clave] = entrada
         nuevos += 1
+    if cambiado and not nuevos:
+        _guardar(reg)
     if nuevos:
         _guardar(reg)
         logger.info("Registro ERP: %d devolución(es) apuntada(s)", nuevos)
@@ -161,6 +176,161 @@ def anotar(archive: dict, fecha_correo: str = "", portal: str = "", capturar: bo
         if capturar:
             capturar_envios()
     return nuevos
+
+
+# ── Lo archivado antes de que existiera el registro ──────────────────────────
+
+# Subcarpeta de resolución dentro de una revisión («rev0\\com. menores») → sufijo
+_SUBCARPETA_SUFIJO = {"com. menores": "com", "com. mayores": "COM", "aprobados": "AP",
+                      "rechazados": "REJ"}
+_ESTADO_SUFIJO = {"AP": APROBADO, "com": COM_MENORES, "COM": COM_MAYORES, "REJ": RECHAZADO}
+
+
+def _rev_de_carpeta(carpeta) -> tuple[str, str, str] | None:
+    """(nuestra, cliente, estado ERP) de la carpeta donde quedó un fichero
+    devuelto, o None si no es una carpeta de revisión (o es un VOID)."""
+    from pathlib import Path
+
+    from core.services import dev_folders
+    carpeta = Path(carpeta)
+    sufijo = _SUBCARPETA_SUFIJO.get(carpeta.name.strip().lower())
+    rev = carpeta.parent if sufijo else carpeta
+    partes = dev_folders._partes_rev(rev.name)
+    if not partes:
+        return None
+    num, cliente, cola = partes
+    if not sufijo:
+        sufijo = (cola.split() or [""])[0]          # «COM 22-10-2026» → «COM»
+    if sufijo.upper() == "AP":
+        sufijo = "AP"
+    elif sufijo.upper() == "REJ":
+        sufijo = "REJ"
+    estado = _ESTADO_SUFIJO.get(sufijo)            # com / COM: la caja importa
+    if estado is None:
+        return None
+    return (str(num) if num is not None else ""), cliente, estado
+
+
+def _documento_del_fichero(nombre: str, codigos: dict) -> tuple[str, str] | None:
+    """(Nº EIPSA, Nº cliente) del documento cuyo código va en el nombre del
+    fichero; el más largo, que «…-001» no se confunda con «…-0010»."""
+    tallo = norm(nombre.rsplit(".", 1)[0])
+    hits = [c for c in codigos if len(c) >= 6 and c in tallo]
+    if not hits:
+        return None
+    return codigos[max(hits, key=len)]
+
+
+def _donde_quedo(carpetas: list[str], nombre: str, tamaño: int):
+    """La carpeta de esa devolución donde está ESE fichero: mismo nombre y mismo
+    tamaño. Un nombre solo no basta: el cliente devuelve el mismo fichero con el
+    mismo nombre en otra revisión, y puede estar en dos de ellas. Y si al
+    archivarlo ya había uno con ese nombre, se guardó al lado como «nombre_1.pdf»."""
+    from pathlib import Path
+    tallo, punto, ext = nombre.rpartition(".")
+    otro = re.compile(re.escape(tallo) + r"_\d+" + re.escape(punto + ext) + "$", re.I) if punto else None
+    for f in carpetas:
+        carpeta = Path(f)
+        try:
+            ruta = carpeta / nombre
+            if ruta.is_file() and ruta.stat().st_size == tamaño:
+                return carpeta
+            if otro is not None and carpeta.is_dir():
+                for hermano in carpeta.iterdir():
+                    if otro.match(hermano.name) and hermano.stat().st_size == tamaño:
+                        return carpeta
+        except OSError:
+            continue
+    return None
+
+
+def _fecha_del_correo(eml) -> str:
+    """La fecha (cabecera Date) del correo de la devolución guardado, ISO, o ''."""
+    if not eml:
+        return ""
+    try:
+        from email.parser import BytesHeaderParser
+        from email.utils import parsedate_to_datetime
+        with open(eml, "rb") as fh:
+            cab = BytesHeaderParser().parse(fh)
+        # Con la hora: el mismo documento puede devolverse dos veces el mismo día
+        return parsedate_to_datetime(cab.get("Date", "")).replace(tzinfo=None).isoformat(timespec="seconds")
+    except Exception:  # noqa: BLE001 — sin fecha legible, la de la descarga
+        return ""
+
+
+def recuperar_archivado(docs: list[dict] | None = None, descargas: dict | None = None) -> int:
+    """Apunta las devoluciones que la app archivó antes de que hubiera registro.
+
+    Solo lee: de cada descarga (`portal_downloads`), los nombres de su zip y las
+    carpetas `dev.` donde quedaron. La carpeta da nuestra revisión, la del
+    cliente y la resolución (AP, com, COM, REJ); el nombre del fichero, el
+    documento (su Nº del cliente o EIPSA, contra el seguimiento de documentos);
+    la fecha es la de la descarga, que va minutos detrás del correo. Un AP puede
+    ser «Información» en el ERP: se admite cualquiera de las dos.
+
+    Cada transmittal se mira una vez (`reg["recuperados"]`). Devuelve cuántas
+    devoluciones nuevas apunta. Nunca lanza."""
+    import zipfile
+    from pathlib import Path
+    try:
+        if descargas is None:
+            from core.services import portal_downloads
+            descargas = portal_downloads._registry().get("done", {})
+        reg = _cargar()
+        vistos = set(reg.setdefault("recuperados", []))
+        vistos |= {e.get("codigo") for e in reg["devueltos"].values() if e.get("codigo")}
+        pendientes = {c: d for c, d in (descargas or {}).items()
+                      if c not in vistos and d.get("dev_folders") and d.get("zip")}
+        if not pendientes:
+            return 0
+        if docs is None:
+            from core.services import monitoring
+            docs = monitoring.get_monitoring_data() or []
+        por_pedido: dict[str, dict] = {}
+        for d in docs:
+            ped = re.sub(r"-S\d{2}[A-Z]?$", "", str(d.get("Nº Pedido", "")).strip(), flags=re.I).upper()
+            ids = (norm(d.get("Nº Doc. EIPSA")), norm(d.get("Nº Doc. Cliente")))
+            sitio = por_pedido.setdefault(ped, {})
+            for c in ids:
+                if c:
+                    sitio.setdefault(c, ids)
+        nuevos = 0
+        for codigo, d in pendientes.items():
+            try:
+                with zipfile.ZipFile(d["zip"]) as zf:
+                    ficheros = [(Path(i.filename).name, i.file_size) for i in zf.infolist() if not i.is_dir()]
+            except (OSError, zipfile.BadZipFile):
+                # Un PDF suelto (Document Space no empaqueta) o el zip ya no está
+                zp = Path(d["zip"])
+                try:
+                    ficheros = [(zp.name, zp.stat().st_size)] if zp.suffix.lower() == ".pdf" else []
+                except OSError:
+                    ficheros = []
+            codigos = por_pedido.get(str(d.get("pedido", "")).upper(), {})
+            devueltos = []
+            for nombre, tamaño in ficheros:
+                doc = _documento_del_fichero(nombre, codigos)
+                carpeta = _donde_quedo(d["dev_folders"], nombre, tamaño) if doc else None
+                rev = _rev_de_carpeta(carpeta) if (doc and carpeta) else None
+                if not rev or any(x["doc_eipsa"] == doc[0] and x["doc_cliente"] == doc[1] for x in devueltos):
+                    continue
+                devueltos.append({"pedido": d.get("pedido", ""), "doc_eipsa": doc[0], "doc_cliente": doc[1],
+                                  "titulo": "", "nuestra": rev[0], "cliente": rev[1],
+                                  "estado": rev[2], "carpeta": str(carpeta), "recuperado": True})
+            if devueltos:
+                nuevos += anotar({"devueltos": devueltos}, _fecha_del_correo(d.get("eml")) or d.get("when", ""),
+                                 d.get("portal", ""), capturar=False, codigo=codigo)
+            reg = _cargar()
+            reg.setdefault("recuperados", []).append(codigo)
+            _guardar(reg)
+        if nuevos:
+            logger.info("Registro ERP: %d devolución(es) recuperadas de lo ya archivado", nuevos)
+            capturar_envios()
+        return nuevos
+    except Exception as exc:  # noqa: BLE001 — es un apunte: no puede tirar nada
+        logger.warning("Registro ERP: no se pudo recuperar lo archivado: %s", exc)
+        return 0
 
 
 def ignorar(clave: str) -> None:
@@ -242,7 +412,7 @@ def comparar(e: dict, fila: dict | None) -> dict | None:
     if dev and not (puesta and dev - timedelta(days=_FECHA_ANTES) <= puesta
                     <= dev + timedelta(days=_FECHA_DESPUES)):
         falta.append("fecha")
-    if _fold(erp["estado"]) != _fold(e["estado"]):
+    if _fold(erp["estado"]) not in {_fold(x) for x in [e["estado"], *(e.get("estado_alt") or [])]}:
         falta.append("estado")
     # El 1er envío se pone con la primera devolución (la de nuestra rev 0)
     if n == 0 and not erp["primer_envio"]:
@@ -258,15 +428,10 @@ def pendientes(erp: dict | None = "leer") -> dict:
 
     {ok, motivo, filas: [{clave, …entrada, falta, erp}]}, la más reciente
     primero. Sin ERP, ok=False y no se puede decir nada."""
+    if erp == "leer":
+        recuperar_archivado()
     reg = _cargar()
-    ultimas: dict[str, tuple[str, dict]] = {}
-    for clave, e in reg["devueltos"].items():
-        k = _clave_doc(e)
-        orden = (_a_fecha(e.get("fecha")) or date.min, int(e["nuestra"]) if str(e.get("nuestra")).isdigit() else -1,
-                 e.get("anotado", ""))
-        if k not in ultimas or orden > ultimas[k][0]:
-            ultimas[k] = (orden, clave)
-    vigentes = [(clave, reg["devueltos"][clave]) for _o, clave in ultimas.values()]
+    vigentes = [(clave, reg["devueltos"][clave]) for clave in _ultimas(reg)]
     vigentes = [(c, e) for c, e in vigentes if not e.get("ignorada")]
     if erp == "leer":
         try:
@@ -285,6 +450,61 @@ def pendientes(erp: dict | None = "leer") -> dict:
             filas.append({"clave": clave, **e, **dif})
     filas.sort(key=lambda f: (_a_fecha(f.get("fecha")) or date.min, f.get("pedido", "")), reverse=True)
     return {"ok": True, "motivo": "", "filas": filas, "total": len(vigentes)}
+
+
+def _momento(valor) -> str:
+    """Fecha y hora del correo, ISO y sin zona («2026-10-30T13:25:00»), o ''."""
+    txt = str(valor or "").strip()
+    try:
+        return datetime.fromisoformat(txt.replace(" ", "T")[:19]).isoformat(timespec="seconds")
+    except ValueError:
+        d = _a_fecha(txt)
+        return d.isoformat() if d else ""
+
+
+def _ultimas(reg: dict) -> list[str]:
+    """Las claves de la última devolución de cada documento (por fecha; el mismo
+    día, por la hora del correo; luego por nuestra revisión): las anteriores ya
+    no son trabajo."""
+    ultimas: dict[str, tuple] = {}
+    for clave, e in reg["devueltos"].items():
+        k = _clave_doc(e)
+        orden = (_a_fecha(e.get("fecha")) or date.min, e.get("recibido", ""),
+                 int(e["nuestra"]) if str(e.get("nuestra")).isdigit() else -1, e.get("anotado", ""))
+        if k not in ultimas or orden > ultimas[k][0]:
+            ultimas[k] = (orden, clave)
+    return [clave for _o, clave in ultimas.values()]
+
+
+def estado_por_codigo(erp: dict | None = "leer") -> dict | None:
+    """Para la columna «ERP» de Devoluciones: {código del transmittal → {total, faltan}}.
+
+    `total` son los documentos de esa devolución que la app archivó; `faltan`,
+    los que el ERP aún no dice. Una devolución vieja de un documento que ya se
+    ha vuelto a devolver no falta (la que cuenta es la nueva), ni una ocultada.
+    None si no se llega al ERP."""
+    if erp == "leer":
+        recuperar_archivado()        # lo archivado antes del registro (una vez por transmittal)
+    reg = _cargar()
+    con_codigo = {c: e for c, e in reg["devueltos"].items() if e.get("codigo")}
+    if not con_codigo:
+        return {}
+    ultimas = set(_ultimas(reg))
+    if erp == "leer":
+        try:
+            erp = leer_erp(list(con_codigo.values()))
+        except Exception as exc:  # noqa: BLE001
+            logger.info("Registro ERP: no se pudo leer el ERP: %s", exc)
+            erp = None
+    if erp is None:
+        return None
+    out: dict[str, dict] = {}
+    for clave, e in con_codigo.items():
+        r = out.setdefault(e["codigo"], {"total": 0, "faltan": 0})
+        r["total"] += 1
+        if clave in ultimas and not e.get("ignorada") and comparar(e, erp.get(_clave_doc(e))) is not None:
+            r["faltan"] += 1
+    return out
 
 
 def _guardar_envios(reg: dict, entradas, erp: dict) -> int:

@@ -135,6 +135,9 @@ class PendienteErpWindow(ctk.CTkToplevel):
 
     def _pintar(self, res: dict) -> None:
         self.btn_recargar.configure(state="normal")
+        # La columna ERP de la lista de Devoluciones dice lo mismo: que se entere
+        if hasattr(self.master, "_cargar_erp"):
+            self.master._cargar_erp()
         if not res["ok"]:
             self._filas = []
             self.table.set_rows([])

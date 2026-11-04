@@ -42,7 +42,11 @@ COLUMNS = [
     {"key": "Fecha",      "label": "Recibido",  "min": 128, "anchor": "center"},
     {"key": "Descarga",   "label": "Descarga",  "min": 126, "anchor": "center"},
     {"key": "Enviado",    "label": "Enviado",   "min": 126, "anchor": "center"},
+    # ¿Está ya la devolución en el ERP? (fecha, estado y, si toca, 1er envío)
+    {"key": "ERP",        "label": "ERP",       "min": 120, "anchor": "center"},
 ]
+
+_CARGANDO = object()     # la columna ERP mientras se consulta
 
 
 # Una devolución sin notificar envejece: a partir de aquí la fecha avisa.
@@ -54,6 +58,8 @@ class DevolucionesView(ctk.CTkFrame):
         super().__init__(master, fg_color=theme.BG_PAGE, **kwargs)
         self._emails: list[dict] = []
         self._only_unread = False
+        # {código del transmittal → {total, faltan}}, None sin ERP
+        self._erp = _CARGANDO
         self._build_layout()
         self._reload()
 
@@ -149,12 +155,51 @@ class DevolucionesView(ctk.CTkFrame):
             return
 
         self._render_rows()
+        self._cargar_erp()
         pendientes = sum(1 for e in emails if not e.get("processed"))
         self.count_label.configure(text=f"{len(emails)} emails")
         self.status_label.configure(
             text=(f"✓  {len(emails)} devoluciones · {pendientes} sin notificar. "
                   "Doble clic en una fila para revisarla y enviar la notificación."),
             text_color=theme.TEXT_MUTED)
+
+    def _cargar_erp(self) -> None:
+        """La columna ERP, en un hilo: la lista no espera al ERP."""
+        self._erp = _CARGANDO
+
+        def worker():
+            try:
+                from core.services import registro_erp
+                res = registro_erp.estado_por_codigo()
+            except Exception:  # noqa: BLE001 — la columna se queda en «sin ERP»
+                logger.exception("Columna ERP de Devoluciones")
+                res = None
+            ui.en_ui(self, lambda: self._erp_listo(res))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _erp_listo(self, res) -> None:
+        self._erp = res
+        if self._emails:
+            self._render_rows()
+
+    def _estado_erp(self, e: dict):
+        """(orden, celda) de la columna ERP de un correo."""
+        code = (e.get("download") or {}).get("code") or ""
+        if self._erp is _CARGANDO:
+            return 0, {"text": "…", "fg": theme.TEXT_MUTED}
+        if self._erp is None:
+            return 0, {"text": "sin ERP", "fg": theme.TEXT_MUTED}
+        st = self._erp.get(code) if code else None
+        if not st:
+            # La app no archivó sus documentos (portal sin descarga, o de antes)
+            return 1, {"text": "—", "fg": theme.TEXT_MUTED}
+        if st["faltan"] == 0:
+            return 2, {"text": "✓  hecho", "pill": True, "fg": theme.GREEN,
+                       "pill_bg": ui.blend(theme.GREEN, theme.BG_CARD, 0.20)}
+        texto = "falta" if st["total"] == 1 else f"faltan {st['faltan']} de {st['total']}"
+        return 3, {"text": texto, "pill": True, "fg": theme.AMBER,
+                   "pill_bg": ui.blend(theme.AMBER, theme.BG_CARD, 0.20)}
 
     # ── Pintado de la tabla ───────────────────────────────────────────────────
 
@@ -209,6 +254,7 @@ class DevolucionesView(ctk.CTkFrame):
                       "bold": fcolor != theme.TEXT_SUB},
             "Descarga": descarga,
             "Enviado": envio,
+            "ERP": self._estado_erp(e)[1],
         }
 
     _SORT_KEY = {
@@ -220,6 +266,11 @@ class DevolucionesView(ctk.CTkFrame):
         "Enviado": lambda e: 1 if e.get("processed") else 0,
     }
 
+    def _clave_orden(self, col: str):
+        if col == "ERP":
+            return lambda e: self._estado_erp(e)[0]
+        return self._SORT_KEY.get(col, self._SORT_KEY["Fecha"])
+
     def _on_sort(self, key: str) -> None:
         col, asc = self._sort
         self._sort = (key, not asc if key == col else True)
@@ -227,8 +278,7 @@ class DevolucionesView(ctk.CTkFrame):
 
     def _render_rows(self) -> None:
         col, asc = self._sort
-        key = self._SORT_KEY.get(col, self._SORT_KEY["Fecha"])
-        filas = sorted(self._emails, key=key, reverse=not asc)
+        filas = sorted(self._emails, key=self._clave_orden(col), reverse=not asc)
         self.table.set_sort_arrow(col, asc)
         self.table.set_rows([(e["uid"], self._build_cells(e)) for e in filas])
 
@@ -259,6 +309,8 @@ class DevolucionesView(ctk.CTkFrame):
         if (dl.get("downloaded") or dl.get("only_email")) and dl.get("folder"):
             items.append(("📂  Abrir carpetas de la devolución (TRANS Y RES + dev.)",
                           lambda: _open_return_folders(dl["folder"], dl.get("dev_folders") or [])))
+        if self._estado_erp(email)[0] == 3:
+            items.append(("⇄  Ver qué falta en el ERP", self._pendiente_erp))
         return items + [
             ("-", None),
             ("Copiar asunto",
