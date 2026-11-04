@@ -1328,10 +1328,10 @@ def _con_revisiones(destino: dict, doc: dict, ctx: dict, archivadas: _Devolucion
     destino["cliente"] = revision_cliente(doc)
     # Si el documento ya tiene devoluciones, va a la carpeta dev donde están…
     donde = archivadas.carpeta_dev(ctx, destino["codes"], nombres)
-    # …salvo que sea de OTRO tipo: el cliente puede reutilizar un código. En
-    # P-26/029 (Silleno) el R08-0001 era el documento conjunto de cálculos y
-    # planos, con sus devoluciones en «dev Cálculos y Planos», y después se usó
-    # para el catálogo: el catálogo no va ahí.
+    # …salvo que sea de OTRO tipo: el cliente puede reutilizar un código. Ha
+    # pasado: cálculos y planos se enviaban juntos con un código, el cliente pidió
+    # separarlos y ese código pasó al catálogo. Las devoluciones de entonces
+    # están en «dev Cálculos y Planos», y el catálogo no va ahí.
     tipos_donde = _tipos_de_carpeta(donde.name) if donde is not None else set()
     tipos_suya = _tipos_de_carpeta(Path(destino["dev_dir"]).name)
     solo_en = None

@@ -164,8 +164,8 @@ finally:
     shutil.rmtree(tmp, ignore_errors=True)
 
 # ── Un código que el cliente reutiliza para otro tipo de documento ───────────
-# P-26/029 (Silleno): el R08-0001 era el documento conjunto de cálculos y planos
-# (sus devoluciones, en «dev Cálculos y Planos») y luego se usó para el catálogo.
+# Cálculos y planos se enviaban juntos con un código (sus devoluciones, en «dev
+# Cálculos y Planos»); el cliente pidió separarlos y ese código pasó al catálogo.
 # El catálogo no va a la carpeta de aquel ni sigue su numeración.
 tmp = Path(tempfile.mkdtemp(prefix="revisiones_"))
 tecnico = tmp / "P-99-029-S00 - CLIENTE - VENTURIS" / "2-Tecnico"
