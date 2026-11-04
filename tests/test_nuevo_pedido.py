@@ -10,8 +10,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import customtkinter as ctk
 
+import tempfile
+
+from core.services import agenda
 from gui.views.apertura import AperturaView
 from gui.widgets.scrollframe import ScrollFrame
+
+# Una Agenda vacía: con las activaciones reales de state/ la pantalla sería otra
+agenda.AGENDA_FILE = str(Path(tempfile.mkdtemp(prefix="nuevo_pedido_")) / "agenda_data.json")
 
 fallos = 0
 

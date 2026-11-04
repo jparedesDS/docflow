@@ -152,6 +152,11 @@ class AperturaView(ctk.CTkFrame):
                   "pulsa una para rellenar el formulario."),
             font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED, anchor="w", justify="left")
         self.lista_act = ListaActivaciones(act_card, al_elegir=self.usar_activacion)
+        # Con muchas (la primera pasada trae dos semanas) el formulario quedaba
+        # muy abajo: se ven las más recientes y el resto, a petición
+        self._act_todas = False
+        self.btn_act_todas = ui.button(act_card.cabecera, "", "ghost", size="sm",
+                                       command=self._alternar_activaciones)
 
         # ── 1 · Datos del pedido ──────────────────────────────────────────
         card = self._card(wrapper, "1 · Datos del pedido")
@@ -466,6 +471,12 @@ class AperturaView(ctk.CTkFrame):
 
     # ── Activaciones ──────────────────────────────────────────────────────
 
+    ACTIVACIONES_VISIBLES = 5
+
+    def _alternar_activaciones(self) -> None:
+        self._act_todas = not self._act_todas
+        self.recargar_activaciones()
+
     def recargar_activaciones(self) -> None:
         """Vuelve a leer de la Agenda las activaciones sin abrir."""
         try:
@@ -473,8 +484,19 @@ class AperturaView(ctk.CTkFrame):
         except Exception:  # noqa: BLE001 — la Agenda es un JSON local; que no tumbe la vista
             logger.exception("No se pudieron leer las activaciones")
             tareas = []
-        self.lista_act.poner(tareas)
+        visibles = tareas if self._act_todas else tareas[:self.ACTIVACIONES_VISIBLES]
+        # La elegida no se esconde aunque sea antigua
+        elegida = next((t for t in tareas if self._activacion and t.get("id") == self._activacion.get("id")), None)
+        if elegida is not None and elegida not in visibles:
+            visibles = visibles + [elegida]
+        self.lista_act.poner(visibles)
         self.lbl_act_n.configure(text=f"{len(tareas)}" if tareas else "")
+        if len(tareas) > self.ACTIVACIONES_VISIBLES:
+            self.btn_act_todas.configure(
+                text="Ver menos" if self._act_todas else f"Ver todas ({len(tareas)})")
+            self.btn_act_todas.pack(side="right")
+        else:
+            self.btn_act_todas.pack_forget()
         pad = dict(fill="x", padx=theme.SPACE_4, pady=(0, theme.SPACE_3))
         if tareas:
             self.lbl_act_vacio.pack_forget()

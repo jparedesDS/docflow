@@ -168,6 +168,9 @@ HELP: dict[str, dict] = {
             "Doble clic en un correo: la app lo interpreta y muestra los documentos y su estado.",
             "Revisa, corrige un estado si hace falta y pulsa «Enviar notificación».",
             "«+ Devolución manual» si el correo no es de un portal reconocido: escribe el pedido y se autocompleta.",
+            "«⇄ Pendiente en el ERP»: lo archivado que el ERP aún no dice, con el estado, la fecha y NUESTRA "
+            "revisión que hay que poner (la del cliente va entre paréntesis, solo para reconocerlo). Las que se "
+            "ponen igual van juntas para pegarlas de una vez; cada fila desaparece sola cuando el ERP cuadra.",
             "«⤓ Descargar devolución» (Técnicas Reunidas y AYESA): baja el zip del portal y lo guarda con el "
             "correo en 00 TRANS Y RES \\ NNN (fecha) del pedido; además copia cada PDF devuelto a su carpeta "
             "2-Tecnico \\ dev. <Tipo> \\ rev <nuestra>-<cliente> AP|COM|com (la crea si no existe). Con la descarga automática activa se hace solo.",

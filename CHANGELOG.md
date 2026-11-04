@@ -12,6 +12,11 @@ los commits; aquí queda lo que cambió la forma de trabajar.
   formulario (pedido, suministro, S.REF, fechas) y localiza la carpeta de ese
   suministro. Se cierran solas al procesar el pedido o cuando su
   00 DOCUMENTACIÓN ya tiene un Planning o un VDDL de después del correo.
+- **Pendiente en el ERP** (Devoluciones ▸ ⇄): cada devolución que la app
+  archiva se apunta con lo que hay que poner en el ERP —estado con su nombre
+  del ERP, fecha del correo y NUESTRA revisión, la de la carpeta; la del
+  cliente (A, 0, B…) no se compara— y se cruza con el ERP en solo lectura. Lo
+  que se pone igual va junto para pegarlo de una vez; se exporta a Excel.
 - **Nuevo pedido abre también los de Almacén (PA)**: su carpeta en
   «Pedidos Almacen», sin suministro, y el VDDL numerado como el ERP
   (`PA-26-125-CAL-0001`). Y un suministro con carpeta propia (S04) se procesa

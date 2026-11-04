@@ -227,6 +227,22 @@ ok(vista.var_sref.get() == "110" and vista.var_material.get() == "VAINAS",
 ok("2099 Pedidos Almacen" in resultado and "PA-99-125 - OTRO CLIENTE" in resultado,
    f"PA: localiza su carpeta de Almacén: {resultado}")
 
+# Muchas pendientes: se ven las 5 más recientes y el resto, a petición
+for i in range(10, 16):
+    agenda.create_tarea("JP", act_srv.tarea_de(act_srv.analizar(
+        f"ACTIVACIÓN P-99/0{i}-S00 / X", cuerpo(pedido=f"P-99/0{i}-S00"), COMERCIAL,
+        f"2099-04-{i}T09:00:00+01:00", f"<m{i}@x>")))
+vista.recargar_activaciones()
+total = len(act_srv.pendientes())
+elegida = vista._activacion
+ok(total > 5 and len(vista.lista_act.tareas) <= 6, f"no las {total}: {len(vista.lista_act.tareas)}")
+ok(elegida is None or any(t["id"] == elegida["id"] for t in vista.lista_act.tareas),
+   "la que está en el formulario no se esconde")
+ok(vista.btn_act_todas.cget("text") == f"Ver todas ({total})", f"botón: {vista.btn_act_todas.cget('text')}")
+vista._alternar_activaciones()
+ok(len(vista.lista_act.tareas) == total and vista.btn_act_todas.cget("text") == "Ver menos", "ver todas")
+vista._alternar_activaciones()
+
 # Procesado: su activación se cierra y sale de la lista
 vista._procesando = ("P-99-001", "S04")
 cerradas = vista._cerrar_activacion()

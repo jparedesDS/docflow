@@ -78,6 +78,10 @@ class DevolucionesView(ctk.CTkFrame):
         ui.button(toolbar, "+  Devolución manual", "primary", size="sm",
                   command=lambda: ManualDevolucionWindow(self)).pack(side="left", padx=(0, theme.SPACE_2))
 
+        # Lo devuelto que el ERP aún no dice (estado, fecha, nuestra revisión)
+        ui.button(toolbar, "⇄  Pendiente en el ERP", "outline", size="sm",
+                  command=self._pendiente_erp).pack(side="left", padx=(0, theme.SPACE_2))
+
         self.var_unread = ctk.BooleanVar(value=False)
         self.chk_unread = ctk.CTkCheckBox(
             toolbar, text="Solo no leídos", variable=self.var_unread,
@@ -238,6 +242,10 @@ class DevolucionesView(ctk.CTkFrame):
             PreviewWindow(self, uid=rowid, on_sent=self._reload)
 
     # ── Menú contextual ────────────────────────────────────────────────────
+
+    def _pendiente_erp(self) -> None:
+        from gui.views.devoluciones.pendiente_erp import PendienteErpWindow
+        PendienteErpWindow(self)
 
     def _ctx_menu(self, iid: str):
         email = next((e for e in self._emails if e.get("uid") == iid), None)

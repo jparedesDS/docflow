@@ -395,6 +395,15 @@ def _docs_y_ficheros(info: dict, docs: list[dict], subject: str, raw: bytes,
     return docs, {}
 
 
+def _al_registro_erp(archive: dict, fecha: str) -> None:
+    """Lo archivado, a «Pendiente en el ERP». Nunca lanza: es un apunte."""
+    try:
+        from core.services import registro_erp
+        registro_erp.anotar(archive, fecha)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Registro ERP: no se pudo apuntar la devolución: %s", exc)
+
+
 def _archivar(code: str, zip_path: Path, docs: list[dict], pedido: str, *,
               raw: bytes | None = None, fecha: str = "",
               file_docs: dict[str, dict] | None = None) -> dict:
@@ -411,6 +420,7 @@ def _archivar(code: str, zip_path: Path, docs: list[dict], pedido: str, *,
     except Exception as exc:  # noqa: BLE001
         logger.warning("Archivo en dev. de %s falló: %s", code, exc)
         archive = {"archived": [], "skipped": [(zip_path.name, str(exc))], "created": [], "plan": []}
+    _al_registro_erp(archive, fecha)
     devs = sorted({str(Path(dest).parent) for _, dest in archive["archived"]})
     if devs:
         # Se apuntan para poder abrirlas luego y para que el correo de aviso las
@@ -708,6 +718,7 @@ def _archivar_correo(code: str, docs: list[dict], pedido: str,
         logger.warning("Archivo en dev. del correo de %s falló: %s", code, exc)
         archive = {"archived": [], "skipped": [("el correo", str(exc))], "created": [],
                    "plan": [], "emails": []}
+    _al_registro_erp(archive, fecha)
     devs = sorted({str(eml.parent) for eml in archive["emails"]})
     if devs:
         _update_nothing(code, {"dev_folders": devs})

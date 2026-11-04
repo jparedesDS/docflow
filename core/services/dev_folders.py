@@ -1482,6 +1482,7 @@ def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: 
                         folders.append({"kind": "dev", "name": name, "dotted": dotted, "path": d})
             if _mismo_fichero(target, fich.tamaño, fich.crc):
                 res["archived"].append((fname, target))   # ya estaba, y es el mismo
+                _devuelto(res, doc, destino, pedido, rev_dir)
             else:
                 # «xb» (creación exclusiva) es la última red: si algo se colara,
                 # esto revienta en vez de destruir un documento ya archivado.
@@ -1494,6 +1495,7 @@ def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: 
                     res["skipped"].append((fname, f"ya hay otro documento con ese nombre en {rev_dir.name}"))
                     continue
                 res["archived"].append((fname, target))
+                _devuelto(res, doc, destino, pedido, rev_dir)
             if email_raw and rev_dir not in touched:
                 touched.add(rev_dir)
                 eml = rev_dir / eml_name
@@ -1540,10 +1542,10 @@ def archive_email_only(docs: list[dict], pedido: str, *, email_raw: bytes | None
             res["skipped"].append((etiqueta, motivo))
             continue
         _con_revisiones(destino, doc, ctx, archivadas)
-        trabajos.append((etiqueta, ctx, destino))
+        trabajos.append((etiqueta, doc, ctx, destino))
 
-    revisiones = _CarpetasDeRevision([d for _, _, d in trabajos])
-    for etiqueta, ctx, destino in trabajos:
+    revisiones = _CarpetasDeRevision([d for _, _, _, d in trabajos])
+    for etiqueta, doc, ctx, destino in trabajos:
         tecnico, folders = ctx["tecnico"], ctx["folders"]
         dev_dir, dev_exists = destino["dev_dir"], destino["dev_exists"]
         if destino["anulado"]:
@@ -1569,10 +1571,28 @@ def archive_email_only(docs: list[dict], pedido: str, *, email_raw: bytes | None
             if not eml.exists():
                 eml.write_bytes(email_raw)
             res["emails"].append(eml)
+        _devuelto(res, doc, destino, pedido, rev_dir)
     if not dry_run:
         logger.info("Devolución sin paquete de %s: %d carpeta(s) con el correo, %d sin colocar",
                     pedido, len(res["emails"]), len(res["skipped"]))
     return res
+
+
+def _devuelto(res: dict, doc: dict, destino: dict, pedido: str, rev_dir: Path) -> None:
+    """Apunta en `res["devueltos"]` un documento ya archivado, con lo que habría
+    que poner en el ERP (lo recoge `registro_erp.anotar`). Una vez por documento
+    aunque traiga varios ficheros."""
+    lista = res.setdefault("devueltos", [])
+    eipsa, cliente = str(doc.get("Doc. EIPSA") or ""), str(doc.get("Doc. Cliente") or "")
+    if any(d["doc_eipsa"] == eipsa and d["doc_cliente"] == cliente for d in lista):
+        return
+    supp = sufijo_de(doc)
+    lista.append({
+        "pedido": f"{pedido}-{supp}" if supp and not str(pedido).upper().endswith(supp) else pedido,
+        "doc_eipsa": eipsa, "doc_cliente": cliente, "titulo": str(doc.get("Título") or ""),
+        "estado": destino.get("estado", ""), "nuestra": destino.get("nuestra"),
+        "cliente": destino.get("cliente", ""), "carpeta": str(rev_dir),
+    })
 
 
 def summary_line(res: dict) -> str:
