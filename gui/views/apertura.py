@@ -69,9 +69,8 @@ def _parse_iso(s: str) -> datetime:
 
 
 def _year_from_pedido(raw: str) -> int | None:
-    """Deduce el año del código del pedido: 'P-26-009' → 2026."""
-    m = apertura_service._PEDIDO_FLEX_RE.match((raw or "").strip())
-    return 2000 + int(m.group(1)) if m else None
+    """Deduce el año del código del pedido: 'P-26-009' o 'PA-26-125' → 2026."""
+    return apertura_service.año_de_pedido(raw)
 
 
 class AperturaView(ctk.CTkFrame):
@@ -166,7 +165,7 @@ class AperturaView(ctk.CTkFrame):
             grid.grid_columnconfigure(c, weight=1, uniform="apertura")
 
         self.var_pedido = ctk.StringVar(value="P-26-")
-        self._field(grid, "Pedido (P-XX-XXX) *", self.var_pedido, row=0, col=0,
+        self._field(grid, "Pedido (P-XX-XXX o PA-XX-XXX) *", self.var_pedido, row=0, col=0,
                     placeholder="P-26-009")
 
         self.var_suffix = ctk.StringVar(value="S00")
@@ -490,14 +489,10 @@ class AperturaView(ctk.CTkFrame):
         pedido = (t.get("pedido") or "").replace("/", "-")
         self._activacion = t
         self.lista_act.elegir(t.get("id"))
-        if apertura_service.is_pa_pedido(pedido):
-            self._set_result_text(
-                f"✉ Activación {t.get('pedido', '')} · {t.get('cliente', '')}\n\n"
-                "Es un pedido de Almacén (PA): «Nuevo pedido» todavía solo abre pedidos P.\n"
-                "Ábrelo a mano y marca la tarea como hecha en la Agenda.")
-            return
         self.var_pedido.set(pedido)
-        self.var_suffix.set(t.get("supp") or "S00")
+        # Un pedido de Almacén no tiene suministro
+        es_pa = apertura_service.is_pa_pedido(pedido)
+        self.var_suffix.set("" if es_pa else (t.get("supp") or "S00"))
         self.var_sref.set(act.get("po", ""))
         self.var_cliente.set(t.get("cliente", ""))
         self.var_material.set("")
@@ -585,10 +580,11 @@ class AperturaView(ctk.CTkFrame):
         """Busca la carpeta del pedido y rellena Cliente/Material auto."""
         pedido_raw = self.var_pedido.get().strip()
         try:
-            folder_id, suf = apertura_service.parse_pedido(pedido_raw)
+            folder_id, suf = apertura_service.normalizar_pedido(pedido_raw)
         except ValueError as exc:
             messagebox.showerror("Pedido inválido", str(exc), parent=self)
             return
+        es_pa = apertura_service.is_pa_pedido(folder_id)
         # El año va implícito en el código del pedido (P-26-… → 2026)
         año = _year_from_pedido(pedido_raw) or datetime.now().year
 
@@ -607,13 +603,16 @@ class AperturaView(ctk.CTkFrame):
         if act is not None and (act.get("pedido") or "").replace("/", "-").upper() != folder_id.upper():
             act = self._activacion = None            # el pedido se cambió a mano
             self.lista_act.elegir(None)
-        # Con una activación manda su suministro: S04 no va en la carpeta de S00
-        buscado = f"{folder_id}-{act['supp']}" if act and act.get("supp") else folder_id
-        pedido_dir = apertura_service.find_existing_pedido_dir(buscado, año, base_dir=base)
+        # Manda el suministro (el de la activación, el escrito en el pedido o el
+        # del campo): S04 no va en la carpeta de S00. Lo mismo hace «Procesar».
+        sufijo = "" if es_pa else ((act or {}).get("supp") or suf
+                                    or self.var_suffix.get().strip().upper())
+        buscado = f"{folder_id}-{sufijo}" if sufijo else folder_id
+        pedido_dir = apertura_service.localizar_pedido_dir(buscado, año, base_dir=base)
         if pedido_dir is None:
             self._set_result_text(
                 f"❌ No se encontró carpeta para {folder_id} en\n"
-                f"   {base / f'Año {año}' / f'{año} Pedidos'}\n\n"
+                f"   {apertura_service.carpeta_del_año(folder_id, año, base)}\n\n"
                 "Opciones:\n"
                 "  • Verifica que el pedido esté creado en disco.\n"
                 "  • Activa «Crear carpeta del pedido si no existe» y rellena "
@@ -626,8 +625,12 @@ class AperturaView(ctk.CTkFrame):
             self.var_cliente.set(meta["cliente"])
         if meta.get("material"):
             self.var_material.set(meta["material"])
-        if meta.get("suffix") and not (act and act.get("supp")):
+        # El suministro de la carpeta solo si no es la del que se buscaba
+        if (meta.get("suffix") and not (act and act.get("supp")) and not es_pa
+                and sufijo not in apertura_service.sufijos_de_carpeta(pedido_dir.name)):
             self.var_suffix.set(meta["suffix"])
+        elif sufijo and not self.var_suffix.get().strip():
+            self.var_suffix.set(sufijo)
 
         tecnico = apertura_service.find_tecnico_dir(pedido_dir)
         tecnico_msg = (
@@ -652,9 +655,8 @@ class AperturaView(ctk.CTkFrame):
             act_msg = self._texto_activacion() + aviso + "\n\n"
 
         # Pre-cargar Communication Matrix si ya hay datos guardados
-        # Key en matrix = "P-XX/YYY" (sin sufijo S00)
-        m = apertura_service._PEDIDO_FOLDER_RE.match(folder_id)
-        n_ref_short = f"P-{m.group(1)}/{m.group(2)}" if m else folder_id
+        # Key en matrix = "P-XX/YYY" o "PA-XX/YYY" (sin sufijo S00)
+        n_ref_short = apertura_service.ref_corta(folder_id)
         existing = self._try_load_matrix_for(n_ref_short)
         if existing:
             self._set_cm_textboxes(existing.get("to") or [], existing.get("cc") or [])
@@ -816,12 +818,8 @@ class AperturaView(ctk.CTkFrame):
                     # Usar n_ref_short ("P-XX/YYY") como key — formato matrix
                     # spec ya validó el pedido; reusamos parse para extraer
                     pedido = kwargs["pedido"]
-                    folder_id, _ = apertura_service.parse_pedido(pedido)
-                    m = apertura_service._PEDIDO_FOLDER_RE.match(folder_id)
-                    if m:
-                        n_ref_short = f"P-{m.group(1)}/{m.group(2)}"
-                    else:
-                        n_ref_short = folder_id
+                    folder_id, _ = apertura_service.normalizar_pedido(pedido)
+                    n_ref_short = apertura_service.ref_corta(folder_id)
                     comm_matrix_service.set_contacts(
                         n_ref_short, cm_payload["to"], cm_payload["cc"],
                     )

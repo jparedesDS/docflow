@@ -12,6 +12,10 @@ los commits; aquí queda lo que cambió la forma de trabajar.
   formulario (pedido, suministro, S.REF, fechas) y localiza la carpeta de ese
   suministro. Se cierran solas al procesar el pedido o cuando su
   00 DOCUMENTACIÓN ya tiene un Planning o un VDDL de después del correo.
+- **Nuevo pedido abre también los de Almacén (PA)**: su carpeta en
+  «Pedidos Almacen», sin suministro, y el VDDL numerado como el ERP
+  (`PA-26-125-CAL-0001`). Y un suministro con carpeta propia (S04) se procesa
+  en la suya: antes podía caer en la de S00.
 - **Carpetas de devolución**: nuestra revisión ya no se lee del ERP (se rellena
   a mano y se salta revisiones) sino de lo archivado: `rev<nuestra>-<cliente>`,
   con el formato de las carpetas hermanas y en la carpeta `dev.` donde ya están

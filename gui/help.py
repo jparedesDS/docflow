@@ -244,7 +244,8 @@ HELP: dict[str, dict] = {
         "titulo": "Nuevo pedido",
         "que": "Crea en un clic la estructura de carpetas de un pedido nuevo: plantilla, Planning y VDDL.",
         "pasos": [
-            "Escribe el Nº de pedido (P-26/023): cliente y material se completan solos desde el ERP.",
+            "Escribe el Nº de pedido (P-26/023, o PA-26/125 si es de Almacén): cliente y material "
+            "se completan solos desde el ERP.",
             "«Localizar pedido» comprueba si ya existe la carpeta.",
             "«Procesar pedido» crea las carpetas y documentos; «Abrir carpeta» para verlo.",
             "Arriba, «Activaciones pendientes»: los correos «ACTIVACIÓN P-26/…» de Comercial. "

@@ -466,15 +466,22 @@ def parse_folder_meta(folder_name: str) -> dict | None:
     `cliente` y `material` — o None si el nombre no encaja con el patrón.
     """
     m = _PEDIDO_DIR_RE.match(folder_name)
-    if not m:
-        return None
-    yy, nnn, suf, tail = m.group(1), m.group(2), m.group(3), m.group(4).strip()
+    if m:
+        yy, nnn, suf, tail = m.group(1), m.group(2), m.group(3), m.group(4).strip()
+        folder_id = f"P-{yy}-{nnn}"
+    else:
+        # Pedido de Almacén: «PA-26-001 - CLIENTE - MATERIAL», sin suministro
+        m = _PA_DIR_RE.match(folder_name)
+        if not m:
+            return None
+        yy, nnn, suf, tail = m.group(1), m.group(2), None, m.group(3).strip()
+        folder_id = f"PA-{yy}-{nnn}"
     # tail = 'CLIENTE - MATERIAL' (puede haber varios guiones; partimos por el primero ' - ')
     parts = re.split(r"\s+[\-–—]\s+", tail, maxsplit=1)
     cliente = parts[0].strip() if parts else ""
     material = parts[1].strip() if len(parts) > 1 else ""
     return {
-        "folder_id": f"P-{yy}-{nnn}",
+        "folder_id": folder_id,
         "suffix": (f"S{suf}" if suf else None),
         "cliente": cliente,
         "material": material,
@@ -608,6 +615,45 @@ def find_existing_pa_dir(
     return candidates[0]
 
 
+def normalizar_pedido(raw: str) -> tuple[str, str | None]:
+    """Un pedido normal o de Almacén → (folder_id, suministro).
+
+    'P-26/023-S04' → ('P-26-023', 'S04');  'PA-26/125' → ('PA-26-125', None).
+    Lanza ValueError si no es ninguno de los dos."""
+    if is_pa_pedido(raw):
+        return parse_pa_pedido(raw), None
+    return parse_pedido(raw)
+
+
+def año_de_pedido(raw: str) -> int | None:
+    """El año va en el código: 'P-26-…' o 'PA-26-…' → 2026."""
+    try:
+        folder_id, _ = normalizar_pedido(raw)
+    except ValueError:
+        return None
+    return 2000 + int(folder_id.split("-")[1])
+
+
+def carpeta_del_año(folder_id: str, año: int, base_dir: Path = DEFAULT_BASE_DIR) -> Path:
+    """Donde viven las carpetas de ese tipo de pedido ese año."""
+    sub = f"{año} Pedidos Almacen" if folder_id.upper().startswith("PA-") else f"{año} Pedidos"
+    return Path(base_dir) / f"Año {año}" / sub
+
+
+def localizar_pedido_dir(pedido: str, año: int, base_dir: Path = DEFAULT_BASE_DIR) -> Path | None:
+    """La carpeta de un pedido, normal o de Almacén (con su suministro, si lo trae)."""
+    if is_pa_pedido(pedido):
+        return find_existing_pa_dir(pedido, año, base_dir=base_dir)
+    return find_existing_pedido_dir(pedido, año, base_dir=base_dir)
+
+
+def ref_corta(folder_id: str) -> str:
+    """'P-26-023' → 'P-26/023', 'PA-26-125' → 'PA-26/125': como lo escribe el ERP,
+    sin suministro (la clave de la Communication Matrix y la B3 del Planning)."""
+    m = re.match(r"^(PA?)-(\d{2})-(\d{3})$", (folder_id or "").strip(), re.I)
+    return f"{m.group(1).upper()}-{m.group(2)}/{m.group(3)}" if m else folder_id
+
+
 def find_documentacion_dir(
     pedido: str,
     base_dir: Path = DEFAULT_BASE_DIR,
@@ -693,11 +739,14 @@ class OrderSpec:
         self.sref = (self.sref or "").strip()
         self.suffix = (self.suffix or "").strip().upper() or "S00"
 
-        # Normaliza el pedido aceptando variantes (P-26-023, P-26/023, P-26-023-S00...).
-        folder_id, parsed_suffix = parse_pedido(self.pedido)
+        # Normaliza el pedido aceptando variantes (P-26-023, P-26/023, P-26-023-S00,
+        # PA-26/125...). Un pedido de Almacén no tiene suministro: va sin sufijo.
+        folder_id, parsed_suffix = normalizar_pedido(self.pedido)
         self.pedido = folder_id
+        if self.es_pa:
+            self.suffix = ""
         # Si el usuario ya incluyó sufijo en el pedido, prevalece sobre el campo separado
-        if parsed_suffix:
+        elif parsed_suffix:
             self.suffix = parsed_suffix
         if not isinstance(self.fecha_entrada, datetime):
             raise ValueError("fecha_entrada debe ser datetime.")
@@ -723,13 +772,20 @@ class OrderSpec:
             self.suffix = meta["suffix"]
 
     @property
+    def es_pa(self) -> bool:
+        """¿Pedido de Almacén (PA-XX-XXX)?"""
+        return self.pedido.upper().startswith("PA-")
+
+    @property
     def folder_name(self) -> str:
         """'P-26-023 - REFINERIA DEL NORTE - ELEMENTO REF034' (formato canónico para crear nuevas)."""
         return f"{self.pedido} - {self.cliente} - {self.material}"
 
     @property
     def n_ref(self) -> str:
-        """'P-26/023-S00' (formato N.REF interno EIPSA)."""
+        """'P-26/023-S00' (formato N.REF interno EIPSA); un PA, sin suministro: 'PA-26/125'."""
+        if self.es_pa:
+            return ref_corta(self.pedido)
         m = _PEDIDO_FOLDER_RE.match(self.pedido)
         if not m:
             return self.pedido
@@ -738,6 +794,8 @@ class OrderSpec:
     @property
     def n_ref_short(self) -> str:
         """'P-26/022' sin sufijo S00 — para la celda B3 del Planning."""
+        if self.es_pa:
+            return ref_corta(self.pedido)
         m = _PEDIDO_FOLDER_RE.match(self.pedido)
         if not m:
             return self.pedido
@@ -745,7 +803,10 @@ class OrderSpec:
 
     @property
     def eipsa_prefix(self) -> str:
-        """'26-050' — prefijo del Nº Documento EIPSA (sin la 'P-')."""
+        """'26-050' — prefijo del Nº Documento EIPSA (sin la 'P-'). Los de Almacén
+        lo llevan entero: 'PA-26-125-CAL-0001'."""
+        if self.es_pa:
+            return self.pedido
         m = _PEDIDO_FOLDER_RE.match(self.pedido)
         if not m:
             return self.pedido.lstrip("P-")
@@ -800,10 +861,12 @@ def create_folder_structure(
             "Comprueba que la unidad de red está conectada."
         )
 
-    año_dir = base_dir / f"Año {spec.año}" / f"{spec.año} Pedidos"
+    año_dir = carpeta_del_año(spec.pedido, spec.año, base_dir)
 
-    # 1) Buscar la carpeta del pedido (acepta `-S00` o sin sufijo)
-    pedido_dir = find_existing_pedido_dir(spec.pedido, spec.año, base_dir=base_dir)
+    # 1) Buscar la carpeta del pedido. Con su suministro: si S04 tiene carpeta
+    # propia es ésa, no la de S00 (sin ninguna que lo lleve, la de siempre).
+    buscado = spec.pedido if spec.es_pa or not spec.suffix else f"{spec.pedido}-{spec.suffix}"
+    pedido_dir = localizar_pedido_dir(buscado, spec.año, base_dir=base_dir)
 
     if pedido_dir is not None:
         logger.info("Pedido localizado: %s", pedido_dir)

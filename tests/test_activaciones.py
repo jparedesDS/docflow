@@ -213,12 +213,59 @@ vista.usar_activacion(next(x for x in vista.lista_act.tareas if x["supp"] == "S0
 ok(vista.var_f_prevista.get() == "2099-12-31", f"la entrega anterior no se pone: {vista.var_f_prevista.get()}")
 ok("no es posterior" in vista.txt_result.get("1.0", "end"), "y lo dice")
 
+# Una activación de Almacén (PA): también rellena y localiza su carpeta
+(base / "Año 2099" / "2099 Pedidos Almacen" / "PA-99-125 - OTRO CLIENTE - VAINAS" / "2-Tecnico").mkdir(parents=True)
+agenda.create_tarea("JP", act_srv.tarea_de(act_srv.analizar(
+    "ACTIVACIÓN PA-99/125 / OTRO CLIENTE", cuerpo(pedido="PA-99/125", de="OTRO CLIENTE / ", po="PO 110"),
+    COMERCIAL, "2099-03-10T09:20:00+01:00", "<pa2@x>")))
+vista.recargar_activaciones()
+vista.usar_activacion(next(x for x in vista.lista_act.tareas if x["pedido"] == "PA-99/125"))
+resultado = vista.txt_result.get("1.0", "end")
+ok(vista.var_pedido.get() == "PA-99-125" and vista.var_suffix.get() == "", "PA: pedido y sin suministro")
+ok(vista.var_sref.get() == "110" and vista.var_material.get() == "VAINAS",
+   f"PA: S.REF y material de la carpeta: {vista.var_sref.get()} / {vista.var_material.get()}")
+ok("2099 Pedidos Almacen" in resultado and "PA-99-125 - OTRO CLIENTE" in resultado,
+   f"PA: localiza su carpeta de Almacén: {resultado}")
+
 # Procesado: su activación se cierra y sale de la lista
 vista._procesando = ("P-99-001", "S04")
 cerradas = vista._cerrar_activacion()
 ok([x["supp"] for x in cerradas] == ["S04"], f"al procesar se cierra la suya: {cerradas}")
 ok(all(x["supp"] != "S04" for x in vista.lista_act.tareas), "y sale de la lista")
 root.destroy()
+
+# ── Abrir un pedido de Almacén y un suministro con carpeta propia ────────────
+from openpyxl import Workbook, load_workbook  # noqa: E402
+
+from core.services import apertura as ap  # noqa: E402
+
+ent, prev = datetime(2099, 3, 10), datetime(2099, 4, 30)
+pa = ap.OrderSpec(pedido="PA-99/125", fecha_entrada=ent, fecha_prevista=prev, año=2099)
+ok(pa.pedido == "PA-99-125" and pa.suffix == "" and pa.es_pa, f"PA normalizado y sin suministro: {pa}")
+ok(pa.n_ref == "PA-99/125" and pa.n_ref_short == "PA-99/125", f"N.REF de un PA, como el ERP: {pa.n_ref}")
+ok(pa.eipsa_prefix == "PA-99-125", f"los documentos de un PA llevan el PA delante: {pa.eipsa_prefix}")
+p = ap.OrderSpec(pedido="P-99-001", suffix="S04", fecha_entrada=ent, fecha_prevista=prev, año=2099)
+ok(p.n_ref == "P-99/001-S04" and p.eipsa_prefix == "99-001", f"los P no cambian: {p.n_ref} {p.eipsa_prefix}")
+ok(ap.año_de_pedido("PA-99/125") == 2099 and ap.año_de_pedido("P-98-001-S00") == 2098, "año del código")
+ok(ap.parse_folder_meta("PA-99-125 - OTRO CLIENTE - VAINAS")
+   == {"folder_id": "PA-99-125", "suffix": None, "cliente": "OTRO CLIENTE", "material": "VAINAS"},
+   "carpeta de Almacén: cliente y material")
+
+pdir, tdir, ddir = ap.create_folder_structure(pa, base_dir=base, create_if_missing=False)
+ok(pdir.name == "PA-99-125 - OTRO CLIENTE - VAINAS" and ddir.is_dir(), f"PA: su carpeta de Almacén: {pdir}")
+pdir, _, _ = ap.create_folder_structure(p, base_dir=base, create_if_missing=False)
+ok(pdir.name.startswith("P-99-001-S04"), f"S04 se procesa en la carpeta de S04, no en la de S00: {pdir.name}")
+
+plantilla = tmp / "plantilla_erp.xlsx"
+wb = Workbook()
+wb.active.append(["Nº Doc. EIPSA", "Nº Doc. Cliente", "Nº Pedido", "Título", "Tipo", "Crítico"])
+wb.save(plantilla)
+vddl, _ = ap.generate_vddl(pa, ddir, selected_folders=[ap.ALL_SUBFOLDERS[0]], erp_template=plantilla)
+ws = load_workbook(vddl).active
+codigo = ap.SUBFOLDER_INDEX[ap.ALL_SUBFOLDERS[0]].get("eipsa_code")
+ok(vddl.name == "01 IMPORTAR DOCUMENTOS - ERP - PA-99-125.xlsx", f"VDDL del PA: {vddl.name}")
+ok(ws["C2"].value == "PA-99/125" and (not codigo or ws["A2"].value == f"PA-99-125-{codigo}"),
+   f"VDDL del PA: pedido y Nº de documento: {ws['C2'].value} / {ws['A2'].value}")
 
 print("FALLOS:", fallos)
 sys.exit(1 if fallos else 0)
