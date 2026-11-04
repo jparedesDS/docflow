@@ -21,7 +21,10 @@ por una revisión posterior, se volvió a enviar.
 
 Luego se compara con el ERP (solo lectura) y queda lo que no cuadra. Una línea
 sale sola cuando el ERP ya tiene ese estado, una fecha de esos días (es el día
-que se apunta) y el 1er envío. De cada documento cuenta su última devolución.
+que se apunta) y el 1er envío; o cuando el documento ya se reenvió (el ERP dice
+«Enviado» de después de la devolución, o va por una revisión posterior). De
+cada documento cuenta su última devolución; si el cliente lo devolvió varias
+veces el mismo día con la misma revisión, vale cualquiera de esos resultados.
 
 El registro es local (`state/registro_erp.json`) y no escribe en el ERP.
 """
@@ -269,7 +272,7 @@ def recuperar_archivado(docs: list[dict] | None = None, descargas: dict | None =
     la fecha es la de la descarga, que va minutos detrás del correo. Un AP puede
     ser «Información» en el ERP: se admite cualquiera de las dos.
 
-    Cada transmittal se mira una vez (`reg["recuperados"]`). Devuelve cuántas
+    Cada transmittal se mira una vez (`reg["recuperados2"]`). Devuelve cuántas
     devoluciones nuevas apunta. Nunca lanza."""
     import zipfile
     from pathlib import Path
@@ -278,7 +281,7 @@ def recuperar_archivado(docs: list[dict] | None = None, descargas: dict | None =
             from core.services import portal_downloads
             descargas = portal_downloads._registry().get("done", {})
         reg = _cargar()
-        vistos = set(reg.setdefault("recuperados", []))
+        vistos = set(reg.setdefault("recuperados2", []))
         vistos |= {e.get("codigo") for e in reg["devueltos"].values() if e.get("codigo")}
         pendientes = {c: d for c, d in (descargas or {}).items()
                       if c not in vistos and d.get("dev_folders") and d.get("zip")}
@@ -309,9 +312,14 @@ def recuperar_archivado(docs: list[dict] | None = None, descargas: dict | None =
                     ficheros = []
             codigos = por_pedido.get(str(d.get("pedido", "")).upper(), {})
             devueltos = []
+            # Carpetas donde se archivó y que ya no están (se movieron a mano): su
+            # nombre sigue diciendo lo que el cliente resolvió entonces
+            movidas = [f for f in d["dev_folders"] if not Path(f).is_dir()]
             for nombre, tamaño in ficheros:
                 doc = _documento_del_fichero(nombre, codigos)
                 carpeta = _donde_quedo(d["dev_folders"], nombre, tamaño) if doc else None
+                if doc and carpeta is None and len(movidas) == 1:
+                    carpeta = Path(movidas[0])
                 rev = _rev_de_carpeta(carpeta) if (doc and carpeta) else None
                 if not rev or any(x["doc_eipsa"] == doc[0] and x["doc_cliente"] == doc[1] for x in devueltos):
                     continue
@@ -322,7 +330,7 @@ def recuperar_archivado(docs: list[dict] | None = None, descargas: dict | None =
                 nuevos += anotar({"devueltos": devueltos}, _fecha_del_correo(d.get("eml")) or d.get("when", ""),
                                  d.get("portal", ""), capturar=False, codigo=codigo)
             reg = _cargar()
-            reg.setdefault("recuperados", []).append(codigo)
+            reg.setdefault("recuperados2", []).append(codigo)
             _guardar(reg)
         if nuevos:
             logger.info("Registro ERP: %d devolución(es) recuperadas de lo ya archivado", nuevos)
@@ -407,8 +415,13 @@ def comparar(e: dict, fila: dict | None) -> dict | None:
     # El ERP ya va por una revisión nuestra posterior: se reenvió, esto es historia
     if n is not None and rev_erp is not None and rev_erp > n:
         return None
-    falta = []
     dev, puesta = _a_fecha(e.get("fecha")), _a_fecha(erp["fecha"])
+    # O dice «Enviado» de después de la devolución: también se reenvió, aunque
+    # la revisión del ERP no se subiera (P-23/044: devuelta la 51 el 31/10,
+    # enviada la 52 el 03/11 y el ERP seguía en rev 5)
+    if dev and puesta and puesta > dev and _fold(erp["estado"]).strip() == "enviado":
+        return None
+    falta = []
     if dev and not (puesta and dev - timedelta(days=_FECHA_ANTES) <= puesta
                     <= dev + timedelta(days=_FECHA_DESPUES)):
         falta.append("fecha")
@@ -445,7 +458,7 @@ def pendientes(erp: dict | None = "leer") -> dict:
     _guardar_envios(reg, vigentes, erp)
     filas = []
     for clave, e in vigentes:
-        dif = comparar(e, erp.get(_clave_doc(e)))
+        dif = comparar(_con_hermanas(reg, clave), erp.get(_clave_doc(e)))
         if dif is not None:
             filas.append({"clave": clave, **e, **dif})
     filas.sort(key=lambda f: (_a_fecha(f.get("fecha")) or date.min, f.get("pedido", "")), reverse=True)
@@ -476,6 +489,20 @@ def _ultimas(reg: dict) -> list[str]:
     return [clave for _o, clave in ultimas.values()]
 
 
+def _con_hermanas(reg: dict, clave: str) -> dict:
+    """La devolución, con los estados de sus hermanas como alternativas: el
+    mismo documento devuelto otra vez el mismo día con la misma revisión nuestra
+    (Silleno, P-26/032: el plano volvió aprobado a las 07:57 y comentado a las
+    13:25). Cualquiera de esos resultados es una forma correcta de apuntarlo."""
+    e = reg["devueltos"][clave]
+    otros = [x["estado"] for k, x in reg["devueltos"].items()
+             if k != clave and _clave_doc(x) == _clave_doc(e) and x.get("nuestra") == e.get("nuestra")
+             and x.get("fecha") == e.get("fecha") and x.get("estado") != e.get("estado")]
+    if not otros:
+        return e
+    return {**e, "estado_alt": list(dict.fromkeys([*(e.get("estado_alt") or []), *otros]))}
+
+
 def estado_por_codigo(erp: dict | None = "leer") -> dict | None:
     """Para la columna «ERP» de Devoluciones: {código del transmittal → {total, faltan}}.
 
@@ -502,7 +529,8 @@ def estado_por_codigo(erp: dict | None = "leer") -> dict | None:
     for clave, e in con_codigo.items():
         r = out.setdefault(e["codigo"], {"total": 0, "faltan": 0})
         r["total"] += 1
-        if clave in ultimas and not e.get("ignorada") and comparar(e, erp.get(_clave_doc(e))) is not None:
+        if (clave in ultimas and not e.get("ignorada")
+                and comparar(_con_hermanas(reg, clave), erp.get(_clave_doc(e))) is not None):
             r["faltan"] += 1
     return out
 

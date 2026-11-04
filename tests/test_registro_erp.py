@@ -144,7 +144,8 @@ ok(R.comparar(next(e for e in R._cargar()["devueltos"].values() if e["doc_client
 # Grupos para pegar de una vez y ocultar
 filas = R.pendientes(erp={})["filas"]
 ok(all("documento" in x["falta"] for x in filas) and R.grupos(filas) == [], "sin ERP para ellos: sin grupos")
-filas = R.pendientes(erp={k: dict(v, state="Enviado") for k, v in ERP.items()})["filas"]
+# Un estado equivocado (un «Enviado» de después sería un reenvío y ya no faltaría nada)
+filas = R.pendientes(erp={k: dict(v, state="Rechazado") for k, v in ERP.items()})["filas"]
 g = R.grupos([x for x in filas if "documento" not in x["falta"]])
 ok(g and g[0]["estado"] == "Aprobado" and g[0]["fecha"] == "10/03/2099", f"grupo por estado y fecha: {g}")
 xlsx = R.exportar_excel(filas, tmp / "pendiente.xlsx")
@@ -215,6 +216,39 @@ ok(R.recuperar_archivado(docs=SEGUIMIENTO, descargas=DESCARGAS) == 0, "cada tran
 ok(R._rev_de_carpeta(base / "dev. Planos" / "rev0" / "com. mayores") == ("0", "", "Com. Mayores"),
    "resolución en subcarpeta")
 ok(R._rev_de_carpeta(base / "rev0-A" / "VOID") is None, "un VOID no se recupera")
+
+# Reenviado aunque el ERP no subiera la revisión: «Enviado» de después de la devolución
+dev51 = {"doc_eipsa": "99-007-DOS-0002", "nuestra": "5", "cliente": "51", "estado": "Com. Menores",
+         "fecha": "31/10/2099"}
+ok(R.comparar(dev51, {"state": "Enviado", "revision": 5, "state_date": "03/11/2099"}) is None,
+   "se envió la 52 después de devolverse la 51: es historia")
+ok(R.comparar(dev51, {"state": "Enviado", "revision": 5, "state_date": "20/10/2099"}) is not None,
+   "un «Enviado» de antes de la devolución es el envío que se devolvió: falta")
+
+# El mismo documento devuelto dos veces el mismo día: vale cualquiera de los dos
+reg = R._cargar()
+reg["devueltos"]["a"] = {"doc_eipsa": "99-008-PLG-0005", "doc_cliente": "", "nuestra": "1", "cliente": "B",
+                         "estado": "Aprobado", "fecha": "30/10/2099", "recibido": "2099-10-30T07:57:00",
+                         "codigo": "TR-A", "anotado": "2099-10-30"}
+reg["devueltos"]["b"] = dict(reg["devueltos"]["a"], estado="Com. Menores", recibido="2099-10-30T13:25:00",
+                             codigo="TR-B")
+R._guardar(reg)
+ERP4 = {"99-008-PLG-0005": {"state": "Aprobado", "revision": 1, "state_date": "30/10/2099",
+                            "date_first_rev": "01/10/2099"}}
+st = R.estado_por_codigo(erp=ERP4)
+ok(st.get("TR-B") == {"total": 1, "faltan": 0}, f"la última es com, el ERP dice el AP del mismo día: {st.get('TR-B')}")
+ok(R._con_hermanas(R._cargar(), "b").get("estado_alt") == ["Aprobado"], "con su hermana como alternativa")
+
+# Carpeta movida a mano después de archivar: manda la ruta donde se archivó
+movida = base / "dev. Planos" / "rev 2-C AP"                 # no existe
+zp2 = tmp / "tr2.zip"
+with zipfile.ZipFile(zp2, "w") as zf:
+    zf.writestr("CLI-DWG-0061.pdf", b"w" * 40)
+DESC2 = {"TR-99-0009": {"pedido": "P-99/006", "zip": str(zp2), "when": "2099-11-05T08:00:00",
+                        "dev_folders": [str(movida)]}}
+ok(R.recuperar_archivado(docs=SEGUIMIENTO, descargas=DESC2) == 1, "recupera el de la carpeta movida")
+m = next(e for e in R._cargar()["devueltos"].values() if e.get("codigo") == "TR-99-0009")
+ok(m["estado"] == "Aprobado" and m["nuestra"] == "2" and m["cliente"] == "C", f"con lo que decía su carpeta: {m}")
 
 from gui.views.devoluciones.lista import _CARGANDO, DevolucionesView  # noqa: E402
 
