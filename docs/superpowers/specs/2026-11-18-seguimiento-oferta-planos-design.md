@@ -279,3 +279,22 @@ planos), y **la fábrica puede empezar** cuando tiene las dos cosas (hito
 hay que comprar material o no, con «lo que más retrasa» (material o planos, en
 X de cada 10 pedidos con compras). El total va de la oferta a `listo`. En
 «Pedidos», columna «Lo que retrasó».
+
+### Correos de las carpetas del pedido (2026-11-18)
+
+Los buzones compartidos solo guardan correo desde mayo de 2026, pero cada
+pedido archiva sus correos en M: (solo lectura, .msg con extract_msg):
+
+- `3-Fabricacion\Orden de compra`: «P-xx/xxx, orden de compra disponible», el
+  técnico pasa la orden de compra a Compras (83 de 91 pedidos de 2026). Hito
+  nuevo `oc`: fecha y hora del más antiguo, remitente = técnico, primer
+  destinatario = la persona de Compras.
+- `1-Comercial` (solo el primer nivel): el correo «ACTIVACIÓN» (hora y quién
+  activó; 82 de 91) y el de la PO del cliente cuando esté («Purchase Order»,
+  «PO …», «Pedido …»): fecha real de la PO, que el ERP no tiene.
+
+El material se parte en tres: Técnico (activación → orden de compra a
+Compras), Compras (orden de compra → 1.er pedido al proveedor; si no hay
+correo, desde la activación) y Proveedor (pedido al proveedor → material
+recibido). «Activar» (PO → activación) solo cuenta con las dos fechas reales.
+Los buzones de Ofertas se leen enteros (lo que guarden), no solo 60 días.
