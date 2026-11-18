@@ -62,6 +62,7 @@ VISTAS = [
     ("compras", "gui.views.compras", "ComprasView", {"on_open_pedido": noop}),
     ("calidad", "gui.views.calidad", "CalidadView", {"on_open_pedido": noop}),
     ("produccion", "gui.views.produccion", "ProduccionView", {"on_open_pedido": noop}),
+    ("plazos", "gui.views.plazos", "PlazosView", {"on_open_pedido": noop}),
     ("administracion", "gui.views.administracion", "AdministracionView",
      {"on_open_pedido": noop}),
     ("inbox", "gui.views.inbox", "InboxView", {}),

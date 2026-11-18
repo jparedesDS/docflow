@@ -86,6 +86,19 @@ DEFAULT_SCHEDULES: list[dict] = [
         "last_run": None,
     },
     {
+        "id": "weekly-plazos",
+        "type": "plazos",
+        "title": "Plazos: de la oferta a la fábrica",
+        "description": "Informe web con lo que tarda cada paso, la cola de planos y los tiempos por persona, "
+                       "con el Excel adjunto, cada lunes",
+        "enabled": False,
+        "frequency": "weekly",
+        "schedule": {"day_of_week": "mon", "hour": 8, "minute": 0},
+        "recipients": {"to": [], "cc": []},
+        "options": {},
+        "last_run": None,
+    },
+    {
         "id": "weekly-teams-personal",
         "type": "teams_personal",
         "title": "Pendientes por Teams (Personal)",
@@ -230,6 +243,13 @@ def execute_schedule(schedule_id: str) -> dict:
                 record_run(schedule_id, "error", error="Sin destinatarios (To)")
                 return {"status": "error", "error": "Indica al menos un destinatario en To"}
             result = send_executive_html_email(to=to, cc=cc)
+            count = len(result.get("recipients", []))
+        elif sched["type"] == "plazos":
+            from core.services import interactive_report
+            if not to:
+                record_run(schedule_id, "error", error="Sin destinatarios (To)")
+                return {"status": "error", "error": "Indica al menos un destinatario en To"}
+            result = interactive_report.send_plazos_email(to, cc)
             count = len(result.get("recipients", []))
         elif sched["type"] == "teams_personal":
             from core.services.teams import is_configured

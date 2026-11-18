@@ -180,6 +180,7 @@ def send_html_email(
     attachment_eml: bytes = None,
     attachment_name: str = "original.eml",
     save_to_sent: bool = True,
+    extra_attachments: list[tuple[str, bytes]] | None = None,
 ):
     """Envía un email HTML por SMTP_SSL y guarda copia en Sent (IMAP APPEND).
 
@@ -205,6 +206,13 @@ def send_html_email(
         part.set_payload(attachment_eml)
         encoders.encode_base64(part)
         part.add_header("Content-Disposition", "attachment", filename=attachment_name)
+        msg.attach(part)
+
+    for nombre, contenido in extra_attachments or []:
+        part = MIMEBase("application", "octet-stream")
+        part.set_payload(contenido)
+        encoders.encode_base64(part)
+        part.add_header("Content-Disposition", "attachment", filename=nombre)
         msg.attach(part)
 
     raw = msg.as_bytes()

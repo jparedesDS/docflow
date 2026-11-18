@@ -58,6 +58,9 @@ Sobres de firma electrónica con su estado, lectura del buzón y tareas/notas/re
 ### Departamentos
 **Comercial** (ofertas), **Compras** (material pendiente de proveedor), **Producción** (taller y horas), **Calidad** (no conformidades y equipos de medida), **Administración** (facturas y avales) y **Almacén** (expediciones).
 
+### ⏱ Plazos
+Del correo de la oferta a la fábrica: cuántos días tarda cada paso y quién lo hace. Oferta recibida → contestada (comercial), contestada → pedido (tiempo del cliente, aparte), activación, y a la vez compras del material y planos (técnico), hasta que se mandan a fábrica. Las fechas salen del ERP; la hora, del correo cuando se puede enlazar; la de los planos, del primer correo que el técnico manda a fábrica, guardado en `3-Fabricacion\Envíos`. La **cola** dice qué pedido va primero: arriba los que ya tienen el material y esperan los planos, con su margen en horquilla. También en Excel y en un informe web semanal por correo.
+
 ### 📊 Informes
 Monitoring Report en Excel, informes web interactivos (semanal, mensual, ejecutivo y por pedido), resúmenes por correo y programación automática.
 

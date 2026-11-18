@@ -72,6 +72,28 @@ HELP: dict[str, dict] = {
             "Las horas salen del parte de taller (imputación por OT); arriba se indica hasta qué fecha hay datos",
         ],
     },
+    "plazos": {
+        "titulo": "Plazos",
+        "que": "Cuánto tarda cada paso desde que entra el correo de la oferta hasta que los planos se pasan a "
+               "fábrica, quién lo hace y qué pedido va primero.",
+        "pasos": [
+            "Los pasos: oferta recibida → contestada (comercial), contestada → pedido (tiempo del cliente, no es "
+            "nuestro), activación, compras del material y planos (técnico) a la vez, hasta que se mandan a fábrica.",
+            "Las fechas salen del ERP; la hora de la oferta y de la activación, del correo cuando se puede enlazar; "
+            "la de los planos, del primer correo guardado en 3-Fabricacion\\Envíos (el técnico es quien lo "
+            "manda; sin correo, el PDF).",
+            "«Cola»: pedidos activados que aún no están en fábrica. Arriba, en rojo, los que ya tienen el material "
+            "y esperan los planos.",
+            "Margen = entrega − hoy − lo que suelen tardar desde los planos hasta el envío los pedidos del mismo "
+            "tipo. Es una horquilla: «−5 a 30 d» significa que puede ir 5 días tarde o sobrar 30.",
+            "«Por persona»: el típico de cada uno con cuántos pedidos lo dicen; con pocos pedidos, la cifra dice poco.",
+            "Doble clic abre la carpeta Envíos del pedido (o el pedido, si no la hay).",
+        ],
+        "atajos": [
+            "↻ vuelve a leer también los buzones de Ofertas",
+            "El informe web semanal se programa en Centro de Reportes ▸ Programados",
+        ],
+    },
     "administracion": {
         "titulo": "Administración",
         "que": "Facturas emitidas sin cobrar y avales bancarios con su vencimiento.",

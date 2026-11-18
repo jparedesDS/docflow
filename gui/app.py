@@ -560,6 +560,9 @@ class DocFlowLiteApp(ctk.CTk):
         elif key == "produccion":
             from gui.views.produccion import ProduccionView
             view = ProduccionView(self.content, on_open_pedido=self.open_pedido)
+        elif key == "plazos":
+            from gui.views.plazos import PlazosView
+            view = PlazosView(self.content, on_open_pedido=self.open_pedido)
         elif key == "administracion":
             from gui.views.administracion import AdministracionView
             view = AdministracionView(self.content, on_open_pedido=self.open_pedido)

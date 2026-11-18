@@ -32,6 +32,7 @@ NAV_LAYOUT = [
     {"type": "group", "id": "departamentos", "label": "Departamentos", "items": [
         {"key": "compras",        "label": "Compras",        "icon": "🛒"},
         {"key": "produccion",     "label": "Producción",     "icon": "⚙"},
+        {"key": "plazos",         "label": "Plazos",         "icon": "⏱"},
         {"key": "calidad",        "label": "Calidad",        "icon": "✔"},
         {"key": "administracion", "label": "Administración", "icon": "€"},
         {"key": "almacen",        "label": "Almacén",        "icon": "📦"},

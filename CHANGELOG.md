@@ -5,6 +5,18 @@ los commits; aquí queda lo que cambió la forma de trabajar.
 
 ## Octubre y noviembre 2026
 
+- **Plazos** (Departamentos ▸ ⏱): del correo de la oferta a la fábrica,
+  pedido a pedido. Cada paso con sus días y quién lo hizo: oferta recibida →
+  contestada (comercial; la hora sale del correo si se enlaza con la oferta
+  del ERP), contestada → pedido (tiempo del cliente, aparte y en gris),
+  activación, y a la vez compras del material y planos a fábrica (fecha, hora
+  y remitente del primer correo de `3-Fabricacion\Envíos`), hasta la 1.ª OT, el
+  primer fichaje y el envío. La **cola** pone arriba los pedidos con el
+  material listo que esperan planos, con un margen en horquilla (entrega −
+  hoy − lo que suelen tardar los del mismo tipo desde los planos al envío).
+  Sale también en Excel y en un informe web semanal por correo (Centro de
+  Reportes ▸ Programados, desactivado hasta poner destinatarios). Todo en
+  solo lectura.
 - **Activaciones de pedidos**: los correos «ACTIVACIÓN P-26/…» de Comercial
   (al buzón compartido o al personal, una vez aunque lleguen a los dos) crean
   «Abrir pedido …» en la Agenda con la PO, la entrega, el plazo y lo que piden

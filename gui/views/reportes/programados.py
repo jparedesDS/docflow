@@ -135,7 +135,7 @@ class ProgramadosMixin:
         to = recipients.get("to") or []
         cc = recipients.get("cc") or []
         if sched["type"] in ("executive", "interactive",
-                              "interactive_executive") and (to or cc):
+                              "interactive_executive", "plazos") and (to or cc):
             recip_text = f"To: {', '.join(to)}" + (f" · Cc: {', '.join(cc)}" if cc else "")
             ctk.CTkLabel(
                 footer, text=f"  ·  {recip_text}",

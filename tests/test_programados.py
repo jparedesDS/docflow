@@ -49,6 +49,19 @@ res = sr.execute_schedule(SID)
 ultimo = sr.get_schedule(SID)["last_run"]
 ok(res["status"] == "error" and ultimo["status"] == "error", f"fallan todas: error, no «correcto»: {ultimo}")
 
+# Plazos: nace desactivado y sin destinatarios no envía nada
+from core.services import interactive_report  # noqa: E402
+
+ok(sr.get_schedule("weekly-plazos") is not None and sr.get_schedule("weekly-plazos")["enabled"] is False,
+   "existe el de Plazos y nace desactivado")
+llamadas = []
+interactive_report.send_plazos_email = lambda to, cc=None: llamadas.append((to, cc)) or {"recipients": to}
+res = sr.execute_schedule("weekly-plazos")
+ok(res["status"] == "error" and "destinatario" in res["error"] and not llamadas, f"sin destinatarios: {res}")
+sr.update_schedule("weekly-plazos", {"recipients": {"to": ["jefe@ejemplo.test"], "cc": []}})
+res = sr.execute_schedule("weekly-plazos")
+ok(res["status"] == "success" and llamadas == [(["jefe@ejemplo.test"], None)], f"con destinatario: {res} {llamadas}")
+
 resultado.update(sent=[], skipped=["AA", "BB", "CC"], errors=[], count=0)
 sr.execute_schedule(SID)
 ultimo = sr.get_schedule(SID)["last_run"]

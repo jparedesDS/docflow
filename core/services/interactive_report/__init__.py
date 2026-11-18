@@ -40,8 +40,16 @@ from core.services.interactive_report.pedido import (
     render_pedido_html,
     send_pedido_email,
 )
+from core.services.interactive_report.plazos import (
+    generate_plazos,
+    render_plazos_html,
+    send_plazos_email,
+)
 
 __all__ = [
+    "generate_plazos",
+    "render_plazos_html",
+    "send_plazos_email",
     "ACCENT",
     "AMBER",
     "BLUE",

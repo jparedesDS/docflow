@@ -40,7 +40,7 @@ ADMIN_INITIALS: set[str] = {"JP"}
 # la puede ver nadie más que el admin, ni se le puede dar permiso.
 SECTION_KEYS: list[str] = [
     "apertura", "agenda", "inbox", "ofertas", "documentos", "pedidos",
-    "almacen", "compras", "calidad", "produccion", "administracion",
+    "almacen", "compras", "calidad", "produccion", "plazos", "administracion",
     "devoluciones", "reclamaciones", "docusign", "informes", "reportes",
     "portadas", "vpr",
 ]

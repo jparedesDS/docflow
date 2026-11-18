@@ -321,7 +321,7 @@ class EditScheduleDialog(ctk.CTkToplevel):
 
         # Recipients (executive / interactive usan To/Cc)
         recipients = sched.get("recipients") or {}
-        if sched["type"] in ("executive", "interactive", "interactive_executive"):
+        if sched["type"] in ("executive", "interactive", "interactive_executive", "plazos"):
             ctk.CTkLabel(self, text="Destinatarios To",
                          font=theme.font(10, "bold"),
                          text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w", padx=22, pady=(0, 4))
