@@ -307,8 +307,12 @@ ok("No hay pedidos esperando" in cola_txt, f"cola vacía: {cola_txt[:200]}")
 personas = [[c.value for c in r] for r in wb["Personas"].iter_rows(min_row=4)]
 ok(["Tecnico Uno", "Mandar planos a fábrica", "7 días", 1] in personas, f"personas: {personas}")
 ok(not any("Activar" in str(r) for r in personas), "sin el paso «activar»")
-wb2 = load_workbook(seguimiento_excel.exportar({**d, "avisos": ["Sin ERP"]}, tmp / "plazos2.xlsx"))
-ok("Sin ERP" in " ".join(str(v) for h, v in textos(wb2) if h == "Resumen"), "los avisos se ven en el resumen")
+wb2 = load_workbook(seguimiento_excel.exportar({**d, "avisos": ["Sin ERP", "Sin acceso a M:", "Sin correo"]},
+                                               tmp / "plazos2.xlsx"))
+aviso_txt = " ".join(str(v) for h, v in textos(wb2) if h == "Resumen")
+ok("No se pudo leer el ERP" in aviso_txt and "No se pudo entrar en la unidad M:" in aviso_txt
+   and "las fechas de las ofertas son las del ERP" in aviso_txt and "faltan datos" not in aviso_txt,
+   f"cada aviso dice qué falta: {aviso_txt[:400]}")
 
 # Prioridad en palabras
 HOY = date(2099, 3, 1)

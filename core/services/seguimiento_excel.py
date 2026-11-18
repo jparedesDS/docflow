@@ -50,6 +50,14 @@ RESUMEN = [
 
 RETRASO = {"material": "Material", "planos": "Planos", "los dos": "Los dos"}
 
+# Qué falta de verdad cuando una fuente no responde (los avisos de `seguimiento.cargar`)
+AVISOS = {
+    "Sin ERP": "No se pudo leer el ERP: faltan pedidos y fechas; las cifras no valen esta vez.",
+    "Sin acceso a M:": "No se pudo entrar en la unidad M: faltan las fechas de los planos a fábrica.",
+    "Sin correo": "No se pudo leer el correo de Ofertas: las fechas de las ofertas son las del ERP "
+                  "(el día, sin la hora). El resto de cifras vale.",
+}
+
 
 def frase_retraso(cuello: dict) -> str:
     """«Lo que más retrasa: el material (en 8 de cada 10 pedidos con compras)»."""
@@ -195,8 +203,8 @@ def _resumen(wb, datos: dict) -> None:
     fila = 3
     for aviso in datos.get("avisos") or []:
         fila += 1
-        ws.cell(fila, 1, f"⚠ {aviso}: faltan datos, las cifras pueden estar incompletas.").font = \
-            Font(size=LETRA, bold=True, color="C00000")
+        texto = AVISOS.get(aviso, f"{aviso}: puede faltar algún dato.")
+        ws.cell(fila, 1, f"⚠ {texto}").font = Font(size=LETRA, bold=True, color="C00000")
     fila += 2
     ws.cell(fila, 1, "Lo normal:").font = Font(size=16, bold=True)
     tramos = datos["resumen"]["tramos"]

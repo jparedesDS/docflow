@@ -160,10 +160,15 @@ def _creds(label: str) -> tuple[str, str] | None:
 
 
 def _parse_dt(iso: str):
+    """Fecha comparable de un correo. Unos traen zona horaria y otros no
+    (cabecera «-0000» o sin zona): sin zona se toma como hora local, para que
+    ordenarlos juntos no lance TypeError. Sin fecha, al final."""
+    from datetime import timezone
     try:
-        return datetime.fromisoformat(iso)
+        dt = datetime.fromisoformat(iso)
     except Exception:
-        return datetime.min
+        return datetime.min.replace(tzinfo=timezone.utc)
+    return dt if dt.tzinfo else dt.astimezone()
 
 
 _SUBJ_PREFIX_RE = re.compile(r"^\s*(re|fwd|fw|rv|aw)\s*:\s*", re.IGNORECASE)

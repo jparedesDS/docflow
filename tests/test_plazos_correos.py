@@ -117,6 +117,17 @@ scor.agenda.get_tareas = lambda owner=None: [
 act = scor.activaciones_por_pedido()
 ok(act.get("P-99/001-S04", {}).get("remitente") == "A", f"horas con y sin zona: {act}")
 
+# Buzones de Ofertas: correos con fecha con zona, sin zona y sin fecha se ordenan sin romper
+from core.services import ofertas  # noqa: E402
+
+mezcla = [{"date": "2099-01-09T10:15:00+01:00"}, {"date": "2099-01-09T12:00:00"}, {"date": ""},
+          {"date": "2099-01-08T09:00:00-05:00"}]
+try:
+    orden = sorted(mezcla, key=lambda x: ofertas._parse_dt(x.get("date", "")), reverse=True)
+    ok([o["date"] for o in orden][-1] == "", f"sin fecha, al final: {orden}")
+except TypeError as exc:
+    ok(False, f"fechas con y sin zona no se pueden ordenar: {exc}")
+
 # Activaciones desde la Agenda
 scor.agenda.get_tareas = lambda owner=None: [
     {"origen": "activacion", "pedido": "P-99/001", "supp": "S04", "recibido": "2099-02-26T08:00:00+01:00",
