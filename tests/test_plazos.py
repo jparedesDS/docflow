@@ -54,8 +54,27 @@ ok(f["tramos"]["material"] == 22 and f["tramos"]["compras_pedir"] == 3, "compras
 ok(f["tramos"]["a_fabrica"] == 0 and f["tramos"]["cola_taller"] == 4, "planos → 1.ª OT → 1.er fichaje")
 ot_antes = seg.construir_filas([ped()], COMPRAS, {"P-99/001": {"primera_ot": date(2099, 3, 1), "primer_fichaje": None}},
                                PLANOS, CORREOS, ACT)[0]
-ok(ot_antes["tramos"]["total"] == 63,
-   f"total: correo de la oferta → planos a fábrica (1-ene → 5-mar), no a la OT: {ot_antes['tramos']['total']}")
+ok(ot_antes["tramos"]["total"] == 78,
+   f"total: correo de la oferta → la fábrica puede empezar (1-ene → 20-mar), no a la OT: {ot_antes['tramos']['total']}")
+
+# La fábrica puede empezar cuando tiene planos Y material: lo que llegue último
+ok(ot_antes["hitos"]["listo"]["fecha"] == date(2099, 3, 20) and ot_antes["tramos"]["listo"] == 22
+   and ot_antes["retraso_por"] == "material", f"material el último: {ot_antes['tramos']['listo']} {ot_antes['retraso_por']}")
+pl_tarde = seg.construir_filas([ped()], COMPRAS, {}, {"P-99/001-S00": {**PLANOS["P-99/001-S00"],
+                                                                       "creado": datetime(2099, 3, 25)}}, {}, ACT)[0]
+ok(pl_tarde["tramos"]["listo"] == 27 and pl_tarde["retraso_por"] == "planos", "planos los últimos")
+sin_cp = seg.construir_filas([ped()], {}, {}, PLANOS, {}, ACT)[0]
+ok(sin_cp["tramos"]["listo"] == 7 and sin_cp["retraso_por"] == "planos", "sin compras: solo cuentan los planos")
+pend = seg.construir_filas([ped()], {"P-99/001": {**COMPRAS["P-99/001"], "pendiente": 2}}, {}, PLANOS, {}, ACT)[0]
+ok(pend["tramos"]["listo"] is None and pend["retraso_por"] == "", "material pendiente: la fábrica aún no puede empezar")
+igual = seg.construir_filas([ped()], {"P-99/001": {**COMPRAS["P-99/001"], "ultima_recepcion": date(2099, 3, 5)}},
+                           {}, PLANOS, {}, ACT)[0]
+ok(igual["retraso_por"] == "los dos", "el mismo día")
+c = seg.resumen([ot_antes, pl_tarde, sin_cp, pend, igual])["cuello"]
+ok(c == {"material": 1, "planos": 1, "los dos": 1, "total": 3}, f"lo que más retrasa, solo con compras: {c}")
+lc = seg.resumen([ot_antes, pl_tarde, sin_cp, pend, igual])["listo"]
+ok(lc["con_compras"]["n"] == 3 and lc["con_compras"]["mediana"] == 22 and lc["sin_compras"]["n"] == 1
+   and lc["sin_compras"]["mediana"] == 7, f"puede empezar, separado con y sin compras: {lc}")
 ok(f["estado"] == "ok" and f["compartido"] is False, f"estado normal: {f['estado']} {f['compartido']}")
 ok(f["ruta"] == "X", "ruta de los planos")
 f = seg.construir_filas([ped()], {}, {}, {"P-99/001-S00": {**PLANOS["P-99/001-S00"], "fuente": "correo",
@@ -276,6 +295,13 @@ ok(not malos, f"nada de None, p25, medianas ni decimales: {malos[:5]}")
 resumen_txt = " ".join(str(v) for h, v in textos(wb) if h == "Resumen")
 ok("Contestar una oferta" in resumen_txt and "5 días" in resumen_txt, f"resumen: {resumen_txt[:300]}")
 ok("no depende de nosotros" in resumen_txt, "el tiempo del cliente, explicado")
+ok("Desde que se activa el pedido" in resumen_txt and "Compras: tener todo el material" in resumen_txt
+   and "Técnico: mandar los planos a fábrica" in resumen_txt
+   and "La fábrica puede empezar, si hay que comprar material" in resumen_txt
+   and "La fábrica puede empezar, si no hace falta comprar" in resumen_txt,
+   f"desglose desde la activación: {resumen_txt[:400]}")
+ok("Lo que más retrasa: el material" in resumen_txt, f"qué retrasa más: {resumen_txt}")
+ok(fila["Lo que retrasó"] == "Material" and fila["Días en total"] == 78, f"por pedido: {fila}")
 cola_txt = " ".join(str(v) for h, v in textos(wb) if h == "Qué hacer primero")
 ok("No hay pedidos esperando" in cola_txt, f"cola vacía: {cola_txt[:200]}")
 personas = [[c.value for c in r] for r in wb["Personas"].iter_rows(min_row=4)]

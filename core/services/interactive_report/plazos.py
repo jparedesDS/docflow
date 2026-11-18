@@ -26,6 +26,7 @@ CADENA = [
     ("compras_pedir", "Activación → 1.er pedido a proveedor", "Compras"),
     ("material", "Activación → material recibido", "Compras / proveedor"),
     ("tecnico", "Activación → planos a fábrica", "Técnico"),
+    ("listo", "Activación → la fábrica puede empezar (planos y material)", "Lo que llegue último"),
     ("cola_taller", "1.ª OT → 1.er fichaje", "Fábrica"),
     ("taller_envio", "Planos a fábrica → envío", "Fábrica"),
 ]

@@ -30,7 +30,7 @@ TAB_COLA, TAB_PEDIDOS, TAB_PERSONAS = "Cola", "Pedidos", "Por persona"
 
 COLA_COLUMNS = ["#", "Qué falta", "Pedido", "Cliente", "Equipo", "Activación", "Entrega", "Margen", "Basado en"]
 PED_TRAMOS = [("comercial", "Comercial"), ("cliente", "Cliente"), ("activar", "Activar"),
-              ("material", "Material"), ("tecnico", "Técnico"),
+              ("material", "Material"), ("tecnico", "Técnico"), ("listo", "Puede empezar"),
               ("taller_envio", "Planos a fábrica → envío"), ("total", "Total")]
 PED_COLUMNS = ["Pedido", "Cliente", "Equipo"] + [n for _t, n in PED_TRAMOS] + ["Técnico (quién)", "Estado"]
 PER_COLUMNS = ["Paso", "Persona", "Pedidos", "Típico (días)", "La mitad, entre"]

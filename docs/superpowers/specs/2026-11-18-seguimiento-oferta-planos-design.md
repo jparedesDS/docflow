@@ -267,3 +267,15 @@ cabecera fija al bajar, impresión horizontal ajustada al ancho:
    (siempre ~0, confunde).
 
 Nada de p25/p75, medianas, horquillas, fuentes ni horas en el Excel.
+
+### Desglose desde la activación (2026-11-18)
+
+JP pidió desglosar «activación → material → planos». Con datos reales los
+planos llegan a fábrica antes que el material en 69 de 86 pedidos, así que
+«material → planos» saldría casi siempre negativo. En su lugar, desde la
+activación y a la vez: Compras (tener todo el material) y Técnico (mandar los
+planos), y **la fábrica puede empezar** cuando tiene las dos cosas (hito
+`listo` = lo que llegue último; sin compras, los planos), enseñado aparte si
+hay que comprar material o no, con «lo que más retrasa» (material o planos, en
+X de cada 10 pedidos con compras). El total va de la oferta a `listo`. En
+«Pedidos», columna «Lo que retrasó».

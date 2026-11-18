@@ -36,13 +36,31 @@ FALTA = {"planos": "Planos (el material ya está)", "ambos": "Planos y material"
 PERSONAS = [("comercial", "Contestar ofertas"), ("compras", "Conseguir el material"),
             ("tecnico", "Mandar planos a fábrica")]
 
+# (tramo o None para un subtítulo, texto, nota, sangría)
 RESUMEN = [
-    ("comercial", "Contestar una oferta", ""),
-    ("cliente", "El cliente tarda en hacer el pedido", "no depende de nosotros"),
-    ("material", "Del pedido a tener el material", ""),
-    ("tecnico", "Del pedido a mandar los planos a fábrica", ""),
-    ("total", "De la oferta a la fábrica, en total", ""),
+    ("comercial", "Contestar una oferta", "", 0),
+    ("cliente", "El cliente tarda en hacer el pedido", "no depende de nosotros", 0),
+    (None, "Desde que se activa el pedido (las dos cosas a la vez):", "", 0),
+    ("material", "Compras: tener todo el material", "", 1),
+    ("tecnico", "Técnico: mandar los planos a fábrica", "", 1),
+    ("listo:con_compras", "→ La fábrica puede empezar, si hay que comprar material", "", 1),
+    ("listo:sin_compras", "→ La fábrica puede empezar, si no hace falta comprar", "", 1),
+    ("total", "De la oferta a la fábrica, en total", "", 0),
 ]
+
+RETRASO = {"material": "Material", "planos": "Planos", "los dos": "Los dos"}
+
+
+def frase_retraso(cuello: dict) -> str:
+    """«Lo que más retrasa: el material (en 8 de cada 10 pedidos con compras)»."""
+    total = cuello.get("total") or 0
+    if not total:
+        return ""
+    m, p = cuello.get("material", 0), cuello.get("planos", 0)
+    if m == p:
+        return "Lo que más retrasa: el material y los planos, a partes iguales"
+    que, n = ("el material", m) if m > p else ("los planos", p)
+    return f"Lo que más retrasa: {que} (en {round(10 * n / total)} de cada 10 pedidos con compras)"
 
 
 # ── Ayudas ────────────────────────────────────────────────────────────────────
@@ -165,7 +183,7 @@ def _hoja(wb, titulo: str, frase: str, cabecera: list[str], filas: list[list], a
 
 def _resumen(wb, datos: dict) -> None:
     ws = wb.create_sheet("Resumen")
-    ws.column_dimensions["A"].width = 52
+    ws.column_dimensions["A"].width = 84
     ws.column_dimensions["B"].width = 14
     ws.column_dimensions["C"].width = 30
     generado = datos.get("generado") or datetime.now()
@@ -182,15 +200,30 @@ def _resumen(wb, datos: dict) -> None:
     fila += 2
     ws.cell(fila, 1, "Lo normal:").font = Font(size=16, bold=True)
     tramos = datos["resumen"]["tramos"]
-    for tramo, texto, nota in RESUMEN:
+    for tramo, texto, nota, sangria in RESUMEN:
         fila += 1
-        ws.cell(fila, 1, texto).font = Font(size=16)
-        c = ws.cell(fila, 2, _dias(tramos[tramo]["mediana"]))
+        ws.row_dimensions[fila].height = 26
+        if tramo is None:
+            fila += 1
+            ws.row_dimensions[fila].height = 26
+            ws.cell(fila, 1, texto).font = Font(size=16, italic=True)
+            continue
+        listo = tramo.startswith("listo:")
+        stats = datos["resumen"]["listo"][tramo.split(":")[1]] if listo else tramos[tramo]
+        c = ws.cell(fila, 1, texto)
+        c.font = Font(size=16, bold=listo)
+        c.alignment = Alignment(indent=3 * sangria)
+        c = ws.cell(fila, 2, _dias(stats["mediana"]))
         c.font = Font(size=16, bold=True, color=AZUL)
         c.alignment = Alignment(horizontal="right")
         if nota:
             ws.cell(fila, 3, f"({nota})").font = Font(size=LETRA, italic=True, color="7F7F7F")
-        ws.row_dimensions[fila].height = 26
+        if tramo == "listo:sin_compras" and frase_retraso(datos["resumen"].get("cuello") or {}):
+            fila += 1
+            c = ws.cell(fila, 1, frase_retraso(datos["resumen"]["cuello"]))
+            c.font = Font(size=LETRA, italic=True, color="7F7F7F")
+            c.alignment = Alignment(indent=6)
+            fila += 1
     cola = datos["cola"]
     hoy = generado.date()
     esperan = sum(1 for c in cola if c["falta"] == "planos")
@@ -237,12 +270,13 @@ def _pedidos(wb, datos: dict) -> None:
             material = "Pendiente"
         filas.append([f["pedido"], f["cliente"] or "—", h["rfq"]["fecha"] or "—", h["contestada"]["fecha"] or "—",
                       _entero(t["comercial"]), h["activacion"]["fecha"] or "—", material,
-                      h["planos"]["fecha"] or "—", _entero(t["tecnico"]), _entero(t["total"])])
+                      h["planos"]["fecha"] or "—", _entero(t["tecnico"]), RETRASO.get(f.get("retraso_por"), "—"),
+                      _entero(t["total"])])
     _hoja(wb, "Pedidos",
           "Un pedido por línea, el más reciente arriba. Días: los que pasan entre una fecha y la siguiente.",
           ["Pedido", "Cliente", "Llega la oferta", "Contestada", "Días en contestar", "Activado",
-           "Material recibido", "Planos a fábrica", "Días hasta planos", "Días en total"],
-          filas, [18, 30, 15, 15, 13, 15, 16, 15, 13, 13])
+           "Material recibido", "Planos a fábrica", "Días hasta planos", "Lo que retrasó", "Días en total"],
+          filas, [18, 30, 15, 15, 13, 15, 16, 15, 13, 14, 13])
 
 
 def _personas(wb, datos: dict) -> None:

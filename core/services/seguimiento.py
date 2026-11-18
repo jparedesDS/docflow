@@ -24,7 +24,7 @@ from datetime import date, datetime, timedelta
 MARGEN_BASE = 7
 
 HITOS = ("rfq", "contestada", "pedido", "activacion", "compra_1", "material", "planos",
-         "fabrica", "fichaje_1", "envio", "entrega")
+         "listo", "fabrica", "fichaje_1", "envio", "entrega")
 
 TRAMOS = {
     "comercial": ("rfq", "contestada"),
@@ -36,7 +36,8 @@ TRAMOS = {
     "a_fabrica": ("planos", "fabrica"),
     "cola_taller": ("fabrica", "fichaje_1"),
     "taller_envio": ("planos", "envio"),
-    "total": ("rfq", "planos"),
+    "listo": ("activacion", "listo"),       # hasta que la fábrica tiene planos y material
+    "total": ("rfq", "listo"),
 }
 
 
@@ -54,6 +55,34 @@ def _dias(a, b) -> int | None:
 
 def _hito(fecha=None, fuente: str = "", persona: str = "") -> dict:
     return {"fecha": fecha, "fuente": fuente if fecha or fuente == "sin_compras" else "", "persona": persona}
+
+
+def _listo(h: dict) -> tuple[dict, str]:
+    """Cuándo la fábrica puede empezar (tiene planos y material) y qué llegó último.
+
+    Compras y planos van a la vez desde la activación: manda el último. Sin
+    compras, solo cuentan los planos. Con material pendiente, todavía no."""
+    planos, material = h["planos"]["fecha"], h["material"]
+    if not planos:
+        return _hito(), ""
+    if material["fuente"] == "sin_compras":
+        return _hito(planos, "calculo"), "planos"
+    if not material["fecha"]:
+        return _hito(), ""
+    dp, dm = _dia(planos), _dia(material["fecha"])
+    if dm > dp:
+        return _hito(material["fecha"], "calculo"), "material"
+    return _hito(planos, "calculo"), ("planos" if dp > dm else "los dos")
+
+
+def _cuello(filas: list[dict]) -> dict:
+    """Lo que llegó último, en los pedidos con compras (sin compras no hay elección)."""
+    out = {"material": 0, "planos": 0, "los dos": 0}
+    for f in filas:
+        if f["retraso_por"] and f["hitos"]["material"]["fuente"] != "sin_compras":
+            out[f["retraso_por"]] += 1
+    out["total"] = sum(out.values())
+    return out
 
 
 def _fabricado(p: dict) -> bool:
@@ -127,6 +156,7 @@ def construir_filas(pedidos: list[dict], compras: dict[str, dict], ots: dict[str
         h["fichaje_1"] = _hito(ot.get("primer_fichaje") if ot else None, "erp")
         h["envio"] = _hito(p.get("envio"), "erp")
         h["entrega"] = _hito(p.get("expected_date"), "erp")
+        h["listo"], retraso_por = _listo(h)
 
         tramos = {k: _dias(h[a]["fecha"], h[b]["fecha"]) for k, (a, b) in TRAMOS.items()}
         if h["activacion"]["fuente"] != "correo":
@@ -151,7 +181,7 @@ def construir_filas(pedidos: list[dict], compras: dict[str, dict], ots: dict[str
             "pedido": pedido, "base": base, "oferta": p.get("oferta") or "",
             "cliente": p.get("cliente") or "", "equipo": p.get("equipo") or "",
             "hitos": h, "tramos": tramos, "estado": estado, "avisos": avisos,
-            "compartido": cp_compartido or ot_compartido,
+            "compartido": cp_compartido or ot_compartido, "retraso_por": retraso_por,
             "ruta": (pl or {}).get("ruta") or "", "envios": (pl or {}).get("envios") or 0,
             "porc_taller": p.get("porc_taller"), "cerrado": bool(p.get("cerrado")),
         })
@@ -239,6 +269,14 @@ def resumen(filas: list[dict]) -> dict:
         "por_persona": por_persona,
         "por_equipo": {k: _por_tramo(v) for k, v in sorted(por_equipo.items())},
         "por_mes": {k: _por_tramo(v) for k, v in sorted(por_mes.items())},
+        "cuello": _cuello(filas),
+        # «puede empezar» mezcla dos casos que no se parecen: separados
+        "listo": {
+            "con_compras": _stats([f["tramos"]["listo"] for f in filas
+                                   if f["hitos"]["material"]["fuente"] != "sin_compras"]),
+            "sin_compras": _stats([f["tramos"]["listo"] for f in filas
+                                   if f["hitos"]["material"]["fuente"] == "sin_compras"]),
+        },
         "con_hora": {"rfq": sum(1 for f in filas if f["hitos"]["rfq"]["fuente"] == "correo"),
                      "total": sum(1 for f in filas if f["hitos"]["rfq"]["fecha"])},
     }
