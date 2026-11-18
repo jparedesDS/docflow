@@ -233,3 +233,37 @@ margen = entrega contractual − hoy − (planos OF → envío típico de ese ti
 
 El diseño de columnas del Excel, los gráficos del informe web y el diseño
 visual de la sección, siguiendo lo que ya hacen Informes, Producción y Ofertas.
+
+## Excel para el jefe (cambio aprobado el 2026-11-18)
+
+El primer Excel (33 columnas, fuentes, p25/p75, horquillas, decimales) era
+demasiado lioso. Lo va a leer el jefe de JP, de 80 años: tiene que entenderse
+a la primera y solo con lo importante. Mismo Excel en la app y en el correo de
+los lunes; el detalle completo se queda en la sección Plazos.
+
+Cuatro hojas, letra grande (14), título y una frase de qué es cada hoja,
+cabecera fija al bajar, impresión horizontal ajustada al ancho:
+
+1. **Resumen**: «Lo normal» de cada paso en días enteros (contestar una
+   oferta · el cliente tarda en hacer el pedido, «no depende de nosotros» ·
+   del pedido a tener el material · del pedido a mandar los planos a fábrica ·
+   de la oferta a la fábrica, en total) y cuántos pedidos esperan planos con
+   el material listo. Los avisos (sin ERP…) en rojo.
+2. **Qué hacer primero**: la cola en el mismo orden. Prioridad en palabras y
+   color: URGENTE (rojo) si el extremo pesimista del margen es < 0, JUSTO
+   (ámbar) si < 15 días, CON TIEMPO (verde) si no; sin margen, por los días
+   que quedan a la entrega (< 30 URGENTE, < 60 JUSTO). Los que solo esperan
+   material: «ESPERA MATERIAL» (gris). Columnas: #, Prioridad, Pedido,
+   Cliente, Qué falta (en palabras), Entrega, Quedan («84 días» o «vencida
+   hace 12 días»).
+3. **Pedidos**: uno por línea, el más reciente arriba: Pedido, Cliente, Llega
+   la oferta, Contestada, Días en contestar, Activado, Material recibido
+   (fecha, «Pendiente» o «Sin compras»), Planos a fábrica, Días hasta planos,
+   Días en total. Fechas sin hora; días enteros; «—» si no hay dato o sale
+   negativo.
+4. **Personas**: Quién (nombre legible: «santos-x» → «Santos X»; las
+   iniciales, tal cual), Qué hace (contestar ofertas · conseguir el material ·
+   mandar planos a fábrica), Lo normal (días enteros), Pedidos. Sin «activar»
+   (siempre ~0, confunde).
+
+Nada de p25/p75, medianas, horquillas, fuentes ni horas en el Excel.
