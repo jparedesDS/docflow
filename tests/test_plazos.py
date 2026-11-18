@@ -193,6 +193,7 @@ ok([c["pedido"] for c in seg.cola(fuera, H, hoy)] == ["P-99/014-S00"],
 
 # ── Tarea 7: cargar() y Excel ────────────────────────────────────────────────
 
+import re  # noqa: E402
 import tempfile  # noqa: E402
 
 from openpyxl import load_workbook  # noqa: E402
@@ -234,23 +235,77 @@ ok(d["filas"][0]["hitos"]["rfq"]["fuente"] == "correo", "con correo desde la cac
 d2 = seg.cargar((2099,), hoy=date(2099, 3, 1), correo=True, base_dir=tmp)
 ok("Sin correo" in d2["avisos"] and len(d2["filas"]) == 1, "si el buzón falla: aviso y sigue")
 
+# Excel claro para el jefe: cuatro hojas, solo lo importante
 ruta = seguimiento_excel.exportar(d, tmp / "plazos.xlsx")
 wb = load_workbook(ruta)
-ok(wb.sheetnames == ["Pedidos", "Cola", "Por persona", "Resumen"], f"hojas: {wb.sheetnames}")
-ok(wb["Pedidos"]["A2"].value == "P-99/001-S00", f"primera fila de pedidos: {wb['Pedidos']['A2'].value}")
-cab = [c.value for c in wb["Pedidos"][1]]
-TEC = "Días técnico (activación → planos a fábrica)"
-ok("Oferta recibida" in cab and TEC in cab and "Técnico" in cab and "Fuente planos a fábrica" in cab,
-   f"cabeceras: {cab}")
-fila = {cab[i]: c.value for i, c in enumerate(wb["Pedidos"][2])}
-ok(fila["Oferta recibida"] == datetime(2099, 1, 1, 23, 50) and fila["Fuente oferta recibida"] == "correo",
-   f"fecha con hora y su fuente: {fila['Oferta recibida']}")
-ok(fila[TEC] == 7, "días del técnico")
+ok(wb.sheetnames == ["Resumen", "Qué hacer primero", "Pedidos", "Personas"], f"hojas: {wb.sheetnames}")
+ws = wb["Pedidos"]
+cab = [c.value for c in ws[3]]
+ok(cab[:3] == ["Pedido", "Cliente", "Llega la oferta"] and "Días hasta planos" in cab and "Días en total" in cab,
+   f"cabecera en la fila 3: {cab}")
+ok(ws["A4"].value == "P-99/001-S00" and ws.freeze_panes == "A4", f"datos desde la fila 4: {ws['A4'].value}")
+fila = {cab[i]: c.value for i, c in enumerate(ws[4])}
+ok(fila["Llega la oferta"] == datetime(2099, 1, 1) and ws.cell(4, 3).number_format == "dd/mm/yyyy",
+   f"fecha sin hora: {fila['Llega la oferta']}")
+ok(fila["Días hasta planos"] == 7 and fila["Días en contestar"] == 5, f"días: {fila}")
+ok(fila["Material recibido"] == datetime(2099, 3, 20), f"material: {fila['Material recibido']}")
+
+
+def textos(libro):
+    for hoja in libro.worksheets:
+        for row in hoja.iter_rows():
+            for c in row:
+                if c.value is not None:
+                    yield hoja.title, c.value
+
+
+malos = [(h, v) for h, v in textos(wb)
+         if (isinstance(v, float) and v != int(v))
+         or (isinstance(v, str) and re.search(r"None|p25|p75|mediana|horquilla", v, re.I))]
+ok(not malos, f"nada de None, p25, medianas ni decimales: {malos[:5]}")
+resumen_txt = " ".join(str(v) for h, v in textos(wb) if h == "Resumen")
+ok("Contestar una oferta" in resumen_txt and "5 días" in resumen_txt, f"resumen: {resumen_txt[:300]}")
+ok("no depende de nosotros" in resumen_txt, "el tiempo del cliente, explicado")
+cola_txt = " ".join(str(v) for h, v in textos(wb) if h == "Qué hacer primero")
+ok("No hay pedidos esperando" in cola_txt, f"cola vacía: {cola_txt[:200]}")
+personas = [[c.value for c in r] for r in wb["Personas"].iter_rows(min_row=4)]
+ok(["Tecnico Uno", "Mandar planos a fábrica", "7 días", 1] in personas, f"personas: {personas}")
+ok(not any("Activar" in str(r) for r in personas), "sin el paso «activar»")
+wb2 = load_workbook(seguimiento_excel.exportar({**d, "avisos": ["Sin ERP"]}, tmp / "plazos2.xlsx"))
+ok("Sin ERP" in " ".join(str(v) for h, v in textos(wb2) if h == "Resumen"), "los avisos se ven en el resumen")
+
+# Prioridad en palabras
+HOY = date(2099, 3, 1)
+
+
+def item(falta="planos", margen=None, entrega=None):
+    return {"falta": falta, "margen": margen, "hitos": {"entrega": {"fecha": entrega}}}
+
+
+P = seguimiento_excel.prioridad
+casos = [
+    (item(margen=(-5, 40), entrega=HOY + timedelta(days=80)), "URGENTE"),
+    (item(margen=(10, 50), entrega=HOY + timedelta(days=80)), "JUSTO"),
+    (item(margen=(20, 60), entrega=HOY + timedelta(days=80)), "CON TIEMPO"),
+    (item(entrega=HOY + timedelta(days=20)), "URGENTE"),
+    (item(entrega=HOY + timedelta(days=45)), "JUSTO"),
+    (item(entrega=HOY + timedelta(days=90)), "CON TIEMPO"),
+    (item(entrega=HOY - timedelta(days=12)), "URGENTE"),
+    (item(), "SIN FECHA"),
+    (item(falta="material", entrega=HOY + timedelta(days=5)), "ESPERA MATERIAL"),
+]
+for it, esperado in casos:
+    ok(P(it, HOY)[0] == esperado, f"prioridad {it['falta']} {it['margen']} {it['hitos']['entrega']['fecha']}: "
+                                  f"{P(it, HOY)[0]} (esperado {esperado})")
+Q = seguimiento_excel.quedan
+ok(Q(HOY + timedelta(days=84), HOY) == "84 días" and Q(HOY + timedelta(days=1), HOY) == "1 día"
+   and Q(HOY - timedelta(days=12), HOY) == "vencida hace 12 días" and Q(None, HOY) == "—", "días que quedan")
+N = seguimiento_excel.nombre
+ok(N("luis-x") == "Luis X" and N("ana.x") == "Ana X" and N("AC") == "AC" and N("Pepa Ruiz") == "Pepa Ruiz"
+   and N("luis-x luis-x") == "Luis X", "nombres legibles")
 
 
 # ── Tarea 8: informe web ─────────────────────────────────────────────────────
-
-import re  # noqa: E402
 
 from core.services.interactive_report import plazos as rep  # noqa: E402
 

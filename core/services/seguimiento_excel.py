@@ -1,146 +1,272 @@
-"""Plazos en Excel: Pedidos, Cola, Por persona y Resumen.
+"""Plazos en Excel, para que se entienda a la primera.
 
-Lo pinta a partir de `seguimiento.cargar()`; no calcula nada.
+Cuatro hojas, letra grande y solo lo importante:
+  · Resumen — lo que tarda normalmente cada paso, en días.
+  · Qué hacer primero — los pedidos que esperan planos o material, con su
+    prioridad en palabras y en color.
+  · Pedidos — uno por línea: las fechas clave y los días.
+  · Personas — lo que tarda normalmente cada uno en su paso.
+
+Nada de medianas, cuartiles, horquillas, horas ni de dónde sale cada fecha:
+eso se queda en la sección Plazos de la app. Lo pinta a partir de
+`seguimiento.cargar()`; no calcula nada.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
+import re
+from datetime import date, datetime
 from pathlib import Path
 
 from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-# Hitos que se enseñan, con su nombre en el Excel. Los que pueden venir del
-# correo o de la carpeta llevan además su fuente.
-HITOS_XL = [
-    ("rfq", "Oferta recibida", True),
-    ("contestada", "Oferta contestada", True),
-    ("pedido", "Pedido del cliente", False),
-    ("activacion", "Activación", True),
-    ("compra_1", "1.er pedido a proveedor", False),
-    ("material", "Material recibido", False),
-    ("planos", "Planos a fábrica", True),
-    ("fabrica", "Pasado a fábrica (1.ª OT)", False),
-    ("fichaje_1", "1.er fichaje", False),
-    ("envio", "Envío", False),
-    ("entrega", "Entrega contractual", False),
+LETRA = 14
+AZUL = "1F3864"
+ROJO, AMBAR, VERDE, GRIS = "F4CCCC", "FCE5CD", "D9EAD3", "E7E6E6"
+_LINEA = Side(style="thin", color="BFBFBF")
+_BORDE = Border(left=_LINEA, right=_LINEA, top=_LINEA, bottom=_LINEA)
+_FORMATO_FECHA = "dd/mm/yyyy"
+
+FALTA = {"planos": "Planos (el material ya está)", "ambos": "Planos y material",
+         "material": "Material (los planos ya están en fábrica)"}
+
+# (paso, «qué hace»). El de activar no va: siempre ~0 días y confunde.
+PERSONAS = [("comercial", "Contestar ofertas"), ("compras", "Conseguir el material"),
+            ("tecnico", "Mandar planos a fábrica")]
+
+RESUMEN = [
+    ("comercial", "Contestar una oferta", ""),
+    ("cliente", "El cliente tarda en hacer el pedido", "no depende de nosotros"),
+    ("material", "Del pedido a tener el material", ""),
+    ("tecnico", "Del pedido a mandar los planos a fábrica", ""),
+    ("total", "De la oferta a la fábrica, en total", ""),
 ]
 
-PERSONAS_XL = [("contestada", "Comercial"), ("activacion", "Activa"), ("planos", "Técnico")]
 
-TRAMOS_XL = {
-    "comercial": "Días comercial (recibida → contestada)",
-    "cliente": "Días cliente (contestada → pedido)",
-    "activar": "Días activar (pedido → activación)",
-    "compras_pedir": "Días compras (activación → 1.er pedido proveedor)",
-    "material": "Días material (activación → recibido)",
-    "tecnico": "Días técnico (activación → planos a fábrica)",
-    "a_fabrica": "Días planos a fábrica → 1.ª OT (negativo: la OT se lanzó antes)",
-    "cola_taller": "Días cola taller (1.ª OT → 1.er fichaje)",
-    "taller_envio": "Días planos a fábrica → envío",
-    "total": "Días total (oferta recibida → planos a fábrica)",
-}
+# ── Ayudas ────────────────────────────────────────────────────────────────────
 
-PASOS_XL = {"comercial": "Comercial: oferta recibida → contestada", "activar": "Comercial: pedido → activación",
-            "compras": "Compras: activación → material recibido", "tecnico": "Técnico: activación → planos a fábrica"}
-
-ESTADOS_XL = {"ok": "", "sin_carpeta": "Sin carpeta", "fabricado_sin_planos": "Fabricado sin correo de envío en Envíos",
-              "planos_antes": "Planos antes del pedido", "pendiente_planos": "Pendiente de planos"}
-
-FALTA_XL = {"planos": "Planos (el material ya está)", "ambos": "Planos y material",
-            "material": "Material", "nada": "Listo para fábrica"}
-
-_CAB = Font(bold=True, color="FFFFFF")
-_RELLENO = PatternFill("solid", fgColor="334155")
+def _dia(v) -> date | None:
+    if isinstance(v, datetime):
+        return (v.astimezone() if v.tzinfo else v).date()
+    return v if isinstance(v, date) else None
 
 
-def _xl(v):
-    """Excel no admite horas con zona: se pasa a la hora local."""
-    if isinstance(v, datetime) and v.tzinfo is not None:
-        return v.astimezone().replace(tzinfo=None)
-    return v
+def _dias(n) -> str:
+    if n is None:
+        return "—"
+    n = int(round(n))
+    return "1 día" if n == 1 else f"{n} días"
 
 
-def _hoja(wb, titulo: str, cabecera: list[str], filas: list[list]):
+def _entero(n):
+    """Días como número entero; «—» si no hay o sale negativo."""
+    if n is None or n < 0:
+        return "—"
+    return int(round(n))
+
+
+def quedan(entrega, hoy: date) -> str:
+    """«84 días», «1 día», «vencida hace 12 días» o «—»."""
+    entrega = _dia(entrega)
+    if not entrega:
+        return "—"
+    n = (entrega - hoy).days
+    if n < 0:
+        return "vencida hace 1 día" if n == -1 else f"vencida hace {-n} días"
+    return _dias(n)
+
+
+def prioridad(item: dict, hoy: date) -> tuple[str, str]:
+    """(texto, color de fondo) de un pedido de la cola."""
+    if item.get("falta") == "material":
+        return "ESPERA MATERIAL", GRIS
+    margen = item.get("margen")
+    if margen:
+        peor = margen[0]
+        if peor < 0:
+            return "URGENTE", ROJO
+        return ("JUSTO", AMBAR) if peor < 15 else ("CON TIEMPO", VERDE)
+    entrega = _dia(item["hitos"]["entrega"]["fecha"])
+    if not entrega:
+        return "SIN FECHA", GRIS
+    n = (entrega - hoy).days
+    if n < 30:
+        return "URGENTE", ROJO
+    return ("JUSTO", AMBAR) if n < 60 else ("CON TIEMPO", VERDE)
+
+
+def nombre(persona: str) -> str:
+    """«luis-x» → «Luis X»; «ana.x» → «Ana X»; las iniciales («AC») y los nombres ya escritos, igual."""
+    p = (persona or "").strip()
+    if not p or (p.isupper() and len(p) <= 4) or (" " in p and p != p.lower()):
+        return p
+    palabras = []
+    for w in re.split(r"[\s.\-_]+", p):
+        if w and w.capitalize() not in palabras:
+            palabras.append(w.capitalize())
+    return " ".join(palabras)
+
+
+def _celda_fecha(v):
+    """Una fecha como fecha de Excel, sin hora (y sin zona, que openpyxl no admite)."""
+    d = _dia(v)
+    return datetime(d.year, d.month, d.day) if d else v
+
+
+# ── Hojas ─────────────────────────────────────────────────────────────────────
+
+def _imprimir(ws) -> None:
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.print_options.horizontalCentered = True
+
+
+def _hoja(wb, titulo: str, frase: str, cabecera: list[str], filas: list[list], anchos: list[int],
+          colores: list[str | None] | None = None):
+    """Título, frase, cabecera y filas, con letra grande y lista para imprimir."""
     ws = wb.create_sheet(titulo)
-    ws.append(cabecera)
-    for c in ws[1]:
-        c.font, c.fill = _CAB, _RELLENO
-    for f in filas:
-        ws.append([_xl(v) for v in f])
-    for i, nombre in enumerate(cabecera, start=1):
-        largo = max([len(str(nombre))] + [len(str(f[i - 1])) for f in filas if f[i - 1] is not None][:200])
-        ws.column_dimensions[get_column_letter(i)].width = min(max(largo + 2, 10), 45)
-        for fila in ws.iter_rows(min_row=2, min_col=i, max_col=i):
-            v = fila[0].value
+    ws.cell(1, 1, titulo).font = Font(size=20, bold=True, color=AZUL)
+    ws.cell(2, 1, frase).font = Font(size=LETRA, italic=True, color="595959")
+    ws.row_dimensions[1].height = 34
+    ws.row_dimensions[2].height = 24
+    for j, texto in enumerate(cabecera, start=1):
+        c = ws.cell(3, j, texto)
+        c.font = Font(size=LETRA, bold=True, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor=AZUL)
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        c.border = _BORDE
+    ws.row_dimensions[3].height = 42
+    for i, fila in enumerate(filas, start=4):
+        relleno = (colores[i - 4] if colores else None) or ("F2F2F2" if i % 2 else None)
+        for j, v in enumerate(fila, start=1):
+            v = _celda_fecha(v) if isinstance(v, (datetime, date)) else v
+            c = ws.cell(i, j, v)
+            c.font = Font(size=LETRA, bold=(colores is not None and j == 2))
+            c.border = _BORDE
+            izquierda = isinstance(v, str) and v != "—" and not v[:1].isdigit()
+            c.alignment = Alignment(vertical="center", horizontal="left" if izquierda else "center",
+                                    wrap_text=True)
             if isinstance(v, datetime):
-                fila[0].number_format = "dd-mm-yyyy hh:mm" if (v.hour or v.minute) else "dd-mm-yyyy"
-            elif hasattr(v, "year"):
-                fila[0].number_format = "dd-mm-yyyy"
-    ws.freeze_panes = "B2"
+                c.number_format = _FORMATO_FECHA
+            if relleno:
+                c.fill = PatternFill("solid", fgColor=relleno)
+        ws.row_dimensions[i].height = 24
+    for j, ancho in enumerate(anchos, start=1):
+        ws.column_dimensions[get_column_letter(j)].width = ancho
+    ws.freeze_panes = "A4"
+    ws.print_title_rows = "3:3"
+    _imprimir(ws)
     return ws
 
 
-def _pedidos(filas: list[dict]):
-    cab = ["Pedido", "Cliente", "Equipo", "Oferta"]
-    for _k, nombre, con_fuente in HITOS_XL:
-        cab.append(nombre)
-        if con_fuente:
-            cab.append(f"Fuente {nombre.lower()}")
-    cab += [n for _h, n in PERSONAS_XL] + list(TRAMOS_XL.values()) + ["Estado", "Avisos"]
-    out = []
-    for f in filas:
-        h = f["hitos"]
-        fila = [f["pedido"], f["cliente"], f["equipo"], f["oferta"]]
-        for k, _nombre, con_fuente in HITOS_XL:
-            fila.append(h[k]["fecha"])
-            if con_fuente:
-                fila.append(h[k]["fuente"])
-        fila += [h[k]["persona"] for k, _n in PERSONAS_XL]
-        fila += [f["tramos"].get(k) for k in TRAMOS_XL]
-        estado = ESTADOS_XL.get(f["estado"], f["estado"])
-        if f.get("compartido"):
-            estado = (estado + " · " if estado else "") + "compras/OTs compartidas con otros suministros"
-        fila += [estado, " · ".join(f["avisos"])]
-        out.append(fila)
-    return cab, out
+def _resumen(wb, datos: dict) -> None:
+    ws = wb.create_sheet("Resumen")
+    ws.column_dimensions["A"].width = 52
+    ws.column_dimensions["B"].width = 14
+    ws.column_dimensions["C"].width = 30
+    generado = datos.get("generado") or datetime.now()
+    años = " y ".join(str(a) for a in datos.get("años") or ())
+    ws.cell(1, 1, "Plazos: de la oferta a la fábrica").font = Font(size=22, bold=True, color=AZUL)
+    ws.cell(2, 1, f"Pedidos de {años} · actualizado el {generado:%d/%m/%Y}").font = \
+        Font(size=LETRA, italic=True, color="595959")
+    ws.row_dimensions[1].height = 36
+    fila = 3
+    for aviso in datos.get("avisos") or []:
+        fila += 1
+        ws.cell(fila, 1, f"⚠ {aviso}: faltan datos, las cifras pueden estar incompletas.").font = \
+            Font(size=LETRA, bold=True, color="C00000")
+    fila += 2
+    ws.cell(fila, 1, "Lo normal:").font = Font(size=16, bold=True)
+    tramos = datos["resumen"]["tramos"]
+    for tramo, texto, nota in RESUMEN:
+        fila += 1
+        ws.cell(fila, 1, texto).font = Font(size=16)
+        c = ws.cell(fila, 2, _dias(tramos[tramo]["mediana"]))
+        c.font = Font(size=16, bold=True, color=AZUL)
+        c.alignment = Alignment(horizontal="right")
+        if nota:
+            ws.cell(fila, 3, f"({nota})").font = Font(size=LETRA, italic=True, color="7F7F7F")
+        ws.row_dimensions[fila].height = 26
+    cola = datos["cola"]
+    hoy = generado.date()
+    esperan = sum(1 for c in cola if c["falta"] == "planos")
+    urgentes = sum(1 for c in cola if prioridad(c, hoy)[0] == "URGENTE")
+    fila += 2
+    ws.cell(fila, 1, "Ahora mismo:").font = Font(size=16, bold=True)
+    for texto in (f"{esperan} pedidos tienen el material y esperan los planos.",
+                  f"{urgentes} pedidos son urgentes.",
+                  "Ver la hoja «Qué hacer primero»."):
+        fila += 1
+        ws.cell(fila, 1, texto).font = Font(size=16)
+        ws.row_dimensions[fila].height = 26
+    _imprimir(ws)
 
 
-def _cola(cola: list[dict]):
-    cab = ["Prioridad", "Qué falta", "Pedido", "Cliente", "Equipo", "Activación", "Entrega contractual",
-           "Margen desde (días)", "Margen hasta (días)", "Basado en (pedidos)", "Histórico de", "Carpeta Envíos"]
-    out = []
-    for i, c in enumerate(cola, start=1):
-        m = c.get("margen")
-        out.append([i, FALTA_XL.get(c["falta"], c["falta"]), c["pedido"], c["cliente"], c["equipo"],
-                    c["hitos"]["activacion"]["fecha"], c["hitos"]["entrega"]["fecha"],
-                    m[0] if m else None, m[1] if m else None, c.get("margen_n") or None,
-                    c.get("margen_de") or "", c.get("ruta") or ""])
-    return cab, out
+def _que_hacer(wb, datos: dict) -> None:
+    hoy = (datos.get("generado") or datetime.now()).date()
+    filas, colores = [], []
+    for i, c in enumerate(datos["cola"], start=1):
+        texto, color = prioridad(c, hoy)
+        entrega = c["hitos"]["entrega"]["fecha"]
+        filas.append([i, texto, c["pedido"], c["cliente"] or "—", FALTA.get(c["falta"], c["falta"]),
+                      entrega or "—", quedan(entrega, hoy)])
+        colores.append(color)
+    if not filas:
+        filas, colores = [["", "No hay pedidos esperando planos ni material.", "", "", "", "", ""]], [None]
+    _hoja(wb, "Qué hacer primero",
+          "Los pedidos que esperan planos o material. Arriba, los que hay que sacar antes.",
+          ["#", "Prioridad", "Pedido", "Cliente", "Qué falta", "Entrega", "Quedan"],
+          filas, [6, 20, 18, 32, 42, 15, 24], colores)
 
 
-def _stats_fila(s: dict) -> list:
-    return [s["n"], s["mediana"], s["p25"], s["p75"]]
+def _pedidos(wb, datos: dict) -> None:
+    filas = []
+    orden = sorted(datos["filas"], key=lambda f: (_dia(f["hitos"]["pedido"]["fecha"]) or date.min, f["pedido"]),
+                   reverse=True)
+    for f in orden:
+        h, t = f["hitos"], f["tramos"]
+        if h["material"]["fecha"]:
+            material = h["material"]["fecha"]
+        elif h["material"]["fuente"] == "sin_compras":
+            material = "Sin compras"
+        else:
+            material = "Pendiente"
+        filas.append([f["pedido"], f["cliente"] or "—", h["rfq"]["fecha"] or "—", h["contestada"]["fecha"] or "—",
+                      _entero(t["comercial"]), h["activacion"]["fecha"] or "—", material,
+                      h["planos"]["fecha"] or "—", _entero(t["tecnico"]), _entero(t["total"])])
+    _hoja(wb, "Pedidos",
+          "Un pedido por línea, el más reciente arriba. Días: los que pasan entre una fecha y la siguiente.",
+          ["Pedido", "Cliente", "Llega la oferta", "Contestada", "Días en contestar", "Activado",
+           "Material recibido", "Planos a fábrica", "Días hasta planos", "Días en total"],
+          filas, [18, 30, 15, 15, 13, 15, 16, 15, 13, 13])
+
+
+def _personas(wb, datos: dict) -> None:
+    filas = []
+    por_persona = datos["resumen"]["por_persona"]
+    for paso, que in PERSONAS:
+        for p in sorted((p for p in por_persona if p["paso"] == paso), key=lambda p: -p["n"]):
+            filas.append([nombre(p["persona"]), que, _dias(p["mediana"]), p["n"]])
+    if not filas:
+        filas = [["Sin datos todavía.", "", "", ""]]
+    _hoja(wb, "Personas",
+          "Lo que tarda normalmente cada uno en su paso, y en cuántos pedidos se ha medido.",
+          ["Quién", "Qué hace", "Lo normal", "Pedidos"], filas, [28, 32, 16, 12])
 
 
 def exportar(datos: dict, ruta) -> str:
     """Escribe el Excel y devuelve su ruta."""
     wb = Workbook()
     wb.remove(wb.active)
-    _hoja(wb, "Pedidos", *_pedidos(datos["filas"]))
-    _hoja(wb, "Cola", *_cola(datos["cola"]))
-    r = datos["resumen"]
-    _hoja(wb, "Por persona", ["Paso", "Persona", "Casos", "Mediana (días)", "p25", "p75"],
-          [[PASOS_XL.get(p["paso"], p["paso"]), p["persona"], p["n"], p["mediana"], p["p25"], p["p75"]]
-           for p in r["por_persona"]])
-    filas = [["Todos", TRAMOS_XL[t], *_stats_fila(s)] for t, s in r["tramos"].items()]
-    for eq, tramos in r["por_equipo"].items():
-        filas += [[f"Equipo: {eq}", TRAMOS_XL[t], *_stats_fila(s)] for t, s in tramos.items() if s["n"]]
-    for mes, tramos in r["por_mes"].items():
-        filas += [[f"Mes del pedido: {mes}", TRAMOS_XL[t], *_stats_fila(s)] for t, s in tramos.items() if s["n"]]
-    _hoja(wb, "Resumen", ["Grupo", "Paso", "Casos", "Mediana (días)", "p25", "p75"], filas)
+    _resumen(wb, datos)
+    _que_hacer(wb, datos)
+    _pedidos(wb, datos)
+    _personas(wb, datos)
     ruta = Path(ruta)
     wb.save(ruta)
     return str(ruta)
