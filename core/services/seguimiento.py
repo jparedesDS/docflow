@@ -182,6 +182,24 @@ def _stats(xs: list[int]) -> dict:
     return {"n": len(xs), "mediana": statistics.median(xs), "p25": q[0], "p75": q[2]}
 
 
+def _persona(raw: str) -> tuple[str, str]:
+    """(clave, cómo se enseña). La misma persona llega escrita de varias formas
+    —«luis-x» del correo, «luis.x» de Windows, «Luís X»—: se agrupan por la
+    clave sin tildes ni signos. Las iniciales («AC») se quedan tal cual."""
+    import re
+    import unicodedata
+    raw = (raw or "").strip()
+    if raw.isupper() and len(raw) <= 4:
+        return raw, raw
+    sin = "".join(c for c in unicodedata.normalize("NFD", raw) if not unicodedata.combining(c)).lower()
+    palabras = []
+    for w in re.split(r"[\s.\-_]+", sin):
+        if w and w not in palabras:
+            palabras.append(w)
+    clave = " ".join(palabras)
+    return clave, " ".join(w.capitalize() for w in palabras)
+
+
 def _vale(fila: dict, tramo: str) -> int | None:
     """El valor del tramo si cuenta para las medianas."""
     if tramo == "tecnico" and fila["estado"] in ("planos_antes", "sin_carpeta"):
@@ -198,13 +216,15 @@ def resumen(filas: list[dict]) -> dict:
     por_persona = []
     for paso, (tramo, hito) in PASOS_PERSONA.items():
         grupos: dict[str, list[int]] = {}
+        nombres: dict[str, str] = {}
         for f in filas:
             v = _vale(f, tramo)
-            persona = f["hitos"][hito]["persona"]
-            if v is not None and persona:
-                grupos.setdefault(persona, []).append(v)
-        for persona, xs in sorted(grupos.items()):
-            por_persona.append({"paso": paso, "persona": persona, **_stats(xs)})
+            clave, mostrar = _persona(f["hitos"][hito]["persona"])
+            if v is not None and clave:
+                grupos.setdefault(clave, []).append(v)
+                nombres.setdefault(clave, mostrar)
+        for clave, xs in sorted(grupos.items()):
+            por_persona.append({"paso": paso, "persona": nombres[clave], **_stats(xs)})
 
     por_equipo: dict[str, list[dict]] = {}
     por_mes: dict[str, list[dict]] = {}

@@ -30,7 +30,7 @@ _BORDE = Border(left=_LINEA, right=_LINEA, top=_LINEA, bottom=_LINEA)
 _FORMATO_FECHA = "dd/mm/yyyy"
 
 FALTA = {"planos": "Planos (el material ya está)", "ambos": "Planos y material",
-         "material": "Material (los planos ya están en fábrica)"}
+         "material": "Material (planos ya en fábrica)"}
 
 # (paso, «qué hace»). El de activar no va: siempre ~0 días y confunde.
 PERSONAS = [("comercial", "Contestar ofertas"), ("compras", "Conseguir el material"),
@@ -149,8 +149,7 @@ def _hoja(wb, titulo: str, frase: str, cabecera: list[str], filas: list[list], a
             c.font = Font(size=LETRA, bold=(colores is not None and j == 2))
             c.border = _BORDE
             izquierda = isinstance(v, str) and v != "—" and not v[:1].isdigit()
-            c.alignment = Alignment(vertical="center", horizontal="left" if izquierda else "center",
-                                    wrap_text=True)
+            c.alignment = Alignment(vertical="center", horizontal="left" if izquierda else "center")
             if isinstance(v, datetime):
                 c.number_format = _FORMATO_FECHA
             if relleno:
@@ -221,7 +220,7 @@ def _que_hacer(wb, datos: dict) -> None:
     _hoja(wb, "Qué hacer primero",
           "Los pedidos que esperan planos o material. Arriba, los que hay que sacar antes.",
           ["#", "Prioridad", "Pedido", "Cliente", "Qué falta", "Entrega", "Quedan"],
-          filas, [6, 20, 18, 32, 42, 15, 24], colores)
+          filas, [6, 24, 18, 30, 36, 15, 26], colores)
 
 
 def _pedidos(wb, datos: dict) -> None:
@@ -255,8 +254,8 @@ def _personas(wb, datos: dict) -> None:
     if not filas:
         filas = [["Sin datos todavía.", "", "", ""]]
     _hoja(wb, "Personas",
-          "Lo que tarda normalmente cada uno en su paso, y en cuántos pedidos se ha medido.",
-          ["Quién", "Qué hace", "Lo normal", "Pedidos"], filas, [28, 32, 16, 12])
+          "Lo que tarda normalmente cada uno, y en cuántos pedidos.",
+          ["Quién", "Qué hace", "Lo normal", "Pedidos"], filas, [28, 32, 16, 14])
 
 
 def exportar(datos: dict, ruta) -> str:

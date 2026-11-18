@@ -121,7 +121,7 @@ r = seg.resumen(filas)
 ok(r["tramos"]["tecnico"] == {"n": 5, "mediana": 6, "p25": 4.5, "p75": 7.5}, f"stats técnico: {r['tramos']['tecnico']}")
 ok(not any(p["paso"] == "cliente" for p in r["por_persona"]), "el cliente no se carga a nadie")
 tec = next((p for p in r["por_persona"] if p["paso"] == "tecnico"), {})
-ok(tec.get("persona") == "tecnico.uno" and tec.get("n") == 5, f"técnico por autor: {tec}")
+ok(tec.get("persona") == "Tecnico Uno" and tec.get("n") == 5, f"técnico por autor, con nombre legible: {tec}")
 com = next((p for p in r["por_persona"] if p["paso"] == "comercial"), {})
 ok(com.get("persona") == "Pepa Ruiz" and com.get("mediana") == 4, f"comercial: {com}")
 ok(seg._stats([7, 9]) == {"n": 2, "mediana": 8, "p25": None, "p75": None}, "pocos casos: sin cuantiles")
@@ -133,6 +133,13 @@ filas.append(seg.construir_filas([ped(pedido="P-99/009-S00", base="P-99/009")], 
                                  {"P-99/009-S00": {"estado": "ok", "creado": datetime(2099, 2, 1),
                                                    "autor": "tecnico.uno", "ruta": ""}}, {}, {})[0])
 ok(seg.resumen(filas)["tramos"]["tecnico"]["n"] == 5, "planos antes del pedido: fuera de la mediana del técnico")
+# La misma persona escrita de varias formas (correo, usuario de Windows, nombre con tilde) cuenta una vez
+variantes = ["luis-ejemplo", "luis.ejemplo", "Luís Ejemplo"]
+filas_v = seg.construir_filas([ped(pedido=f"P-99/04{i}-S00", base=f"P-99/04{i}") for i in range(3)], {}, {},
+                              {f"P-99/04{i}-S00": {"estado": "ok", "creado": datetime(2099, 3, 1), "autor": a, "ruta": ""}
+                               for i, a in enumerate(variantes)}, {}, {})
+tecs = [p for p in seg.resumen(filas_v)["por_persona"] if p["paso"] == "tecnico"]
+ok(len(tecs) == 1 and tecs[0]["n"] == 3, f"una persona, no tres: {tecs}")
 
 
 # ── Tarea 3: cola y margen ───────────────────────────────────────────────────
@@ -249,6 +256,9 @@ ok(fila["Llega la oferta"] == datetime(2099, 1, 1) and ws.cell(4, 3).number_form
    f"fecha sin hora: {fila['Llega la oferta']}")
 ok(fila["Días hasta planos"] == 7 and fila["Días en contestar"] == 5, f"días: {fila}")
 ok(fila["Material recibido"] == datetime(2099, 3, 20), f"material: {fila['Material recibido']}")
+ok(not ws.cell(4, 2).alignment.wrap_text and ws.cell(3, 2).alignment.wrap_text,
+   "los datos en una línea (con alto fijo, partirlos los corta); la cabecera sí puede partirse")
+ok(len(seguimiento_excel.FALTA["material"]) <= 32, f"«qué falta» cabe: {seguimiento_excel.FALTA['material']}")
 
 
 def textos(libro):
