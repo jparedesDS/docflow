@@ -93,6 +93,10 @@ ok(h["oc"]["persona"] == "tecnico-uno" and h["compra_1"]["persona"] == "compras-
 t = fc["tramos"]
 ok((t["cliente"], t["activar"], t["tec_oc"], t["compras_pedir"], t["proveedor"]) == (49, 2, 1, 2, 19),
    f"cliente 6-ene→24-feb, activar 24→26, técnico 26→27, compras 27-feb→1-mar, proveedor 1→20-mar: {t}")
+vieja = {"P-99/001-S00": {"oc": {"fecha": datetime(2099, 1, 10), "de": "tecnico-uno", "para": "compras-uno"}}}
+fv = seg.construir_filas([ped()], COMPRAS, {}, PLANOS, {}, ACT, carpetas=vieja)[0]
+ok(fv["hitos"]["oc"]["fecha"] is None and fv["tramos"]["compras_pedir"] == 3,
+   f"una orden de compra de antes de la activación es de otro suministro: no cuenta: {fv['tramos']['compras_pedir']}")
 ACT_ERP = seg.construir_filas([ped()], COMPRAS, {}, PLANOS, {}, ACT, carpetas={})[0]
 ok(ACT_ERP["tramos"]["activar"] is None, "sin la PO, «activar» no se mide (el ERP solo tiene la activación)")
 per = {(p["paso"], p["persona"]) for p in seg.resumen([fc])["por_persona"]}

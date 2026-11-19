@@ -154,6 +154,8 @@ def construir_filas(pedidos: list[dict], compras: dict[str, dict], ots: dict[str
         else:
             h["activacion"] = _hito(p.get("order_date"), "erp")
         oc = carp.get("oc")
+        if oc and activado and _dia(oc["fecha"]) < activado - timedelta(days=MARGEN_BASE):
+            oc = None           # anterior a la activación: es de otro suministro (copiada en su carpeta)
         h["oc"] = _hito(oc["fecha"], "correo", oc.get("de") or "") if oc else _hito()
         quien_compra = (oc or {}).get("para") or "Compras"
         if cp:

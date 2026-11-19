@@ -77,11 +77,15 @@ HELP: dict[str, dict] = {
         "que": "Cuánto tarda cada paso desde que entra el correo de la oferta hasta que los planos se pasan a "
                "fábrica, quién lo hace y qué pedido va primero.",
         "pasos": [
-            "Los pasos: oferta recibida → contestada (comercial), contestada → pedido (tiempo del cliente, no es "
-            "nuestro), activación, compras del material y planos (técnico) a la vez, hasta que se mandan a fábrica.",
-            "Las fechas salen del ERP; la hora de la oferta y de la activación, del correo cuando se puede enlazar; "
-            "la de los planos, del primer correo guardado en 3-Fabricacion\\Envíos (el técnico es quien lo "
-            "manda; sin correo, el PDF).",
+            "Los pasos: oferta recibida → contestada (comercial), contestada → PO del cliente (tiempo del cliente, "
+            "no es nuestro) y activación. Desde la activación, a la vez: el material (el técnico pasa la orden de "
+            "compra a Compras, Compras la pide al proveedor y el proveedor la entrega) y los planos (el técnico "
+            "los manda a fábrica). La fábrica puede empezar cuando tiene las dos cosas.",
+            "De dónde sale cada fecha: del ERP, y de los correos guardados en la carpeta del pedido: "
+            "1-Comercial (la PO y la ACTIVACIÓN), 3-Fabricacion\\Orden de compra y 3-Fabricacion\\Envíos "
+            "(los planos a fábrica). Quien manda cada correo es la persona de ese paso.",
+            "«Pedidos»: los días de cada paso. «—» si falta el dato o el correo guardado es posterior al paso "
+            "siguiente (no se cuenta).",
             "«Cola»: pedidos activados que aún no están en fábrica. Arriba, en rojo, los que ya tienen el material "
             "y esperan los planos.",
             "Margen = entrega − hoy − lo que suelen tardar desde los planos hasta el envío los pedidos del mismo "

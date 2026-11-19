@@ -29,21 +29,20 @@ logger = logging.getLogger(__name__)
 TAB_COLA, TAB_PEDIDOS, TAB_PERSONAS = "Cola", "Pedidos", "Por persona"
 
 COLA_COLUMNS = ["#", "Qué falta", "Pedido", "Cliente", "Equipo", "Activación", "Entrega", "Margen", "Basado en"]
-PED_TRAMOS = [("comercial", "Comercial"), ("cliente", "Cliente"), ("activar", "Activar"),
-              ("tec_oc", "Orden de compra"), ("compras_pedir", "Compras"), ("proveedor", "Proveedor"),
-              ("material", "Material"), ("tecnico", "Técnico"), ("listo", "Puede empezar"),
-              ("taller_envio", "Planos a fábrica → envío"), ("total", "Total")]
-PED_COLUMNS = ["Pedido", "Cliente", "Equipo"] + [n for _t, n in PED_TRAMOS] + ["Técnico (quién)", "Estado"]
+# Días de cada paso, como en el Excel: pocas columnas y con nombre claro
+PED_TRAMOS = [("comercial", "Contestar"), ("tec_oc", "Orden de compra"), ("compras_pedir", "Compras"),
+              ("proveedor", "Proveedor"), ("tecnico", "Planos a fábrica"), ("listo", "Puede empezar"),
+              ("total", "Total")]
+PED_COLUMNS = ["Pedido", "Cliente"] + [n for _t, n in PED_TRAMOS] + ["Lo que retrasó", "Técnico"]
 PER_COLUMNS = ["Paso", "Persona", "Pedidos", "Típico (días)", "La mitad, entre"]
+RETRASO = {"material": "Material", "planos": "Planos", "los dos": "Los dos"}
 
 FALTA = {"planos": "Planos (material listo)", "ambos": "Planos y material", "material": "Material",
          "nada": "Listo para fábrica"}
-PASOS = {"comercial": "Comercial · oferta recibida → contestada", "activar": "Comercial · PO → activación",
-         "tec_oc": "Técnico · activación → orden de compra a Compras",
-         "compras": "Compras · orden de compra → pedido al proveedor",
-         "tecnico": "Técnico · activación → planos a fábrica"}
-ESTADOS = {"ok": "", "sin_carpeta": "Sin carpeta", "fabricado_sin_planos": "Fabricado sin correo de envío",
-           "planos_antes": "Planos antes del pedido", "pendiente_planos": "Pendiente de planos"}
+PASOS = {"comercial": "Comercial · contestar ofertas", "activar": "Comercial · activar pedidos",
+         "tec_oc": "Técnico · orden de compra", "compras": "Compras · pedir al proveedor",
+         "tecnico": "Técnico · planos a fábrica"}
+ORDEN_PASOS = list(PASOS)
 
 
 def _f(v) -> str:
@@ -56,6 +55,44 @@ def _n(v) -> str:
     if isinstance(v, float):
         return f"{v:.1f}".rstrip("0").rstrip(".").replace(".", ",")
     return str(v)
+
+
+def _dias(v) -> str:
+    """Días enteros; «—» si no hay dato o sale negativo (un correo archivado tarde)."""
+    return "—" if v is None or v < 0 else str(int(round(v)))
+
+
+def fila_pedido(f: dict) -> list:
+    """La fila de un pedido en la pestaña «Pedidos»."""
+    from core.services.seguimiento import _persona
+    return ([f["pedido"], f["cliente"] or "—"] + [_dias(f["tramos"].get(t)) for t, _n_ in PED_TRAMOS]
+            + [RETRASO.get(f.get("retraso_por"), "—"), _persona(f["hitos"]["planos"]["persona"])[1] or "—"])
+
+
+def personas_ordenadas(por_persona: list[dict]) -> list[dict]:
+    """Por paso, en el orden de la cadena; dentro, la que más pedidos lleva primero."""
+    return sorted(por_persona, key=lambda p: (ORDEN_PASOS.index(p["paso"]) if p["paso"] in ORDEN_PASOS
+                                              else len(ORDEN_PASOS), -p["n"]))
+
+
+def tarjetas(resumen: dict, cola: list[dict]) -> list[tuple]:
+    """(etiqueta, valor, color, debajo) de las tarjetas de arriba: lo mismo que el resumen del Excel."""
+    t = resumen["tramos"]
+
+    def de(tramo, etiqueta, color):
+        s = t[tramo]
+        valor = f"{int(round(s['mediana']))} d" if s["mediana"] is not None else "—"
+        return etiqueta, valor, color, f"lo normal · {s['n']} pedidos"
+
+    esperan = sum(1 for c in cola if c["falta"] == "planos")
+    return [
+        de("comercial", "Contestar una oferta", theme.BLUE),
+        de("tec_oc", "Técnico: orden de compra a Compras", theme.ACCENT),
+        de("proveedor", "Proveedor: entrega el material", theme.AMBER),
+        de("tecnico", "Técnico: planos a fábrica", theme.ACCENT),
+        ("Esperan planos con el material listo", esperan, theme.RED if esperan else theme.GREEN,
+         f"de {len(cola)} pedidos en cola"),
+    ]
 
 
 class PlazosView(ctk.CTkFrame):
@@ -88,7 +125,7 @@ class PlazosView(ctk.CTkFrame):
 
         self.kpi_row = ctk.CTkFrame(self, fg_color="transparent")
         self.kpi_row.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_3, theme.SPACE_2))
-        for c in range(4):
+        for c in range(5):
             self.kpi_row.grid_columnconfigure(c, weight=1, uniform="kpi")
 
         self.tabs = ui.tabview(self)
@@ -106,12 +143,15 @@ class PlazosView(ctk.CTkFrame):
         self.t_ped = DataTable(tab_p, columns=PED_COLUMNS, on_double_click=lambda _e=None: self._abrir(self.t_ped))
         self.t_ped.pack(fill="both", expand=True, pady=(theme.SPACE_2, 0))
         self.t_ped.set_columns_anchor({n: "center" for _t, n in PED_TRAMOS})
-        self.t_ped.set_columns_floor({**{n: 92 for _t, n in PED_TRAMOS}, "Planos a fábrica → envío": 170,
-                                      "Pedido": 130, "Cliente": 150, "Estado": 170, "Técnico (quién)": 140})
+        self.t_ped.set_columns_anchor({"Lo que retrasó": "center"})
+        self.t_ped.set_columns_floor({**{n: 118 for _t, n in PED_TRAMOS}, "Orden de compra": 150,
+                                      "Planos a fábrica": 150, "Puede empezar": 140, "Lo que retrasó": 140,
+                                      "Total": 75, "Compras": 100, "Pedido": 155, "Cliente": 150, "Técnico": 145})
 
         self.t_per = DataTable(tab_r, columns=PER_COLUMNS)
         self.t_per.pack(fill="both", expand=True, pady=(theme.SPACE_2, 0))
         self.t_per.set_columns_anchor({"Pedidos": "center", "Típico (días)": "center", "La mitad, entre": "center"})
+        self.t_per.set_columns_floor({"Paso": 290, "Persona": 190})
 
     # ── Datos ─────────────────────────────────────────────────────────────────
 
@@ -177,23 +217,7 @@ class PlazosView(ctk.CTkFrame):
     def _kpis(self) -> None:
         for w in self.kpi_row.winfo_children():
             w.destroy()
-        t = self._datos["resumen"]["tramos"]
-        cola = self._datos["cola"]
-        en_espera = sum(1 for c in cola if c["falta"] == "planos")
-
-        def tarjeta(tramo, etiqueta, color):
-            s = t[tramo]
-            sub = f"la mitad, {_n(s['p25'])}–{_n(s['p75'])} d · {s['n']} pedidos" if s["p25"] is not None \
-                else f"{s['n']} pedidos"
-            return etiqueta, (f"{_n(s['mediana'])} d" if s["mediana"] is not None else "—"), color, sub
-
-        cards = [
-            tarjeta("comercial", "Comercial: oferta → contestada", theme.BLUE),
-            tarjeta("tecnico", "Técnico: activación → planos a fábrica", theme.ACCENT),
-            tarjeta("material", "Compras: activación → material", theme.AMBER),
-            ("Esperan planos con el material listo", en_espera, theme.RED if en_espera else theme.GREEN,
-             f"de {len(cola)} pedidos en cola"),
-        ]
+        cards = tarjetas(self._datos["resumen"], self._datos["cola"])
         for col, (label, value, color, sub) in enumerate(cards):
             ui.kpi_card(self.kpi_row, label, value, color, sub).grid(
                 row=0, column=col, sticky="ew", padx=(0 if col == 0 else theme.SPACE_2, 0))
@@ -211,14 +235,13 @@ class PlazosView(ctk.CTkFrame):
                                  _f(c["hitos"]["entrega"]["fecha"]), margen, base],
                                 iid=f"c{i}", tags=(tag,) if tag else ())
         self.t_ped.clear()
-        for i, f in enumerate(sorted(d["filas"], key=lambda x: x["pedido"], reverse=True)):
-            self.t_ped.add_row([f["pedido"], f["cliente"] or "—", f["equipo"] or "—"]
-                               + [_n(f["tramos"].get(t)) for t, _n_ in PED_TRAMOS]
-                               + [f["hitos"]["planos"]["persona"] or "—", ESTADOS.get(f["estado"], f["estado"])],
-                               iid=f"p{i}")
-        self._pedidos_orden = sorted(d["filas"], key=lambda x: x["pedido"], reverse=True)
+        # El más reciente arriba, como en el Excel
+        self._pedidos_orden = sorted(d["filas"], key=lambda x: (str(x["hitos"]["pedido"]["fecha"] or ""),
+                                                                x["pedido"]), reverse=True)
+        for i, f in enumerate(self._pedidos_orden):
+            self.t_ped.add_row(fila_pedido(f), iid=f"p{i}")
         self.t_per.clear()
-        for i, p in enumerate(d["resumen"]["por_persona"]):
+        for i, p in enumerate(personas_ordenadas(d["resumen"]["por_persona"])):
             rango = f"{_n(p['p25'])}–{_n(p['p75'])}" if p["p25"] is not None else "—"
             self.t_per.add_row([PASOS.get(p["paso"], p["paso"]), p["persona"], p["n"], _n(p["mediana"]), rango],
                                iid=f"r{i}")
