@@ -128,5 +128,65 @@ leidos.clear()
 sc.leer_planos(pedidos, base_dir=tmp, cache_file=cache)
 ok(len(leidos) == 4, f"la carpeta cambiada se vuelve a leer: {leidos}")
 
+# ── Correos de las carpetas del pedido: orden de compra, activación y PO ─────
+# Lo que «dice» cada .msg de prueba (fecha, de, para, asunto), por nombre
+MSGS = {
+    "oc.msg": (datetime(2099, 3, 2, 9, 18), "<tecnico-uno@ejemplo.test>",
+               '"Compras Uno" <compras-uno@ejemplo.test>; otro@ejemplo.test', "P-99/011, orden de compra disponible"),
+    "oc_rev1.msg": (datetime(2099, 3, 9, 10, 0), "<tecnico-uno@ejemplo.test>", "compras-uno@ejemplo.test",
+                    "P-99/011, orden de compra rev 1"),
+    "ACTIVACIÓN P-99_011-S00 _ CLIENTE.msg": (datetime(2099, 2, 26, 8, 5), "Pepa Ruiz <pepa-ruiz@ejemplo.test>",
+                                              "documentacion@ejemplo.test", "ACTIVACIÓN P-99/011-S00 / CLIENTE"),
+    "Purchase Order - 4500012345.msg": (datetime(2099, 2, 24, 16, 30), "<compras@cliente.ejemplo.test>",
+                                        "pepa-ruiz@ejemplo.test", "Purchase Order - 4500012345 - EIPSA"),
+    "RE_ dudas de calidad.msg": (datetime(2099, 2, 20, 8, 0), "<x@cliente.ejemplo.test>", "y@ejemplo.test",
+                                 "RE: dudas de calidad"),
+    "PO antigua en subcarpeta.msg": (datetime(2099, 1, 1, 8, 0), "<x@cliente.ejemplo.test>", "y@ejemplo.test",
+                                     "PO 1"),
+}
+leidos_c = []
+
+
+def falso_correo(ruta):
+    leidos_c.append(Path(ruta).name)
+    f = MSGS.get(Path(ruta).name)
+    return {"fecha": f[0], "de": f[1], "para": f[2], "asunto": f[3]} if f else None
+
+
+sc._leer_correo = falso_correo
+p11 = año / "P-99-011 - CLIENTE FICTICIO - VAINAS"
+(p11 / "3-Fabricacion" / "Orden de compra" / "cambios").mkdir(parents=True)
+(p11 / "3-Fabricacion" / "Orden de compra" / "oc.msg").write_bytes(b"x")
+(p11 / "3-Fabricacion" / "Orden de compra" / "cambios" / "oc_rev1.msg").write_bytes(b"x")
+(p11 / "3-Fabricacion" / "Orden de compra" / "orden rev 0.xlsx").write_bytes(b"x")
+(p11 / "1-Comercial" / "SUPLEMENTOS").mkdir(parents=True)
+for n in ("ACTIVACIÓN P-99_011-S00 _ CLIENTE.msg", "Purchase Order - 4500012345.msg", "RE_ dudas de calidad.msg"):
+    (p11 / "1-Comercial" / n).write_bytes(b"x")
+(p11 / "1-Comercial" / "SUPLEMENTOS" / "PO antigua en subcarpeta.msg").write_bytes(b"x")
+
+r = sc.correos_pedido("P-99/011-S00", base_dir=tmp)
+ok(r["oc"] == {"fecha": datetime(2099, 3, 2, 9, 18), "de": "tecnico-uno", "para": "compras-uno"},
+   f"orden de compra a Compras: el más antiguo, quién y a quién: {r['oc']}")
+ok(r["activacion"] == {"fecha": datetime(2099, 2, 26, 8, 5), "de": "pepa-ruiz", "para": "documentacion"},
+   f"activación del primer nivel de 1-Comercial: {r['activacion']}")
+ok(r["po"] and r["po"]["fecha"] == datetime(2099, 2, 24, 16, 30),
+   f"PO del cliente, solo en el primer nivel (no la de SUPLEMENTOS): {r['po']}")
+ok(sc.correos_pedido("P-99/011-S03", base_dir=tmp) == {"oc": None, "activacion": None, "po": None},
+   "un suministro sin carpeta propia no hereda los correos")
+ok(sc.correos_pedido("P-99/003-S00", base_dir=tmp) == {"oc": None, "activacion": None, "po": None},
+   "sin carpetas Orden de compra ni 1-Comercial")
+
+cache_c = tmp / "correos_carpetas.json"
+leidos_c.clear()
+a = sc.leer_correos_pedido(["P-99/011-S00"], base_dir=tmp, cache_file=cache_c)
+n1 = len(leidos_c)
+b = sc.leer_correos_pedido(["P-99/011-S00"], base_dir=tmp, cache_file=cache_c)
+ok(n1 >= 5 and len(leidos_c) == n1 and a == b, f"la segunda vez, desde la caché: {n1} → {len(leidos_c)}")
+time.sleep(0.05)
+(p11 / "1-Comercial" / "ACTIVACIÓN P-99_011-S00 _ CLIENTE.msg").unlink()
+c = sc.leer_correos_pedido(["P-99/011-S00"], base_dir=tmp, cache_file=cache_c)
+ok(c["P-99/011-S00"]["activacion"] is None and c["P-99/011-S00"]["oc"] == a["P-99/011-S00"]["oc"],
+   f"la carpeta cambiada se vuelve a leer: {c}")
+
 print("FALLOS:", fallos)
 sys.exit(1 if fallos else 0)

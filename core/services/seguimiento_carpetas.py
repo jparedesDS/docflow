@@ -85,23 +85,30 @@ def propietario(ruta: Path) -> str:
 
 # ── Ficheros ──────────────────────────────────────────────────────────────────
 
-def _leer_msg(ruta: Path) -> tuple[datetime | None, str]:
-    """(fecha del correo en hora local, remitente) de un .msg de Outlook."""
+def _leer_correo(ruta: Path) -> dict | None:
+    """{"fecha" (hora local), "de", "para", "asunto"} de un .msg de Outlook, o None."""
     import extract_msg
     try:
         m = extract_msg.openMsg(str(ruta))
     except Exception:  # noqa: BLE001 — un .msg dañado no para nada
         logger.debug("No se pudo abrir %s", ruta, exc_info=True)
-        return None, ""
+        return None
     try:
         fecha = m.date if isinstance(m.date, datetime) else None
         if fecha and fecha.tzinfo:
             fecha = fecha.astimezone().replace(tzinfo=None)
-        return fecha, str(m.sender or "")
+        return {"fecha": fecha, "de": str(m.sender or ""), "para": str(m.to or ""),
+                "asunto": str(m.subject or "")}
     except Exception:  # noqa: BLE001
-        return None, ""
+        return None
     finally:
         m.close()
+
+
+def _leer_msg(ruta: Path) -> tuple[datetime | None, str]:
+    """(fecha del correo en hora local, remitente) de un .msg de Outlook."""
+    c = _leer_correo(ruta)
+    return (c["fecha"], c["de"]) if c else (None, "")
 
 
 def _creado(st) -> float:
@@ -257,4 +264,146 @@ def leer_planos(pedidos: list[str], base_dir: Path = apertura.DEFAULT_BASE_DIR,
             write_json(str(cache_file), cache)
         except OSError:
             logger.warning("No se pudo guardar la caché de envíos a fábrica", exc_info=True)
+    return out
+
+
+# ── Otros correos archivados en la carpeta del pedido ────────────────────────
+#
+#   · 3-Fabricacion\Orden de compra: el técnico pasa la orden de compra a
+#     Compras («P-99/001, orden de compra disponible»). El más antiguo: cuándo,
+#     quién la manda (técnico) y a quién (la persona de Compras).
+#   · 1-Comercial (solo el primer nivel: lo de dentro son suplementos, acuses…):
+#     el correo «ACTIVACIÓN …» (cuándo y quién activó) y el de la PO del
+#     cliente, cuando está («Purchase Order …», «PO …», «Pedido …»).
+
+_RE_COMERCIAL = re.compile(r"^\s*1\s*-?\s*comer", re.I)
+_RE_OC = re.compile(r"^\s*orden\s+de\s+compra", re.I)
+_RE_ACTIVACION = re.compile(r"activacion", re.I)
+_RE_PO = re.compile(r"purchase\s*order|\bp\.?\s?o\b|\bpedido\b|\borden\s+de\s+compra\b", re.I)
+_VACIO = {"oc": None, "activacion": None, "po": None}
+
+
+def _cache_correos_por_defecto() -> Path:
+    from core.paths import state_dir
+    return state_dir() / "seguimiento_correos_carpetas.json"
+
+
+def _destinatario(texto: str) -> str:
+    m = _RE_EMAIL.search(texto or "")
+    return m.group(1) if m else remitente((texto or "").split(";")[0])
+
+
+def _resumen_correo(c: dict | None) -> dict | None:
+    if not c:
+        return None
+    return {"fecha": c["fecha"], "de": remitente(c["de"]), "para": _destinatario(c["para"])}
+
+
+def _msgs(carpeta: Path, recursivo: bool) -> list[tuple[str, dict]]:
+    """(nombre, correo) de los .msg de la carpeta, con fecha."""
+    if recursivo:
+        rutas = [Path(r) / n for r, _d, ns in os.walk(carpeta) for n in ns]
+    else:
+        try:
+            rutas = [e for e in carpeta.iterdir() if e.is_file()]
+        except OSError:
+            rutas = []
+    out = []
+    for ruta in rutas:
+        if ruta.suffix.lower() != ".msg" or ruta.name.startswith("~$"):
+            continue
+        c = _leer_correo(ruta)
+        if c and c.get("fecha"):
+            out.append((ruta.name, c))
+    return out
+
+
+def _primero(correos: list[tuple[str, dict]], regex=None, salvo=None) -> dict | None:
+    elegidos = []
+    for nombre_f, c in correos:
+        texto = _sin_acentos(f"{nombre_f} {c.get('asunto', '')}")
+        if regex and not regex.search(texto):
+            continue
+        if salvo and salvo.search(texto):
+            continue
+        elegidos.append(c)
+    return _resumen_correo(min(elegidos, key=lambda c: c["fecha"])) if elegidos else None
+
+
+def _leer_oc(carpeta: Path) -> dict:
+    return {"oc": _primero(_msgs(carpeta, recursivo=True))}
+
+
+def _leer_comercial(carpeta: Path) -> dict:
+    correos = _msgs(carpeta, recursivo=False)
+    return {"activacion": _primero(correos, _RE_ACTIVACION),
+            "po": _primero(correos, _RE_PO, salvo=_RE_ACTIVACION)}
+
+
+def _carpetas_correos(pedido: str, base_dir: Path, memo: dict) -> tuple[Path | None, Path | None]:
+    d = _carpeta_pedido(pedido, base_dir, memo)
+    if not d:
+        return None, None
+    fab = _hija(d, _RE_FAB)
+    return (_hija(fab, _RE_OC) if fab else None), _hija(d, _RE_COMERCIAL)
+
+
+def correos_pedido(pedido: str, base_dir: Path = apertura.DEFAULT_BASE_DIR) -> dict:
+    """{"oc", "activacion", "po"}: cada uno {"fecha", "de", "para"} o None."""
+    oc, com = _carpetas_correos(pedido, Path(base_dir), {})
+    out = dict(_VACIO)
+    if oc:
+        out.update(_leer_oc(oc))
+    if com:
+        out.update(_leer_comercial(com))
+    return out
+
+
+def _a_json(res: dict) -> dict:
+    return {k: ({**v, "fecha": v["fecha"].isoformat()} if v else None) for k, v in res.items()}
+
+
+def _de_json(res: dict) -> dict:
+    return {k: ({**v, "fecha": datetime.fromisoformat(v["fecha"])} if v else None) for k, v in res.items()}
+
+
+def leer_correos_pedido(pedidos: list[str], base_dir: Path = apertura.DEFAULT_BASE_DIR,
+                        cache_file: Path | None = None) -> dict[str, dict]:
+    """Los correos de las carpetas de muchos pedidos, con caché por carpeta.
+
+    Una carpeta se vuelve a leer si cambia su fecha de modificación o si la
+    última vez no tenía nada."""
+    from core.utils.json_store import read_json, write_json
+    cache_file = Path(cache_file) if cache_file else _cache_correos_por_defecto()
+    cache = read_json(str(cache_file), default={}) or {}
+    memo: dict = {}
+    out, cambios = {}, False
+
+    def leer(carpeta: Path, lector) -> dict:
+        nonlocal cambios
+        try:
+            mtime = carpeta.stat().st_mtime_ns
+        except OSError:
+            return {}
+        guardado = cache.get(str(carpeta))
+        if guardado and guardado.get("mtime") == mtime and any(guardado["res"].values()):
+            return _de_json(guardado["res"])
+        res = lector(carpeta)
+        cache[str(carpeta)] = {"mtime": mtime, "res": _a_json(res)}
+        cambios = True
+        return res
+
+    for pedido in pedidos:
+        oc, com = _carpetas_correos(pedido, Path(base_dir), memo)
+        r = dict(_VACIO)
+        if oc:
+            r.update(leer(oc, _leer_oc))
+        if com:
+            r.update(leer(com, _leer_comercial))
+        out[pedido] = r
+    if cambios:
+        try:
+            write_json(str(cache_file), cache)
+        except OSError:
+            logger.warning("No se pudo guardar la caché de correos de las carpetas", exc_info=True)
     return out
