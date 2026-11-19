@@ -33,16 +33,23 @@ FALTA = {"planos": "Planos (el material ya está)", "ambos": "Planos y material"
          "material": "Material (planos ya en fábrica)"}
 
 # (paso, «qué hace»). El de activar no va: siempre ~0 días y confunde.
-PERSONAS = [("comercial", "Contestar ofertas"), ("compras", "Conseguir el material"),
+PERSONAS = [("comercial", "Contestar ofertas"), ("activar", "Activar pedidos"),
+            ("tec_oc", "Pasar la orden de compra a Compras"), ("compras", "Pedir el material al proveedor"),
             ("tecnico", "Mandar planos a fábrica")]
 
-# (tramo o None para un subtítulo, texto, nota, sangría)
+# (tramo, texto, nota, sangría). Tramo None: título con una línea en blanco
+# antes; tramo "": subtítulo («Material:», «Planos:»).
 RESUMEN = [
     ("comercial", "Contestar una oferta", "", 0),
     ("cliente", "El cliente tarda en hacer el pedido", "no depende de nosotros", 0),
-    (None, "Desde que se activa el pedido (las dos cosas a la vez):", "", 0),
-    ("material", "Compras: tener todo el material", "", 1),
-    ("tecnico", "Técnico: mandar los planos a fábrica", "", 1),
+    ("activar", "Activar el pedido, desde que llega la PO", "", 0),
+    (None, "Desde que se activa el pedido (material y planos, a la vez):", "", 0),
+    ("", "Material:", "", 1),
+    ("tec_oc", "Técnico: pasa la orden de compra a Compras", "", 2),
+    ("compras_pedir", "Compras: pide el material al proveedor", "", 2),
+    ("proveedor", "Proveedor: entrega el material", "", 2),
+    ("", "Planos:", "", 1),
+    ("tecnico", "Técnico: manda los planos a fábrica", "", 2),
     ("listo:con_compras", "→ La fábrica puede empezar, si hay que comprar material", "", 1),
     ("listo:sin_compras", "→ La fábrica puede empezar, si no hace falta comprar", "", 1),
     ("total", "De la oferta a la fábrica, en total", "", 0),
@@ -216,6 +223,11 @@ def _resumen(wb, datos: dict) -> None:
             ws.row_dimensions[fila].height = 26
             ws.cell(fila, 1, texto).font = Font(size=16, italic=True)
             continue
+        if tramo == "":
+            c = ws.cell(fila, 1, texto)
+            c.font = Font(size=16, bold=True)
+            c.alignment = Alignment(indent=3 * sangria)
+            continue
         listo = tramo.startswith("listo:")
         stats = datos["resumen"]["listo"][tramo.split(":")[1]] if listo else tramos[tramo]
         c = ws.cell(fila, 1, texto)
@@ -277,14 +289,15 @@ def _pedidos(wb, datos: dict) -> None:
         else:
             material = "Pendiente"
         filas.append([f["pedido"], f["cliente"] or "—", h["rfq"]["fecha"] or "—", h["contestada"]["fecha"] or "—",
-                      _entero(t["comercial"]), h["activacion"]["fecha"] or "—", material,
+                      _entero(t["comercial"]), h["activacion"]["fecha"] or "—", h["oc"]["fecha"] or "—", material,
                       h["planos"]["fecha"] or "—", _entero(t["tecnico"]), RETRASO.get(f.get("retraso_por"), "—"),
                       _entero(t["total"])])
     _hoja(wb, "Pedidos",
           "Un pedido por línea, el más reciente arriba. Días: los que pasan entre una fecha y la siguiente.",
           ["Pedido", "Cliente", "Llega la oferta", "Contestada", "Días en contestar", "Activado",
-           "Material recibido", "Planos a fábrica", "Días hasta planos", "Lo que retrasó", "Días en total"],
-          filas, [18, 30, 15, 15, 13, 15, 16, 15, 13, 14, 13])
+           "Orden de compra a Compras", "Material recibido", "Planos a fábrica", "Días hasta planos",
+           "Lo que retrasó", "Días en total"],
+          filas, [18, 30, 15, 15, 13, 15, 16, 16, 15, 13, 14, 13])
 
 
 def _personas(wb, datos: dict) -> None:

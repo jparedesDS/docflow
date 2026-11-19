@@ -21,18 +21,22 @@ TITULO = "Plazos: de la oferta a la fábrica"
 # (tramo, nombre, quién) en el orden de la cadena
 CADENA = [
     ("comercial", "Oferta recibida → contestada", "Comercial"),
-    ("cliente", "Contestada → pedido del cliente", "Tiempo del cliente"),
-    ("activar", "Pedido → activación", "Comercial"),
-    ("compras_pedir", "Activación → 1.er pedido a proveedor", "Compras"),
-    ("material", "Activación → material recibido", "Compras / proveedor"),
+    ("cliente", "Contestada → PO del cliente", "Tiempo del cliente"),
+    ("activar", "PO del cliente → activación", "Comercial"),
+    ("tec_oc", "Activación → orden de compra a Compras", "Técnico"),
+    ("compras_pedir", "Orden de compra → pedido al proveedor", "Compras"),
+    ("proveedor", "Pedido al proveedor → material recibido", "Proveedor"),
+    ("material", "Activación → material recibido, en total", "Material"),
     ("tecnico", "Activación → planos a fábrica", "Técnico"),
     ("listo", "Activación → la fábrica puede empezar (planos y material)", "Lo que llegue último"),
     ("cola_taller", "1.ª OT → 1.er fichaje", "Fábrica"),
     ("taller_envio", "Planos a fábrica → envío", "Fábrica"),
 ]
 
-PASOS = {"comercial": "Comercial · oferta recibida → contestada", "activar": "Comercial · pedido → activación",
-         "compras": "Compras · activación → material", "tecnico": "Técnico · activación → planos a fábrica"}
+PASOS = {"comercial": "Comercial · oferta recibida → contestada", "activar": "Comercial · PO → activación",
+         "tec_oc": "Técnico · activación → orden de compra a Compras",
+         "compras": "Compras · orden de compra → pedido al proveedor",
+         "tecnico": "Técnico · activación → planos a fábrica"}
 
 FALTA = {"planos": ("Planos (el material ya está)", RED), "ambos": ("Planos y material", AMBER),
          "material": ("Material", SLATE), "nada": ("Listo para fábrica", GREEN)}

@@ -26,6 +26,10 @@ from core.services import agenda
 logger = logging.getLogger(__name__)
 
 VENTANA_ANTES, VENTANA_DESPUES = 3, 1
+# Los buzones de Ofertas se leen enteros: lo que guarden (desde mayo de 2026 en
+# los compartidos). Un año hacia atrás y hasta este número de correos por buzón.
+DIAS_BUZON = 400
+LIMITE_BUZON = 3000
 
 _RE_EMAIL = re.compile(r"[\w.+\-]+@[\w.\-]+\.\w+")
 _REF_GENERICAS = {"EMAIL", "MAIL", "CORREO", "-", "*"}
@@ -100,8 +104,8 @@ def enlazar(correos: list[dict], ofertas_erp: list[dict]) -> dict[str, dict]:
 
 def _buzon(dias: int) -> list[dict]:
     from core.services import ofertas
-    correos = ofertas.fetch_inbox_offers(days=dias, force=True)
-    return ofertas.enrich_replies(correos, days=dias)
+    correos = ofertas.fetch_inbox_offers(days=dias, force=True, limit=LIMITE_BUZON)
+    return ofertas.enrich_replies(correos, days=dias, limit=LIMITE_BUZON)
 
 
 def _ofertas_erp(desde: date) -> list[dict]:
@@ -127,7 +131,7 @@ def cache(cache_file: Path | None = None) -> dict[str, dict]:
     return {k: _de_json(v) for k, v in data.items() if isinstance(v, dict)}
 
 
-def actualizar(dias: int = 60, cache_file: Path | None = None) -> dict[str, dict]:
+def actualizar(dias: int = DIAS_BUZON, cache_file: Path | None = None) -> dict[str, dict]:
     """Lee los buzones de Ofertas, enlaza y acumula. Devuelve toda la caché."""
     from core.utils.json_store import write_json
     cache_file = Path(cache_file) if cache_file else _cache_por_defecto()

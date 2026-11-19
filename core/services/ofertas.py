@@ -201,7 +201,7 @@ def _build_reply_index(sent_idx: list[dict]) -> tuple[dict, dict]:
 _inbox_cache: dict[int, tuple[float, list]] = {}
 
 
-def _scan_inboxes(days: int) -> tuple[list, list]:
+def _scan_inboxes(days: int, limit: int = 300) -> tuple[list, list]:
     """FASE 1 (rápida): solo las bandejas de entrada → ofertas + flag \\Answered."""
     from concurrent.futures import ThreadPoolExecutor
     trusted = get_trusted_domains()
@@ -210,7 +210,7 @@ def _scan_inboxes(days: int) -> tuple[list, list]:
 
     def scan(acc):
         try:
-            return (acc, imap_service.list_since(days, "INBOX", acc["user"], acc["password"]))
+            return (acc, imap_service.list_since(days, "INBOX", acc["user"], acc["password"], limit=limit))
         except Exception as exc:
             return (acc, exc)
 
@@ -238,7 +238,7 @@ def _scan_inboxes(days: int) -> tuple[list, list]:
     return out, errors
 
 
-def _global_reply_index(days: int) -> tuple[dict, dict]:
+def _global_reply_index(days: int, limit: int = 1200) -> tuple[dict, dict]:
     """Índice global de respuestas (buzones compartidos + comerciales). Es lo caro."""
     from concurrent.futures import ThreadPoolExecutor
     accounts = [a for a in OFERTAS_ACCOUNTS if a.get("password")]
@@ -249,7 +249,7 @@ def _global_reply_index(days: int) -> tuple[dict, dict]:
     def scan(t):
         label, user, pw = t
         try:
-            return (label, user, _get_sent_index(user, pw, days))
+            return (label, user, _get_sent_index(user, pw, days, limit))
         except Exception:
             return (label, user, [])
 
@@ -281,24 +281,24 @@ def _apply_replies(offers: list[dict], g_msgid: dict, g_recip: dict) -> list[dic
     return offers
 
 
-def fetch_inbox_offers(days: int = 30, force: bool = False) -> list[dict]:
+def fetch_inbox_offers(days: int = 30, force: bool = False, limit: int = 300) -> list[dict]:
     """FASE 1: ofertas de las bandejas (rápido). El estado de respuesta inicial
     es solo el de la flag \\Answered; enrich_replies() completa el resto."""
     global last_errors
     now = time.time()
-    hit = _inbox_cache.get(days)
+    hit = _inbox_cache.get((days, limit))
     if hit and not force and (now - hit[0]) < CACHE_TTL:
         last_errors = []
         return [dict(o) for o in hit[1]]
-    out, errors = _scan_inboxes(days)
+    out, errors = _scan_inboxes(days, limit)
     last_errors = errors
-    _inbox_cache[days] = (now, [dict(o) for o in out])
+    _inbox_cache[(days, limit)] = (now, [dict(o) for o in out])
     return out
 
 
-def enrich_replies(offers: list[dict], days: int = 30) -> list[dict]:
+def enrich_replies(offers: list[dict], days: int = 30, limit: int = 1200) -> list[dict]:
     """FASE 2: marca quién/cuándo respondió (escaneo de Enviados, lento)."""
-    g_msgid, g_recip = _global_reply_index(days)
+    g_msgid, g_recip = _global_reply_index(days, limit)
     return _apply_replies(offers, g_msgid, g_recip)
 
 
@@ -306,14 +306,16 @@ _SENT_TTL = 600  # s — el índice de Enviados (escaneo caro de carpetas) se ca
 _sent_cache: dict[str, tuple[float, list]] = {}
 
 
-def _get_sent_index(user: str, pw: str, days: int) -> list:
-    """Índice de Enviados con caché propia (el escaneo de carpetas es lo caro)."""
+def _get_sent_index(user: str, pw: str, days: int, limit: int = 1200) -> list:
+    """Índice de Enviados con caché propia (el escaneo de carpetas es lo caro).
+    La caché distingue días y límite: Ofertas mira 30 días y Plazos el buzón entero."""
     now = time.time()
-    hit = _sent_cache.get(user)
+    clave = (user, days, limit)
+    hit = _sent_cache.get(clave)
     if hit and (now - hit[0]) < _SENT_TTL:
         return hit[1]
-    sidx = imap_service.list_sent_index(days, user, pw)
-    _sent_cache[user] = (now, sidx)
+    sidx = imap_service.list_sent_index(days, user, pw, limit=limit)
+    _sent_cache[clave] = (now, sidx)
     return sidx
 
 

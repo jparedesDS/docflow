@@ -39,6 +39,31 @@ def oferta(num, recep, mails="rfq@cliente.ejemplo.test copia:pepa@casa.ejemplo.t
     return {"num_offer": num, "recep_date": recep, "mails": mails, "num_ref_offer": ref}
 
 
+# Los buzones de Ofertas se leen enteros (lo que guarden), no solo 300 correos ni 60 días
+import inspect  # noqa: E402
+
+from core.services import ofertas as _of  # noqa: E402
+
+pedidos_imap = []
+_of.OFERTAS_ACCOUNTS = [{"label": "Prueba", "user": "buzon@ejemplo.test", "password": "x"}]
+_of.imap_service.list_since = lambda days, folder, user, pw, limit=300: pedidos_imap.append(("in", days, limit)) or []
+_of.imap_service.list_sent_index = lambda days, user, pw, limit=1200: pedidos_imap.append(("sent", days, limit)) or []
+_of.list_tracked_mailboxes = lambda: []
+llamadas_buzon = []
+_fetch, _enrich = _of.fetch_inbox_offers, _of.enrich_replies
+_of.fetch_inbox_offers = lambda days, force=False, limit=300: llamadas_buzon.append(("in", days, limit)) or []
+_of.enrich_replies = lambda offers, days=30, limit=1200: llamadas_buzon.append(("sent", days, limit)) or []
+scor._buzon(400)
+ok(llamadas_buzon == [("in", 400, scor.LIMITE_BUZON), ("sent", 400, scor.LIMITE_BUZON)] and scor.LIMITE_BUZON >= 2000,
+   f"Plazos pide el buzón entero: {llamadas_buzon}")
+ok(inspect.signature(scor.actualizar).parameters["dias"].default >= 365, "por defecto, un año o más")
+_of.fetch_inbox_offers, _of.enrich_replies = _fetch, _enrich
+_of.fetch_inbox_offers(days=400, force=True, limit=3000)
+_of._get_sent_index("buzon@ejemplo.test", "x", 30)
+_of._get_sent_index("buzon@ejemplo.test", "x", 400, limit=3000)
+ok(("in", 400, 3000) in pedidos_imap and ("sent", 30, 1200) in pedidos_imap and ("sent", 400, 3000) in pedidos_imap,
+   f"el límite llega a IMAP y la caché de Enviados distingue los días: {pedidos_imap}")
+
 # Remitente + ventana de −3 a +1 días
 r = scor.enlazar([correo("2099-01-09T10:15:00+01:00", resp="2099-01-12T09:00:00+01:00")],
                  [oferta("O-99/010", date(2099, 1, 10), ref="-")])

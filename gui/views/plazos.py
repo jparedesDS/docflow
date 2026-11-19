@@ -30,6 +30,7 @@ TAB_COLA, TAB_PEDIDOS, TAB_PERSONAS = "Cola", "Pedidos", "Por persona"
 
 COLA_COLUMNS = ["#", "Qué falta", "Pedido", "Cliente", "Equipo", "Activación", "Entrega", "Margen", "Basado en"]
 PED_TRAMOS = [("comercial", "Comercial"), ("cliente", "Cliente"), ("activar", "Activar"),
+              ("tec_oc", "Orden de compra"), ("compras_pedir", "Compras"), ("proveedor", "Proveedor"),
               ("material", "Material"), ("tecnico", "Técnico"), ("listo", "Puede empezar"),
               ("taller_envio", "Planos a fábrica → envío"), ("total", "Total")]
 PED_COLUMNS = ["Pedido", "Cliente", "Equipo"] + [n for _t, n in PED_TRAMOS] + ["Técnico (quién)", "Estado"]
@@ -37,8 +38,10 @@ PER_COLUMNS = ["Paso", "Persona", "Pedidos", "Típico (días)", "La mitad, entre
 
 FALTA = {"planos": "Planos (material listo)", "ambos": "Planos y material", "material": "Material",
          "nada": "Listo para fábrica"}
-PASOS = {"comercial": "Comercial · recibida → contestada", "activar": "Comercial · pedido → activación",
-         "compras": "Compras · activación → material", "tecnico": "Técnico · activación → planos a fábrica"}
+PASOS = {"comercial": "Comercial · oferta recibida → contestada", "activar": "Comercial · PO → activación",
+         "tec_oc": "Técnico · activación → orden de compra a Compras",
+         "compras": "Compras · orden de compra → pedido al proveedor",
+         "tecnico": "Técnico · activación → planos a fábrica"}
 ESTADOS = {"ok": "", "sin_carpeta": "Sin carpeta", "fabricado_sin_planos": "Fabricado sin correo de envío",
            "planos_antes": "Planos antes del pedido", "pendiente_planos": "Pendiente de planos"}
 

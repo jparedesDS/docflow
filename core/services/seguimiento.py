@@ -23,14 +23,16 @@ from datetime import date, datetime, timedelta
 # (sin suministro) todavía se le atribuye
 MARGEN_BASE = 7
 
-HITOS = ("rfq", "contestada", "pedido", "activacion", "compra_1", "material", "planos",
+HITOS = ("rfq", "contestada", "pedido", "activacion", "oc", "compra_1", "material", "planos",
          "listo", "fabrica", "fichaje_1", "envio", "entrega")
 
 TRAMOS = {
     "comercial": ("rfq", "contestada"),
     "cliente": ("contestada", "pedido"),
     "activar": ("pedido", "activacion"),
-    "compras_pedir": ("activacion", "compra_1"),
+    "tec_oc": ("activacion", "oc"),          # el técnico pasa la orden de compra a Compras
+    "compras_pedir": ("oc", "compra_1"),     # sin ese correo, desde la activación (ver abajo)
+    "proveedor": ("compra_1", "material"),
     "material": ("activacion", "material"),
     "tecnico": ("activacion", "planos"),
     "a_fabrica": ("planos", "fabrica"),
@@ -95,8 +97,11 @@ def _fabricado(p: dict) -> bool:
 
 def construir_filas(pedidos: list[dict], compras: dict[str, dict], ots: dict[str, dict],
                     planos: dict[str, dict], correos: dict[str, dict],
-                    activaciones: dict[str, dict]) -> list[dict]:
-    """Una fila por pedido-suministro con sus hitos, sus tramos y su estado."""
+                    activaciones: dict[str, dict], carpetas: dict[str, dict] | None = None) -> list[dict]:
+    """Una fila por pedido-suministro con sus hitos, sus tramos y su estado.
+
+    `carpetas[pedido]`: los correos archivados en su carpeta (`seguimiento_carpetas.
+    leer_correos_pedido`): la PO del cliente, la activación y la orden de compra."""
     por_base: dict[str, int] = {}
     for p in pedidos:
         por_base[p.get("base") or ""] = por_base.get(p.get("base") or "", 0) + 1
@@ -106,6 +111,10 @@ def construir_filas(pedidos: list[dict], compras: dict[str, dict], ots: dict[str
         pedido, base = p.get("pedido") or "", p.get("base") or ""
         correo = correos.get(p.get("oferta") or "") if p.get("oferta") else None
         act = activaciones.get(pedido)
+        if not (act and act.get("recibido")):
+            cact = ((carpetas or {}).get(pedido) or {}).get("activacion")
+            act = {"recibido": cact["fecha"], "remitente": cact["de"]} if cact else None
+        carp = (carpetas or {}).get(pedido) or {}
         pl = planos.get(pedido)
         # Lo apuntado al propio suministro manda. Lo apuntado al pedido sin
         # suministro, si el pedido tiene varios, solo vale para el suministro
@@ -136,13 +145,19 @@ def construir_filas(pedidos: list[dict], compras: dict[str, dict], ots: dict[str
             h["contestada"] = _hito(correo["contestado"], "correo", correo.get("contesta") or responsable)
         else:
             h["contestada"] = _hito(p.get("presentation_date"), "erp", responsable)
-        h["pedido"] = _hito(p.get("order_date"), "erp")
+        if carp.get("po"):
+            h["pedido"] = _hito(carp["po"]["fecha"], "correo")
+        else:
+            h["pedido"] = _hito(p.get("order_date"), "erp")
         if act and act.get("recibido"):
             h["activacion"] = _hito(act["recibido"], "correo", act.get("remitente") or "")
         else:
             h["activacion"] = _hito(p.get("order_date"), "erp")
+        oc = carp.get("oc")
+        h["oc"] = _hito(oc["fecha"], "correo", oc.get("de") or "") if oc else _hito()
+        quien_compra = (oc or {}).get("para") or "Compras"
         if cp:
-            h["compra_1"] = _hito(cp.get("primer_pedido"), "erp", "Compras")
+            h["compra_1"] = _hito(cp.get("primer_pedido"), "erp", quien_compra)
             listo = cp.get("ultima_recepcion") if not cp.get("pendiente") else None
             h["material"] = _hito(listo, "erp", "Compras")
         else:
@@ -159,8 +174,10 @@ def construir_filas(pedidos: list[dict], compras: dict[str, dict], ots: dict[str
         h["listo"], retraso_por = _listo(h)
 
         tramos = {k: _dias(h[a]["fecha"], h[b]["fecha"]) for k, (a, b) in TRAMOS.items()}
-        if h["activacion"]["fuente"] != "correo":
-            tramos["activar"] = None        # sin el correo, activación = pedido: no es un 0 de verdad
+        if h["activacion"]["fuente"] != "correo" or h["pedido"]["fuente"] != "correo":
+            tramos["activar"] = None        # sin las dos fechas reales es un 0 que no dice nada
+        if not h["oc"]["fecha"]:
+            tramos["compras_pedir"] = _dias(h["activacion"]["fecha"], h["compra_1"]["fecha"])
 
         avisos = []
         ent, ped_d = _dia(p.get("expected_date")), _dia(p.get("order_date"))
@@ -195,7 +212,8 @@ def construir_filas(pedidos: list[dict], compras: dict[str, dict], ots: dict[str
 PASOS_PERSONA = {
     "comercial": ("comercial", "contestada"),
     "activar": ("activar", "activacion"),
-    "compras": ("material", "material"),
+    "tec_oc": ("tec_oc", "oc"),                # técnico: pasa la orden de compra a Compras
+    "compras": ("compras_pedir", "compra_1"),  # Compras: pide el material al proveedor
     "tecnico": ("tecnico", "planos"),
 }
 
@@ -383,10 +401,13 @@ def cargar(años: tuple[int, ...] = (2025, 2026), hoy: date | None = None, corre
     ots = leer(lambda: seguimiento_erp.ots(desde), "Sin ERP", {}) if pedidos else {}
     if not base_dir.exists():
         avisos.append("Sin acceso a M:")
-        planos = {}
+        planos, carpetas = {}, {}
     else:
         planos = leer(lambda: seguimiento_carpetas.leer_planos([p["pedido"] for p in pedidos], base_dir=base_dir),
                       "Sin acceso a M:", {})
+        carpetas = leer(lambda: seguimiento_carpetas.leer_correos_pedido([p["pedido"] for p in pedidos],
+                                                                          base_dir=base_dir),
+                        "Sin acceso a M:", {})
     if correo:
         correos = leer(seguimiento_correos.actualizar, "Sin correo", None)
         if correos is None:
@@ -395,7 +416,7 @@ def cargar(años: tuple[int, ...] = (2025, 2026), hoy: date | None = None, corre
         correos = leer(seguimiento_correos.cache, "Sin correo", {})
     activaciones = leer(seguimiento_correos.activaciones_por_pedido, "Sin correo", {})
 
-    historico = construir_filas(pedidos, compras, ots, planos, correos, activaciones)
+    historico = construir_filas(pedidos, compras, ots, planos, correos, activaciones, carpetas)
     filas = [f for f in historico
              if (_dia(f["hitos"]["pedido"]["fecha"]) or date.min).year in años]
     return {"filas": filas, "resumen": resumen(filas), "cola": cola(filas, historico, hoy),

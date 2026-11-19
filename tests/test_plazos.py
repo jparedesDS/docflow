@@ -76,6 +76,28 @@ lc = seg.resumen([ot_antes, pl_tarde, sin_cp, pend, igual])["listo"]
 ok(lc["con_compras"]["n"] == 3 and lc["con_compras"]["mediana"] == 22 and lc["sin_compras"]["n"] == 1
    and lc["sin_compras"]["mediana"] == 7, f"puede empezar, separado con y sin compras: {lc}")
 ok(f["estado"] == "ok" and f["compartido"] is False, f"estado normal: {f['estado']} {f['compartido']}")
+ok(f["tramos"]["proveedor"] == 19 and f["tramos"]["tec_oc"] is None,
+   f"proveedor: pedido al proveedor → material (1 → 20-mar); sin correo de orden de compra: {f['tramos']}")
+
+# Correos de las carpetas del pedido: PO del cliente, activación y orden de compra a Compras
+CARP = {"P-99/001-S00": {
+    "po": {"fecha": datetime(2099, 2, 24, 16, 0), "de": "compras-cliente", "para": "pepa-ruiz"},
+    "activacion": {"fecha": datetime(2099, 2, 26, 8, 0), "de": "pepa-ruiz", "para": "pepa-ruiz"},
+    "oc": {"fecha": datetime(2099, 2, 27, 9, 0), "de": "tecnico-uno", "para": "compras-uno"}}}
+fc = seg.construir_filas([ped()], COMPRAS, OTS, PLANOS, CORREOS, {}, carpetas=CARP)[0]
+h = fc["hitos"]
+ok(h["pedido"]["fecha"] == datetime(2099, 2, 24, 16, 0) and h["pedido"]["fuente"] == "correo", "la PO del cliente")
+ok(h["activacion"]["fuente"] == "correo" and h["activacion"]["persona"] == "pepa-ruiz", "activación de 1-Comercial")
+ok(h["oc"]["persona"] == "tecnico-uno" and h["compra_1"]["persona"] == "compras-uno",
+   "el técnico manda la orden de compra; la persona de Compras es quien la recibe")
+t = fc["tramos"]
+ok((t["cliente"], t["activar"], t["tec_oc"], t["compras_pedir"], t["proveedor"]) == (49, 2, 1, 2, 19),
+   f"cliente 6-ene→24-feb, activar 24→26, técnico 26→27, compras 27-feb→1-mar, proveedor 1→20-mar: {t}")
+ACT_ERP = seg.construir_filas([ped()], COMPRAS, {}, PLANOS, {}, ACT, carpetas={})[0]
+ok(ACT_ERP["tramos"]["activar"] is None, "sin la PO, «activar» no se mide (el ERP solo tiene la activación)")
+per = {(p["paso"], p["persona"]) for p in seg.resumen([fc])["por_persona"]}
+ok(("tec_oc", "Tecnico Uno") in per and ("compras", "Compras Uno") in per and ("activar", "Pepa Ruiz") in per,
+   f"personas de cada paso: {per}")
 ok(f["ruta"] == "X", "ruta de los planos")
 f = seg.construir_filas([ped()], {}, {}, {"P-99/001-S00": {**PLANOS["P-99/001-S00"], "fuente": "correo",
                                                           "envios": 2}}, {}, {})[0]
@@ -253,7 +275,9 @@ seguimiento_carpetas.leer_planos = lambda pedidos, **k: {**PLANOS, "P-98/001-S00
 seguimiento_correos.cache = lambda *a, **k: CORREOS
 seguimiento_correos.activaciones_por_pedido = lambda: ACT
 seguimiento_correos.actualizar = falla
+seguimiento_carpetas.leer_correos_pedido = lambda pedidos, **k: {"P-99/001-S00": {"oc": CARP["P-99/001-S00"]["oc"]}}
 d = seg.cargar((2099,), hoy=date(2099, 3, 1), correo=False, base_dir=tmp)
+ok(d["filas"][0]["hitos"]["oc"]["persona"] == "tecnico-uno", "cargar() usa los correos de las carpetas")
 ok([f["pedido"] for f in d["filas"]] == ["P-99/001-S00"], f"solo los pedidos del año: {[f['pedido'] for f in d['filas']]}")
 ok(d["avisos"] == [] and d["resumen"]["tramos"]["tecnico"]["n"] == 1 and isinstance(d["cola"], list),
    f"cálculo completo: {d['avisos']}")
@@ -275,6 +299,8 @@ ok(fila["Llega la oferta"] == datetime(2099, 1, 1) and ws.cell(4, 3).number_form
    f"fecha sin hora: {fila['Llega la oferta']}")
 ok(fila["Días hasta planos"] == 7 and fila["Días en contestar"] == 5, f"días: {fila}")
 ok(fila["Material recibido"] == datetime(2099, 3, 20), f"material: {fila['Material recibido']}")
+ok("Orden de compra a Compras" in cab and fila["Orden de compra a Compras"] == datetime(2099, 2, 27),
+   f"columna de la orden de compra: {fila.get('Orden de compra a Compras')}")
 ok(not ws.cell(4, 2).alignment.wrap_text and ws.cell(3, 2).alignment.wrap_text,
    "los datos en una línea (con alto fijo, partirlos los corta); la cabecera sí puede partirse")
 ok(len(seguimiento_excel.FALTA["material"]) <= 32, f"«qué falta» cabe: {seguimiento_excel.FALTA['material']}")
@@ -295,8 +321,12 @@ ok(not malos, f"nada de None, p25, medianas ni decimales: {malos[:5]}")
 resumen_txt = " ".join(str(v) for h, v in textos(wb) if h == "Resumen")
 ok("Contestar una oferta" in resumen_txt and "5 días" in resumen_txt, f"resumen: {resumen_txt[:300]}")
 ok("no depende de nosotros" in resumen_txt, "el tiempo del cliente, explicado")
-ok("Desde que se activa el pedido" in resumen_txt and "Compras: tener todo el material" in resumen_txt
-   and "Técnico: mandar los planos a fábrica" in resumen_txt
+ok("Desde que se activa el pedido" in resumen_txt and "Material:" in resumen_txt and "Planos:" in resumen_txt
+   and "Técnico: pasa la orden de compra a Compras" in resumen_txt
+   and "Compras: pide el material al proveedor" in resumen_txt
+   and "Proveedor: entrega el material" in resumen_txt
+   and "Técnico: manda los planos a fábrica" in resumen_txt
+   and "Activar el pedido, desde que llega la PO" in resumen_txt
    and "La fábrica puede empezar, si hay que comprar material" in resumen_txt
    and "La fábrica puede empezar, si no hace falta comprar" in resumen_txt,
    f"desglose desde la activación: {resumen_txt[:400]}")
