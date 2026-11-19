@@ -249,10 +249,12 @@ def _persona(raw: str) -> tuple[str, str]:
 
 
 def _vale(fila: dict, tramo: str) -> int | None:
-    """El valor del tramo si cuenta para las medianas."""
+    """El valor del tramo si cuenta para las medianas. Un negativo (el correo
+    archivado es posterior al paso siguiente: un «RE:», un reenvío) no es un tiempo."""
     if tramo == "tecnico" and fila["estado"] in ("planos_antes", "sin_carpeta"):
         return None
-    return fila["tramos"].get(tramo)
+    v = fila["tramos"].get(tramo)
+    return v if v is not None and v >= 0 else None
 
 
 def _por_tramo(filas: list[dict]) -> dict:
@@ -290,9 +292,9 @@ def resumen(filas: list[dict]) -> dict:
         "cuello": _cuello(filas),
         # «puede empezar» mezcla dos casos que no se parecen: separados
         "listo": {
-            "con_compras": _stats([f["tramos"]["listo"] for f in filas
+            "con_compras": _stats([_vale(f, "listo") for f in filas
                                    if f["hitos"]["material"]["fuente"] != "sin_compras"]),
-            "sin_compras": _stats([f["tramos"]["listo"] for f in filas
+            "sin_compras": _stats([_vale(f, "listo") for f in filas
                                    if f["hitos"]["material"]["fuente"] == "sin_compras"]),
         },
         "con_hora": {"rfq": sum(1 for f in filas if f["hitos"]["rfq"]["fuente"] == "correo"),

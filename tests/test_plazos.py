@@ -174,6 +174,13 @@ filas.append(seg.construir_filas([ped(pedido="P-99/009-S00", base="P-99/009")], 
                                  {"P-99/009-S00": {"estado": "ok", "creado": datetime(2099, 2, 1),
                                                    "autor": "tecnico.uno", "ruta": ""}}, {}, {})[0])
 ok(seg.resumen(filas)["tramos"]["tecnico"]["n"] == 5, "planos antes del pedido: fuera de la mediana del técnico")
+# Un tramo negativo (el correo archivado es posterior al paso siguiente) no entra en ninguna mediana
+neg = seg.construir_filas([ped(presentation_date=date(2099, 1, 6), order_date=date(2099, 2, 25))], {}, {}, PLANOS,
+                          {"O-99/010": {"recibido": datetime(2099, 1, 9), "contestado": None, "contesta": ""}}, {})
+ok(neg[0]["tramos"]["comercial"] == -3, "el tramo sí sale negativo en la fila")
+r_neg = seg.resumen(neg)
+ok(r_neg["tramos"]["comercial"]["n"] == 0 and not any(p["paso"] == "comercial" for p in r_neg["por_persona"]),
+   f"pero no cuenta en las medianas: {r_neg['tramos']['comercial']}")
 # La misma persona escrita de varias formas (correo, usuario de Windows, nombre con tilde) cuenta una vez
 variantes = ["luis-ejemplo", "luis.ejemplo", "Luís Ejemplo"]
 filas_v = seg.construir_filas([ped(pedido=f"P-99/04{i}-S00", base=f"P-99/04{i}") for i in range(3)], {}, {},
@@ -299,8 +306,8 @@ ok(fila["Llega la oferta"] == datetime(2099, 1, 1) and ws.cell(4, 3).number_form
    f"fecha sin hora: {fila['Llega la oferta']}")
 ok(fila["Días hasta planos"] == 7 and fila["Días en contestar"] == 5, f"días: {fila}")
 ok(fila["Material recibido"] == datetime(2099, 3, 20), f"material: {fila['Material recibido']}")
-ok("Orden de compra a Compras" in cab and fila["Orden de compra a Compras"] == datetime(2099, 2, 27),
-   f"columna de la orden de compra: {fila.get('Orden de compra a Compras')}")
+ok("Orden de compra" in cab and fila["Orden de compra"] == datetime(2099, 2, 27),
+   f"columna de la orden de compra: {fila.get('Orden de compra')}")
 ok(not ws.cell(4, 2).alignment.wrap_text and ws.cell(3, 2).alignment.wrap_text,
    "los datos en una línea (con alto fijo, partirlos los corta); la cabecera sí puede partirse")
 ok(len(seguimiento_excel.FALTA["material"]) <= 32, f"«qué falta» cabe: {seguimiento_excel.FALTA['material']}")

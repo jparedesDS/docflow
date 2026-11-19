@@ -295,9 +295,9 @@ def _pedidos(wb, datos: dict) -> None:
     _hoja(wb, "Pedidos",
           "Un pedido por línea, el más reciente arriba. Días: los que pasan entre una fecha y la siguiente.",
           ["Pedido", "Cliente", "Llega la oferta", "Contestada", "Días en contestar", "Activado",
-           "Orden de compra a Compras", "Material recibido", "Planos a fábrica", "Días hasta planos",
+           "Orden de compra", "Material recibido", "Planos a fábrica", "Días hasta planos",
            "Lo que retrasó", "Días en total"],
-          filas, [18, 30, 15, 15, 13, 15, 16, 16, 15, 13, 14, 13])
+          filas, [18, 30, 15, 15, 13, 15, 20, 16, 15, 13, 14, 13])
 
 
 def _personas(wb, datos: dict) -> None:
@@ -310,7 +310,7 @@ def _personas(wb, datos: dict) -> None:
         filas = [["Sin datos todavía.", "", "", ""]]
     _hoja(wb, "Personas",
           "Lo que tarda normalmente cada uno, y en cuántos pedidos.",
-          ["Quién", "Qué hace", "Lo normal", "Pedidos"], filas, [28, 32, 16, 14])
+          ["Quién", "Qué hace", "Lo normal", "Pedidos"], filas, [28, 42, 16, 14])
 
 
 def exportar(datos: dict, ruta) -> str:
