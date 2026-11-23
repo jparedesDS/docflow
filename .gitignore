@@ -49,3 +49,6 @@ state/sacyr_descargas/
 
 # Texto de los PDF enviados, para buscar tags (contenido de documentos del cliente)
 state/indice_pdf/
+# Expediente de cliente: caché de correos reales y texto de JP por cliente (repo público)
+state/expediente_correos/
+state/expedientes/
