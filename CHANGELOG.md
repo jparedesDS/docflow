@@ -5,6 +5,12 @@ los commits; aquí queda lo que cambió la forma de trabajar.
 
 ## Octubre y noviembre 2026
 
+- **Expediente de cliente** (fase 1, todavía sin pantalla): cuando un cliente
+  retiene pagos «por la documentación», junta PO a PO lo que falta y de qué
+  lado está, las facturas sin cobrar (últimos 3 años) y los avales vivos, lo
+  reclamado y quién ha contestado, y escribe `Estado documentación.xlsx` con
+  las 5 hojas que JP validó a mano. Lee el buzón con caché por Message-ID y
+  guarda el texto que escriba JP por cliente. Todo en solo lectura.
 - **Plazos** (Departamentos ▸ ⏱): del correo de la oferta a la fábrica,
   pedido a pedido. Cada paso con sus días y quién lo hizo: oferta recibida →
   contestada (comercial; la hora sale del correo si se enlaza con la oferta

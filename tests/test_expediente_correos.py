@@ -125,6 +125,7 @@ def test_contactos():
                      "ejemplo.test", date(2099, 11, 20))
     ok([x["email"] for x in k] == ["luis@ejemplo.test", "sofia@ejemplo.test", "marta@ejemplo.test"], k)
     ok(k[0]["ultimo"] == date(2099, 11, 18) and k[0]["asunto"] == "y" and k[0]["enviados"] == 2, k[0])
+    ok(k[0]["msgid"] == "<luis@ejemplo.test-y-2099-11-18>" and k[2]["msgid"] == "", "msgid del último correo enviado")
     ok(k[1]["cargo"] == "Documentation Expediting" and k[1]["telefono"] == "+34 600 000 000", k[1])
     ok(k[2]["ultimo"] is None and k[2]["nombre"] == "Marta Ejemplo" and k[2]["enviados"] == 0, k[2])
     ok(ec.firma("sin firma", "Nadie") == ("", ""), "sin firma")

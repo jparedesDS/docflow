@@ -306,10 +306,10 @@ def contactos(correos: list[dict], dominio: str, hoy: date) -> list[dict]:
         if not dom or not mail.endswith("@" + dom):
             continue
         x = escritos.setdefault(mail, {"nombre": "", "email": mail, "cargo": "", "telefono": "", "ultimo": None,
-                                       "asunto": "", "enviados": 0})
+                                       "asunto": "", "enviados": 0, "msgid": ""})
         x["enviados"] += 1
         x["nombre"] = c.get("de_nombre") or x["nombre"] or mail.split("@")[0]
-        x["ultimo"], x["asunto"] = c["fecha"].date(), c.get("asunto", "")
+        x["ultimo"], x["asunto"], x["msgid"] = c["fecha"].date(), c.get("asunto", ""), c.get("msgid", "")
         cargo, tel = firma(c.get("cuerpo", ""), x["nombre"])
         x["cargo"] = cargo or x["cargo"]
         x["telefono"] = tel or x["telefono"]
@@ -322,6 +322,6 @@ def contactos(correos: list[dict], dominio: str, hoy: date) -> list[dict]:
                     copias[mail] += 1
                     nombres.setdefault(mail, nom.strip("'\" ") or mail.split("@")[0])
     out = sorted(escritos.values(), key=lambda x: x["ultimo"], reverse=True)
-    out += [{"nombre": nombres[m], "email": m, "cargo": "", "telefono": "", "ultimo": None, "asunto": "", "enviados": 0}
-            for m, k in copias.most_common() if k >= 2]
+    out += [{"nombre": nombres[m], "email": m, "cargo": "", "telefono": "", "ultimo": None, "asunto": "", "enviados": 0,
+             "msgid": ""} for m, k in copias.most_common() if k >= 2]
     return out

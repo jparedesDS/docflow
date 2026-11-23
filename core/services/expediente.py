@@ -28,6 +28,9 @@ _ISO = re.compile(r"^(\d{4})-(\d{2})-(\d{2})")
 _HIST = re.compile(r"(\d{2}[/-]\d{2}[/-]\d{4})\s+(.+?)\s+Rev\.?\s*(\w+)")
 _CITA_FACTURA = re.compile(r"\bF-\d{2}/\d{3}\b")
 DIAS_RECIENTE = 90
+# Facturas más viejas no cuentan: el ERP tiene facturas de hace una década sin fecha
+# de cobro que sí se cobraron. Misma idea que la ventana de Administración.
+ANIOS_FACTURAS = 3
 
 
 def _fecha(v) -> date | None:
@@ -76,6 +79,13 @@ def agrupar(ordenes: list[dict], extra: dict[str, list[str]] | None = None) -> d
         for p in peds:
             destino[norm_order(p) or p] = (k, po)
 
+    # Un pedido va entero al PO de su primer suministro (S00): un suplemento con la
+    # referencia de otro PO, o con una errata, no lo parte ni crea PO falsos.
+    principal: dict[str, str] = {}
+    for o in sorted(ordenes, key=lambda o: str(o.get("num_order") or "")):
+        pedido = norm_order(o.get("num_order")) or str(o.get("num_order") or "")
+        principal.setdefault(pedido, clave_po(o.get("num_ref_order"), o.get("num_order")))
+
     grupos: dict[str, dict] = {}
     candidatos: dict[str, Counter] = {}
     forzado: dict[str, str] = {}
@@ -85,7 +95,7 @@ def agrupar(ordenes: list[dict], extra: dict[str, list[str]] | None = None) -> d
             k, po = destino[pedido]
             forzado.setdefault(k, po)
         else:
-            k = clave_po(o.get("num_ref_order"), o.get("num_order"))
+            k = principal[pedido]
         g = grupos.setdefault(k, {"po": k, "pedidos": [], "ordenes": []})
         g["ordenes"].append(o)
         if pedido and pedido not in g["pedidos"]:
@@ -186,6 +196,8 @@ def facturas(cabeceras: list[dict], detalles: list[dict], hoy: date) -> tuple[li
         if pagada or num in abonos or num in anuladas:
             continue
         emitida = _fecha(c.get("date_invoice"))
+        if emitida and (hoy - emitida).days > ANIOS_FACTURAS * 365:
+            continue
         base = importe(c)
         try:
             iva = float(str(c.get("iva") or 0).replace(",", "."))
@@ -287,7 +299,8 @@ def construir(cliente: str, ordenes: list[dict], docs: list[dict], cabeceras: li
         k["pos"] = [po for po, p in salida.items()
                     if any(k["email"] in " ".join([c.get("de_email", ""), str(c.get("para", "")),
                                                    str(c.get("cc", ""))]).lower() for c in p["correos"])]
-    return {"cliente": cliente, "hoy": hoy, "avisos": list(avisos or []), "pos": dict(sorted(salida.items())),
+    return {"cliente": cliente, "hoy": hoy, "avisos": list(avisos or []), "propio": (propio or "").lower(),
+            "pos": dict(sorted(salida.items())),
             "contactos": contactos}
 
 

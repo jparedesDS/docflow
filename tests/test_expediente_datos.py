@@ -144,6 +144,7 @@ def test_construir():
     e = ex.construir("CLIENTE FICTICIO", ORD, DOCS, CABS, DETS, CORREOS, LOG, date(2099, 11, 19),
                      dominio="ejemplo.test", propio="doc@eipsa.test")
     ok(list(e["pos"]) == ["1099010610"], f"sin pos= → solo los que tienen algo pendiente: {list(e['pos'])}")
+    ok(e["propio"] == "doc@eipsa.test", "el expediente sabe cuál es la cuenta propia")
     po = e["pos"]["1099010610"]
     ok(po["pedidos"] == ["P-99/023", "P-99/064"] and po["proyecto"] == "PROYECTO UNO" and po["equipo"] == "Termómetros", po)
     ok(po["deuda_base"] == 3095.58 and abs(po["deuda_total"] - 3745.65) < 0.01 and po["docs"]["cliente"], po)
@@ -164,7 +165,26 @@ def test_construir_sin_buzon():
     ok(e2["contactos"] == [] and e2["pos"]["1099010610"]["recl_eipsa"] == [], "sin correos ni log")
 
 
+def test_pedido_entero_en_un_po():
+    # un suplemento con la referencia de otro PO (o con erratas) no parte el pedido
+    g = ex.agrupar([fila("P-99/028-S00", "109901061"), fila("P-99/028-S01", "1099010640"),
+                    fila("P-99/027-S00", "109901064"), fila("P-99/094-S00", "1099110920"),
+                    fila("P-99/094-S01", "1099119200"), fila("P-99/094-S02", "1099011092")])
+    ok(sorted(g) == ["109901061", "109901064", "109911092"], sorted(g))
+    ok(g["109901061"]["pedidos"] == ["P-99/028"] and len(g["109901061"]["ordenes"]) == 2, g["109901061"])
+    ok(g["109901064"]["pedidos"] == ["P-99/027"], g["109901064"])
+    ok(len(g["109911092"]["ordenes"]) == 3, "las erratas de P-99/094 no crean PO nuevos")
+
+
+def test_facturas_antiguas():
+    viejas = [cab(1, "F-96/010", "P-96/052", 12105.0, fecha="2096-03-01"), cab(2, "F-99/061", "P-99/028", 3095.58)]
+    p, _ = ex.facturas(viejas, [], date(2099, 11, 19))
+    ok([f["numero"] for f in p] == ["F-99/061"], f"solo las de los últimos {ex.ANIOS_FACTURAS} años: {p}")
+
+
 test_agrupar()
+test_pedido_entero_en_un_po()
+test_facturas_antiguas()
 test_construir()
 test_construir_sin_buzon()
 test_documentos()
