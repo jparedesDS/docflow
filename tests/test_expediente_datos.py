@@ -114,7 +114,59 @@ def test_avales():
     ok(a[0]["banco"] == "BANCO" and a[0]["vence"] == "30/01/2100" and a[0]["ref"] == "R1", a[0])
 
 
+# ── Task 4: montar el expediente ─────────────────────────────────────────────
+ORD = [fila("P-99/023-S00", "1099010610-00", client="CLIENTE FICTICIO", project="PROYECTO UNO", material="Termómetros",
+            order_date=date(2099, 5, 12)),
+       fila("P-99/064-S00", "1099010610-03", client="CLIENTE FICTICIO", project="PROYECTO UNO", material="Termómetros",
+            order_date=date(2099, 9, 2)),
+       fila("P-99/090-S00", "1099020910", client="CLIENTE FICTICIO", project="PROYECTO DOS", material="Placas")]
+DOCS = [doc("P-99/023-S00", "Enviado", "14/09/2099", ""), doc("P-99/090-S00", "Aprobado", "01/01/2099", "")]
+CABS = [cab(1, "F-99/061", "P-99/023", 3095.58, obs="10%", su_ref="1099010610 SUP.00")]
+DETS = [det(1, "10% DOCUMENTACION FINAL", "3095.58")]
+
+
+def mail(msgid, de, asunto, carpeta, dia, para="", cc=""):
+    return {"msgid": msgid, "fecha": __import__("datetime").datetime(dia.year, dia.month, dia.day, 9, 0), "de_nombre": "",
+            "de_email": de, "para": para, "cc": cc, "asunto": asunto, "cuerpo": "", "adjuntos": [], "carpeta": carpeta}
+
+
+CORREOS = [mail("<a>", "doc@eipsa.test", "P-99/023 / PO: 1099010610-00 // DOCUMENTS PENDING REVIEW",
+                "INBOX/P. 2099/P-99-023", date(2099, 10, 1)),
+           mail("<b>", "doc@eipsa.test", "DEV: P-99/023 [eGesdoc]", "INBOX/P. 2099/P-99-023", date(2099, 10, 2)),
+           mail("<c>", "ana@ejemplo.test", "RE: estado", "INBOX/P. 2099/P-99-023", date(2099, 10, 3),
+                cc="Luis <luis@ejemplo.test>"),
+           mail("<d>", "luis@ejemplo.test", "1099010610 // Item nuevo", "INBOX", date(2099, 10, 4)),
+           mail("<e>", "eva@ejemplo.test", "Otro pedido", "INBOX/P. 2099/P-99-090", date(2099, 10, 5))]
+LOG = {"P-99/023": {"history": [{"sent_at": "2099-06-01T10:00:00+00:00"}]}}
+
+
+def test_construir():
+    e = ex.construir("CLIENTE FICTICIO", ORD, DOCS, CABS, DETS, CORREOS, LOG, date(2099, 11, 19),
+                     dominio="ejemplo.test", propio="doc@eipsa.test")
+    ok(list(e["pos"]) == ["1099010610"], f"sin pos= → solo los que tienen algo pendiente: {list(e['pos'])}")
+    po = e["pos"]["1099010610"]
+    ok(po["pedidos"] == ["P-99/023", "P-99/064"] and po["proyecto"] == "PROYECTO UNO" and po["equipo"] == "Termómetros", po)
+    ok(po["deuda_base"] == 3095.58 and abs(po["deuda_total"] - 3745.65) < 0.01 and po["docs"]["cliente"], po)
+    ok(po["recl_eipsa"] == [date(2099, 6, 1), date(2099, 10, 1)], po["recl_eipsa"])
+    ids = [c["msgid"] for c in po["correos"]]
+    ok(set(ids) == {"<a>", "<b>", "<c>", "<d>"}, f"correos del PO por carpeta y por asunto: {ids}")
+    auto = {c["msgid"]: c["automatico"] for c in po["correos"]}
+    ok(auto["<a>"] and auto["<b>"] and not auto["<c>"], auto)
+    ok([c["email"] for c in e["contactos"]] == ["luis@ejemplo.test", "ana@ejemplo.test"], e["contactos"])
+    ok(e["contactos"][0]["pos"] == ["1099010610"], e["contactos"][0])
+    e1 = ex.construir("CLIENTE FICTICIO", ORD, DOCS, CABS, DETS, CORREOS, LOG, date(2099, 11, 19), pos=["1099020910"])
+    ok(list(e1["pos"]) == ["1099020910"], "pos= elige aunque no tenga nada pendiente")
+
+
+def test_construir_sin_buzon():
+    e2 = ex.construir("CLIENTE FICTICIO", ORD, DOCS, CABS, DETS, [], {}, date(2099, 11, 19), avisos=["Sin buzón: timeout"])
+    ok(e2["avisos"] == ["Sin buzón: timeout"] and e2["pos"]["1099010610"]["correos"] == [], e2["avisos"])
+    ok(e2["contactos"] == [] and e2["pos"]["1099010610"]["recl_eipsa"] == [], "sin correos ni log")
+
+
 test_agrupar()
+test_construir()
+test_construir_sin_buzon()
 test_documentos()
 test_facturas()
 test_avales()
