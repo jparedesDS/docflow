@@ -52,7 +52,72 @@ def test_agrupar():
     ok(list(g2) == ["P-99/074"] and g2["P-99/074"]["po"] == "P-99/074" and g2["P-99/074"]["pedidos"] == ["P-99/074"], g2)
 
 
+def doc(pedido, estado, enviado, historial, cliente="5099_20-1099010710-00003"):
+    return {"Nº Pedido": pedido, "Nº Doc. Cliente": cliente, "Nº Doc. EIPSA": "99-048-DOS-0001", "Título": "WELDING DOSSIER",
+            "Estado": estado, "Nº Revisión": 7.0, "Fecha Env. Doc.": enviado, "Historial Rev.": historial,
+            "Seguimiento": "nota"}
+
+
+def cab(i, numero, ref, base, obs="", desc="", pagada=False, su_ref="1099010610", fecha="2099-02-20"):
+    return {"id": i, "num_invoice": numero, "our_ref": ref, "their_ref": su_ref, "date_invoice": fecha,
+            "pay_date": "2099-03-01" if pagada else None, "invoice_state": "Pagada" if pagada else None,
+            "base": (f"{base:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".") if base is not None else None),
+            "iva": "21", "obs_delivnote": obs, "_desc": desc}
+
+
+def det(i, desc, total):
+    return {"invoice_header_id": i, "description": desc, "total": total}
+
+
+# ── Task 2: documentos, facturas y avales ────────────────────────────────────
+def test_documentos():
+    d = ex.documentos([doc("P-99/048-S00", "Enviado", "15/09/2099",
+                           "15/09/2099 Enviado Rev. 7 // 03-09-2099 Com. Menores Rev. 6 // 05-10-2097 Enviado Rev. 0"),
+                       doc("P-99/048-S00", "Com. Mayores", "23/10/2099", ""),
+                       doc("P-99/048-S00", "Aprobado", "01/01/2099", ""),
+                       doc("P-99/050-S00", "Enviado", "01/01/2099", "")],          # otro pedido: fuera
+                      ["P-99/048"], date(2099, 11, 19))
+    ok(d["total"] == 3 and d["aprobados"] == 1 and len(d["cliente"]) == 1 and len(d["eipsa"]) == 1, d)
+    c = d["cliente"][0]
+    ok(c["dias"] == 65 and c["envios"] == 2 and c["primer_envio"] == date(2097, 10, 5), c)   # formatos mezclados
+    ok(c["rev"] == "7" and c["enviado"] == date(2099, 9, 15), c)
+    ok(d["eipsa"][0]["envios"] == 1, "sin historial → mínimo 1 envío")
+
+
+def test_facturas():
+    cabs = [cab(1, "F-99/209", "P-99/028", 2469.58, obs="10%"),
+            cab(2, "F-99/059", "P-99/028", -2469.58),
+            cab(3, "F-99/061", "P-99/028", 3095.58, obs="10%"),
+            cab(4, "F-99/191", "P-99/079", None, obs="fra. Nueva confirming"),
+            cab(5, "F-99/111", "P-99/079", None, pagada=True),
+            cab(6, "F-99/300", "P-99/079", None, obs="", fecha="2099-10-01"),     # sin base ni detalle, reciente
+            cab(7, "F-99/301", "P-99/079", -50.0)]                                # abono huérfano
+    dets = [det(2, "ABONO DE NUESTRA FACTURA F-99/209 DE 28/06/99", "-2469.58"),
+            det(3, "10% DOCUMENTACION FINAL", "3095.58"),
+            det(4, "EXCEL\r\n\r\nTAG.: 99FE-001", "176698.37"),
+            det(7, "ABONO DE NUESTRA FACTURA F-99/999", "-50")]
+    p, v = ex.facturas(cabs, dets, date(2099, 11, 19))
+    ok([f["numero"] for f in p] == ["F-99/061", "F-99/300"], p)
+    ok([f["numero"] for f in v] == ["F-99/191"] and v[0]["base"] == 176698.37, v)
+    ok(p[1]["base"] == 0.0 and p[1]["reciente"] and not p[0]["reciente"], "sin base ni detalle → 0; reciente < 90 días")
+    ok(p[0]["concepto"] == "10% DOCUMENTACION FINAL" and p[0]["dias"] == 272, p[0])
+    ok(abs(p[0]["total"] - 3745.65) < 0.01 and p[0]["iva"] == 21.0, p[0])
+    ok(v[0]["concepto"].startswith("TAG.: 99FE-001"), "sin «EXCEL» ni saltos de línea")
+
+
+def test_avales():
+    a = ex.avales([fila("P-99/037-S00", "1", warranty_bond_state="EN VIGOR", warranty_bond_amount="7048.21",
+                        warranty_bond_bank="BANCO", warranty_bond_expiring_date="30/01/2100", warranty_bond_reference="R1"),
+                   fila("P-99/037-S01", "1", warranty_bond_state="en vigor", warranty_bond_amount="6900.94"),
+                   fila("P-99/037-S02", "1", warranty_bond_state="No ampliado", warranty_bond_amount="10")])
+    ok([x["pedido"] for x in a] == ["P-99/037-S00", "P-99/037-S01"] and a[0]["importe"] == 7048.21, a)
+    ok(a[0]["banco"] == "BANCO" and a[0]["vence"] == "30/01/2100" and a[0]["ref"] == "R1", a[0])
+
+
 test_agrupar()
+test_documentos()
+test_facturas()
+test_avales()
 
 print("FALLOS:", fallos)
 sys.exit(1 if fallos else 0)

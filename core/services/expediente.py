@@ -18,10 +18,36 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from datetime import date, datetime
 
-from core.services.erp_common import norm_order
+from core.services.administration import money
+from core.services.erp_common import as_date, clean, norm_order
 
 _NO_DIGITO = re.compile(r"\D")
+_ISO = re.compile(r"^(\d{4})-(\d{2})-(\d{2})")
+_HIST = re.compile(r"(\d{2}[/-]\d{2}[/-]\d{4})\s+(.+?)\s+Rev\.?\s*(\w+)")
+_CITA_FACTURA = re.compile(r"\bF-\d{2}/\d{3}\b")
+DIAS_RECIENTE = 90
+
+
+def _fecha(v) -> date | None:
+    """date, datetime, 'aaaa-mm-dd', 'dd/mm/aaaa' o 'dd-mm-aaaa' → date."""
+    if isinstance(v, datetime):
+        return v.date()
+    if isinstance(v, date):
+        return v
+    m = _ISO.match(str(v or "").strip())
+    if m:
+        try:
+            return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        except ValueError:
+            return None
+    return as_date(v)
+
+
+def _rev(v) -> str:
+    s = clean(v)
+    return s[:-2] if s.endswith(".0") else s
 
 
 def _digitos(ref) -> str:
@@ -75,3 +101,115 @@ def agrupar(ordenes: list[dict], extra: dict[str, list[str]] | None = None) -> d
         elif len(_digitos(forzado.get(k))) >= 10:
             g["po"] = _digitos(forzado[k])[:10]
     return grupos
+
+
+# ── Documentos ────────────────────────────────────────────────────────────────
+
+def _pedido_de(fila: dict) -> str:
+    return norm_order(fila.get("Nº Pedido")) or ""
+
+
+def documentos(filas: list[dict], pedidos: list[str], hoy: date) -> dict:
+    """Documentos de los pedidos del PO, separados por quién los tiene.
+
+    `Enviado` lo tiene el cliente; cualquier otro estado no aprobado (comentarios,
+    rechazado) lo tiene EIPSA. «Veces enviado» y «primer envío» salen del
+    historial de revisiones: son mínimos, el historial antiguo está incompleto."""
+    peds = set(pedidos)
+    out = {"total": 0, "aprobados": 0, "cliente": [], "eipsa": []}
+    for f in filas:
+        if _pedido_de(f) not in peds:
+            continue
+        out["total"] += 1
+        estado = clean(f.get("Estado"))
+        if estado.lower().startswith("aprobado"):
+            out["aprobados"] += 1
+            continue
+        enviado = _fecha(f.get("Fecha Env. Doc."))
+        envios, fechas = 0, [enviado] if enviado else []
+        for tok in str(f.get("Historial Rev.") or "").split("//"):
+            m = _HIST.search(tok)
+            if not m:
+                continue
+            d = _fecha(m.group(1))
+            if d:
+                fechas.append(d)
+            if "envi" in m.group(2).lower():
+                envios += 1
+        doc = {"pedido": clean(f.get("Nº Pedido")), "doc_cliente": clean(f.get("Nº Doc. Cliente")),
+               "doc_eipsa": clean(f.get("Nº Doc. EIPSA")), "titulo": clean(f.get("Título")), "estado": estado,
+               "rev": _rev(f.get("Nº Revisión")), "enviado": enviado,
+               "dias": (hoy - enviado).days if enviado else None, "envios": max(envios, 1),
+               "primer_envio": min(fechas) if fechas else None, "seguimiento": clean(f.get("Seguimiento"))}
+        out["cliente" if estado == "Enviado" else "eipsa"].append(doc)
+    out["cliente"].sort(key=lambda d: -(d["dias"] or 0))
+    return out
+
+
+# ── Facturas y avales ─────────────────────────────────────────────────────────
+
+def _concepto(lineas: list[dict], obs: str) -> str:
+    texto = clean(lineas[0].get("description")) if lineas else ""
+    texto = re.sub(r"^\s*EXCEL\s*", "", texto, flags=re.I)
+    texto = re.sub(r"\s+", " ", texto).strip()
+    return texto or clean(obs)
+
+
+def facturas(cabeceras: list[dict], detalles: list[dict], hoy: date) -> tuple[list[dict], list[dict]]:
+    """(pendientes, verificar) de unas cabeceras de factura.
+
+    Pendiente = sin cobro y no anulada por un abono que la cite. Un abono nunca
+    es pendiente. Las reemisiones para confirming sin fecha de cobro van aparte,
+    para que Administración confirme si están cobradas."""
+    lineas: dict = {}
+    for d in detalles:
+        lineas.setdefault(d.get("invoice_header_id"), []).append(d)
+
+    def importe(c) -> float:
+        if clean(c.get("base")):
+            return money(c.get("base"))          # money() conserva el signo
+        return round(sum(money(d.get("total")) for d in lineas.get(c.get("id"), [])), 2)
+
+    anuladas, abonos = set(), set()
+    for c in cabeceras:
+        if importe(c) < 0:
+            abonos.add(c.get("num_invoice"))
+            textos = [clean(c.get("obs_delivnote"))] + [clean(d.get("description")) for d in lineas.get(c.get("id"), [])]
+            for t in textos:
+                if "abono" in t.lower():
+                    anuladas.update(x for x in _CITA_FACTURA.findall(t) if x != c.get("num_invoice"))
+
+    pendientes, verificar = [], []
+    for c in cabeceras:
+        num = c.get("num_invoice")
+        pagada = bool(c.get("pay_date")) or clean(c.get("invoice_state")).lower() == "pagada"
+        if pagada or num in abonos or num in anuladas:
+            continue
+        emitida = _fecha(c.get("date_invoice"))
+        base = importe(c)
+        try:
+            iva = float(str(c.get("iva") or 0).replace(",", "."))
+        except ValueError:
+            iva = 0.0
+        dias = (hoy - emitida).days if emitida else 0
+        fac = {"numero": num, "pedido": clean(c.get("our_ref")), "su_ref": clean(c.get("their_ref")), "fecha": emitida,
+               "dias": dias, "concepto": _concepto(lineas.get(c.get("id"), []), c.get("obs_delivnote")),
+               "base": base, "iva": iva, "total": round(base * (1 + iva / 100), 2), "reciente": dias < DIAS_RECIENTE}
+        (verificar if "confirming" in clean(c.get("obs_delivnote")).lower() else pendientes).append(fac)
+    pendientes.sort(key=lambda f: f["fecha"] or date.max)
+    return pendientes, verificar
+
+
+def avales(ordenes: list[dict]) -> list[dict]:
+    """Avales de EIPSA en vigor en esos pedidos."""
+    out = []
+    for o in ordenes:
+        if clean(o.get("warranty_bond_state")).upper() != "EN VIGOR":
+            continue
+        try:
+            imp = float(str(o.get("warranty_bond_amount") or 0).replace(",", "."))
+        except ValueError:
+            imp = money(o.get("warranty_bond_amount"))
+        out.append({"pedido": clean(o.get("num_order")), "importe": imp, "banco": clean(o.get("warranty_bond_bank")),
+                    "vence": clean(o.get("warranty_bond_expiring_date")), "ref": clean(o.get("warranty_bond_reference"))})
+    return out
