@@ -30,7 +30,7 @@ cliente.
 
    ```
    ESTADO DOCUMENTACION\
-   ├─ Estado documentación.xlsx      (8 hojas, ver «Salidas»)
+   ├─ Estado documentación.xlsx      (5 hojas, ver «Salidas»)
    ├─ .DOC\                          (un Word sencillo por PO)
    ├─ Correos\                       (.eml / .msg enlazados)
    └─ INFORME COMPLETO\
@@ -205,11 +205,13 @@ Formato, hojas, columnas y estilo **exactamente como en la carpeta validada**
 (se toma como referencia visual; los generadores parten del código que la
 produjo).
 
-**`Estado documentación.xlsx`** — hojas: *En pocas palabras* · *Resumen* (rojo =
-cliente, amarillo = EIPSA, enlace al último correo del PO) · *Documentos
-pendientes* · *Últimos correos* (PO/proyecto, fecha, de, asunto, qué dice,
-respuesta, enlace) · *Reuniones* · *Contactos* (por última respuesta) · *Hechos*
-· *Citas del cliente*. Cabecera congelada, filtros, apaisado.
+**`Estado documentación.xlsx`** — las **5 hojas** de la carpeta validada (JP
+quitó Reuniones, Hechos y Citas, que quedan en el anexo del informe completo):
+*Resumen* (lo esencial por PO) · *Estado documentación* (rojo = cliente,
+amarillo = EIPSA, enlace al último correo del PO) · *Documentos pendientes* ·
+*Últimos correos* (PO/proyecto, fecha, de, asunto, qué dice, respuesta, enlace) ·
+*Contactos <cliente>* (por última respuesta). Cabecera congelada, filtros,
+apaisado. *(Corregido el 2026-11-23 al comparar con la carpeta validada.)*
 
 **`.DOC\Documentación PO <po> (<pedido>).docx`** — fecha, título, línea
 cliente·proyecto·pedido·equipo; **Contexto general** (el del proyecto del PO);
