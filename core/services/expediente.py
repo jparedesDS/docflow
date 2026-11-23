@@ -229,6 +229,36 @@ def avales(ordenes: list[dict]) -> list[dict]:
 
 # ── El expediente montado ─────────────────────────────────────────────────────
 
+def _cobrado_10(cabeceras: list[dict], detalles: list[dict]) -> bool:
+    """¿Hay una factura cobrada del 10 % de documentación final?"""
+    for c in cabeceras:
+        if not (c.get("pay_date") or clean(c.get("invoice_state")).lower() == "pagada"):
+            continue
+        textos = [clean(c.get("obs_delivnote"))] + [clean(d.get("description")) for d in detalles
+                                                     if d.get("invoice_header_id") == c.get("id")]
+        if any("10%" in t.replace(" ", "") or "10 %" in t for t in textos):
+            return True
+    return False
+
+
+_NO_PERSONA = re.compile(r"no-?reply|donotreply|notific|egesdoc|mailer-daemon|postmaster", re.I)
+
+
+def dominio_cliente(correos: list[dict], propio: str) -> str:
+    """Dominio del cliente: el más frecuente entre los remitentes de fuera que son
+    personas (sin avisos automáticos ni direcciones tipo noreply)."""
+    from core.services.expediente_correos import es_automatico
+    propio_dom = (propio or "").lower().split("@")[-1]
+    cuenta = Counter()
+    for c in correos:
+        mail = c.get("de_email", "")
+        if "@" not in mail or es_automatico(c, propio) or _NO_PERSONA.search(mail):
+            continue
+        dom = mail.split("@")[-1]
+        if dom != propio_dom:
+            cuenta[dom] += 1
+    return cuenta.most_common(1)[0][0] if cuenta else ""
+
 def _cliente_norm(v) -> str:
     return re.sub(r"\s+", " ", clean(v).upper())
 
@@ -249,10 +279,12 @@ def _correos_de_po(correos: list[dict], pedidos: list[str], po: str) -> list[dic
 def construir(cliente: str, ordenes: list[dict], docs: list[dict], cabeceras: list[dict], detalles: list[dict],
               correos: list[dict], log: dict, hoy: date, pos: list[str] | None = None,
               extra: dict | None = None, dominio: str = "", propio: str = "",
-              avisos: list[str] | None = None) -> dict:
+              avisos: list[str] | None = None, generales: list[str] | None = None) -> dict:
     """El expediente de un cliente con los datos ya leídos (función pura).
 
-    Sin `pos`, entran los PO con documentación no aprobada o facturas sin cobrar."""
+    Sin `pos`, entran los PO con documentación no aprobada o facturas sin cobrar.
+    Los correos de las carpetas `generales` del cliente (p. ej. la del proyecto)
+    entran en todos sus PO: no suelen llevar el PO en el asunto."""
     from core.services import expediente_correos as ec
     cli = _cliente_norm(cliente)
     propias = [o for o in ordenes if "client" not in o or _cliente_norm(o.get("client")) == cli]
@@ -273,7 +305,11 @@ def construir(cliente: str, ordenes: list[dict], docs: list[dict], cabeceras: li
             continue
         ords = sorted(g["ordenes"], key=lambda o: _fecha(o.get("order_date")) or date.max)
         entregas = [_fecha(o.get("last_date_deliveries")) for o in ords]
-        cs = [{**c, "automatico": ec.es_automatico(c, propio)} for c in _correos_de_po(correos, pedidos, po)]
+        gen = set(generales or [])
+        propios_po = _correos_de_po(correos, pedidos, po)
+        ya = {c["msgid"] for c in propios_po}
+        propios_po += [c for c in correos if c.get("carpeta") in gen and c["msgid"] not in ya]
+        cs = [{**c, "automatico": ec.es_automatico(c, propio)} for c in propios_po]
         cs.sort(key=lambda c: c["fecha"], reverse=True)
         historial = [h for p in pedidos for h in (log or {}).get(p, {}).get("history", [])]
         e_rec, c_rec = ec.reclamaciones(cs, pedidos + [po], propio_dom, historial)
@@ -288,7 +324,7 @@ def construir(cliente: str, ordenes: list[dict], docs: list[dict], cabeceras: li
                              "entregado": o.get("porc_deliveries"),
                              "ultima_entrega": _fecha(o.get("last_date_deliveries")),
                              "cerrado": clean(o.get("closed")).upper() == "OK"} for o in ords],
-            "docs": dd, "facturas": pend, "verificar": verif,
+            "docs": dd, "facturas": pend, "verificar": verif, "cobrado_10": _cobrado_10(mias, detalles),
             "deuda_base": round(sum(f["base"] for f in pend), 2),
             "deuda_total": round(sum(f["total"] for f in pend), 2),
             "avales": avales(ords), "correos": cs, "recl_eipsa": e_rec, "recl_cliente": c_rec,
@@ -312,7 +348,7 @@ _SQL_PEDIDOS = """
            o.warranty_bond_expiring_date, o.warranty_bond_reference, f.payment_term, f.material,
            f.client, f.project, f.buyer
     FROM public.orders o LEFT JOIN public.offers f ON f.num_offer = o.num_offer
-    WHERE upper(trim(f.client)) = %s
+    WHERE regexp_replace(upper(trim(f.client)), '\\s+', ' ', 'g') = %s
 """
 _SQL_FACTURAS = """
     SELECT i.id, i.num_invoice, i.our_ref, i.their_ref, i.date_invoice, i.pay_date, i.invoice_state,
@@ -396,9 +432,6 @@ def cargar(cliente: str, pos: list[str] | None = None, progreso=None) -> dict:
     except Exception as exc:  # noqa: BLE001
         av_buzon = [f"Sin buzón: {exc}"]
     propio = (IMAP_USER or "").lower()
-    propio_dom = propio.split("@")[-1]
-    dominios = Counter(c["de_email"].split("@")[-1] for c in correos
-                       if "@" in c.get("de_email", "") and c["de_email"].split("@")[-1] != propio_dom)
-    dominio = dominios.most_common(1)[0][0] if dominios else ""
     return construir(cliente, ordenes, docs, cabs, dets, correos, log, hoy, pos=pos,
-                     extra=guardado.get("pedidos_extra"), dominio=dominio, propio=propio, avisos=aviso + av_buzon)
+                     extra=guardado.get("pedidos_extra"), dominio=dominio_cliente(correos, propio), propio=propio,
+                     avisos=aviso + av_buzon, generales=list(guardado.get("carpetas", [])))

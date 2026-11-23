@@ -31,7 +31,8 @@ def cargar_texto(cliente: str) -> dict:
 
 
 def guardar_texto(cliente: str, datos: dict) -> None:
-    write_json(str(_ruta(cliente)), {**{k: type(v)() for k, v in VACIO.items()}, **datos})
+    """Guarda lo que se pasa sin borrar lo demás: lo de JP no se pisa."""
+    write_json(str(_ruta(cliente)), {**cargar_texto(cliente), **datos})
 
 
 def elegir(guardado: str | None, auto: str) -> str:
@@ -55,8 +56,14 @@ def lo_esencial(po: dict, hoy: date) -> list[str]:
         v = max(fs, key=lambda f: f.get("dias") or 0)
         out.append(f"Nos deben {eur(po.get('deuda_base', 0.0))} sin IVA en {len(fs)} factura(s); la más antigua "
                    f"({v['numero']}, {_dmy(v.get('fecha'))}) lleva {v.get('dias', 0)} días sin cobrar.")
-    else:
+    elif po.get("cobrado_10"):
         out.append("No hay facturas pendientes: el 10 % de documentación final ya está cobrado.")
+    else:
+        out.append("No hay facturas emitidas pendientes de cobro.")
+    ver = po.get("verificar") or []
+    if ver:
+        out.append(f"Hay {len(ver)} factura(s) por confirmar con Administración ({', '.join(f['numero'] for f in ver)}): "
+                   "se reemitió para confirming y no consta el cobro.")
     if po.get("avales"):
         tot = sum(a.get("importe", 0.0) for a in po["avales"])
         out.append(f"Avales en vigor: {eur(tot)} (vencen el {po['avales'][0].get('vence', '')}).")

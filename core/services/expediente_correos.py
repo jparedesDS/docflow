@@ -248,7 +248,7 @@ def reclamaciones(correos: list[dict], claves: list[str], propio_dominio: str,
         if es(c.get("asunto", "")):
             (eipsa if _de_aqui(c.get("de_email", ""), propio_dominio) else cliente).add(c["fecha"].date())
         for b in _BLOQUE.finditer(str(c.get("cuerpo", "")).replace("\r", "")):
-            if es(b.group("a")):
+            if es(b.group("a")) and "@" in b.group("de"):      # sin dirección no se sabe de qué lado es
                 d = _fecha_texto(b.group("f"))
                 if d:
                     (eipsa if _de_aqui(b.group("de"), propio_dominio) else cliente).add(d)

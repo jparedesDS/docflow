@@ -114,6 +114,14 @@ def test_casos_raros():
     ok(len(load_workbook(TMP / "largo" / "Estado documentación.xlsx").sheetnames[-1]) <= 31, "hoja ≤ 31 caracteres")
 
 
+def test_caracteres_de_control():
+    raro = dict(PO1, correos=[dict(correo("m7", "z@ejemplo.test", "Zoe Ejemplo", 18), asunto="RE: estado")],
+                docs=dict(PO1["docs"], cliente=[dict(doc(1, 5), titulo="TITULO RARO")]))
+    ruta = xl.exportar(dict(EXP, pos={"1099010610": raro}), {}, {}, TMP / "raro", corto="CF")
+    ok(ruta.exists() and "" not in str(load_workbook(ruta)["Últimos correos"].cell(5, 3).value), "carácter de control fuera")
+
+
+test_caracteres_de_control()
 test_exportar()
 test_casos_raros()
 

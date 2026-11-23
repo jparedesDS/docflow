@@ -16,6 +16,7 @@ import re
 from pathlib import Path
 
 from openpyxl import Workbook
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
@@ -62,6 +63,8 @@ def _hoja(wb, nombre, titulo, nota, cab, anchos, filtro=False):
 def _fila(ws, valores, enlace=None, col_enlace=None, negrita=False):
     r = max(ws.max_row, FILA_CAB) + 1
     for i, v in enumerate(valores, 1):
+        if isinstance(v, str):
+            v = ILLEGAL_CHARACTERS_RE.sub("", v)        # un carácter de control tumbaría el libro
         c = ws.cell(r, i, v)
         c.alignment = Alignment(vertical="top", wrap_text=True)
         c.border = BORDE

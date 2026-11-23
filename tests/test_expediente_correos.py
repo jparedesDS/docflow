@@ -131,6 +131,13 @@ def test_contactos():
     ok(ec.firma("sin firma", "Nadie") == ("", ""), "sin firma")
 
 
+def test_cita_sin_direccion():
+    e, c = ec.reclamaciones([correo("doc@eipsa.test", "RE: x", cuerpo="De: Pepe Ejemplo\nEnviado el: lunes, 2 de marzo de 2099 10:00\n"
+                                    "Asunto: RE: RECLAIMS: P-99/048 // DOC. UNDER REVIEW")], ["P-99/048"], "eipsa.test", [])
+    ok(e == [] and c == [], f"remitente citado sin dirección: no se sabe de quién es, no cuenta ({e}, {c})")
+
+
+test_cita_sin_direccion()
 test_carpetas()
 test_leer_cache()
 test_automatico()

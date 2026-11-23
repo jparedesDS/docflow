@@ -182,7 +182,29 @@ def test_facturas_antiguas():
     ok([f["numero"] for f in p] == ["F-99/061"], f"solo las de los últimos {ex.ANIOS_FACTURAS} años: {p}")
 
 
+def test_revision_final():
+    # 2: los correos de las carpetas generales del cliente entran en todos sus PO
+    gen = CORREOS + [mail("<g>", "pepa@ejemplo.test", "Reunión de cierre", "INBOX/zPROYECTO", date(2099, 10, 6))]
+    e = ex.construir("CLIENTE FICTICIO", ORD, DOCS, CABS, DETS, gen, LOG, date(2099, 11, 19),
+                     dominio="ejemplo.test", propio="doc@eipsa.test", generales=["INBOX/zPROYECTO"])
+    ok("<g>" in [c["msgid"] for c in e["pos"]["1099010610"]["correos"]], "correo de carpeta general")
+    ok("pepa@ejemplo.test" in [k["email"] for k in e["contactos"]], "y cuenta para contactos")
+    # 3: el nombre del cliente se compara con los espacios juntados también en el SQL
+    ok("regexp_replace" in ex._SQL_PEDIDOS, "SQL junta espacios como _cliente_norm")
+    # 4: el dominio del cliente no sale de avisos automáticos ni noreply
+    cs = [mail(f"<p{i}>", "noreply@portal.test", "eGesdoc - New transmittal registered (X)", "A", date(2099, 1, i + 1))
+          for i in range(5)] + [mail("<q>", "no-reply@otro.test", "aviso", "A", date(2099, 2, 1))] +          [mail("<r>", "ana@ejemplo.test", "RE: estado", "A", date(2099, 2, 2))]
+    ok(ex.dominio_cliente(cs, "doc@eipsa.test") == "ejemplo.test", ex.dominio_cliente(cs, "doc@eipsa.test"))
+    # 7: se sabe si el 10 % está cobrado
+    pagada = [cab(9, "F-99/050", "P-99/023", 300.0, obs="10%", pagada=True, fecha="2099-03-01")]
+    e2 = ex.construir("CLIENTE FICTICIO", ORD, DOCS, CABS + pagada, DETS + [det(9, "10% DOCUMENTACION FINAL", "300")],
+                      [], {}, date(2099, 11, 19))
+    ok(e2["pos"]["1099010610"]["cobrado_10"] is True, "10 % cobrado")
+    ok(e["pos"]["1099010610"]["cobrado_10"] is False, "10 % no cobrado")
+
+
 test_agrupar()
+test_revision_final()
 test_pedido_entero_en_un_po()
 test_facturas_antiguas()
 test_construir()

@@ -57,7 +57,7 @@ def test_lo_esencial():
     ok(v[1] == "Material entregado (última entrega 30/07/2099).", v[1])
     ok(v[2] == "Documentación: 12 de 16 aprobados; 4 esperando al cliente (el más antiguo, 111 días); 0 en EIPSA.", v[2])
     ok(v[3] == "Al menos 2 reclamaciones o actualizaciones por escrito desde el 08/01/2099.", v[3])
-    sin = dict(PO, facturas=[], deuda_base=0.0, avales=[{"importe": 1000.0, "vence": "30/01/2100"}], recl_eipsa=[])
+    sin = dict(PO, facturas=[], deuda_base=0.0, avales=[{"importe": 1000.0, "vence": "30/01/2100"}], recl_eipsa=[], cobrado_10=True)
     v2 = tx.lo_esencial(sin, date(2099, 11, 19))
     ok(v2[0] == "No hay facturas pendientes: el 10 % de documentación final ya está cobrado.", v2[0])
     ok(v2[1] == "Avales en vigor: 1.000,00 € (vencen el 30/01/2100).", v2[1])
@@ -83,6 +83,23 @@ def test_ultimos():
     ok(len(tx.ultimos(dict(PO, correos=cs), {}, n=3)) == 3, "n")
 
 
+def test_revision_final():
+    # 8: un guardado parcial no borra lo demás
+    tx.guardar_texto("Parcial", {"carpetas": ["INBOX/zP"], "pedidos_extra": {"1099": ["P-99/1"]}})
+    tx.guardar_texto("Parcial", {"pos": {"1099": {"situacion": "x"}}})
+    g = tx.cargar_texto("Parcial")
+    ok(g["carpetas"] == ["INBOX/zP"] and g["pedidos_extra"] == {"1099": ["P-99/1"]} and g["pos"]["1099"]["situacion"] == "x", g)
+    # 7: no afirmar un cobro que no consta
+    sin = dict(PO, facturas=[], deuda_base=0.0, cobrado_10=False, verificar=[])
+    ok(tx.lo_esencial(sin, date(2099, 11, 19))[0] == "No hay facturas emitidas pendientes de cobro.", tx.lo_esencial(sin, date(2099, 11, 19))[0])
+    con = dict(sin, cobrado_10=True)
+    ok(tx.lo_esencial(con, date(2099, 11, 19))[0] == "No hay facturas pendientes: el 10 % de documentación final ya está cobrado.", "cobrado")
+    ver = dict(sin, verificar=[{"numero": "F-99/191", "base": 100.0}])
+    ok(any(v == "Hay 1 factura(s) por confirmar con Administración (F-99/191): se reemitió para confirming y no consta el cobro."
+           for v in tx.lo_esencial(ver, date(2099, 11, 19))), tx.lo_esencial(ver, date(2099, 11, 19)))
+
+
+test_revision_final()
 test_guardado()
 test_lo_esencial()
 test_punto()
