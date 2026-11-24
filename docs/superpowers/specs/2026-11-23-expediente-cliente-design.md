@@ -292,3 +292,50 @@ Windows; `&` y acentos se respetan).
 - Diseño fino de la pantalla de revisión dentro de lo esbozado.
 - Estructura interna del JSON de `state/` y de la caché de correos.
 - Cómo se detecta que «los datos han cambiado» desde la última revisión.
+
+## Estado y pendiente (actualizado 2026-11-24)
+
+**Hecho — fase 1** (en `main`, 2026-11-23): datos por PO (`expediente.py`,
+`expediente_correos.py`), texto automático y guardado (`expediente_texto.py`) y
+`Estado documentación.xlsx` (`expediente_excel.py`). Sin pantalla todavía. La
+caché de correos y el texto por cliente están fuera del repo (`.gitignore`).
+
+**Fases que faltan** (un plan por fase, en este orden):
+
+2. Word sencillos (`.DOC\`), copia de correos a `Correos\` (también `.msg`/`.eml`
+   sueltos que añada JP), enlaces relativos verificados uno a uno y aviso si la
+   carpeta comprimida pasa de ~20 MB. Añade `python-docx` a `requirements.txt`.
+3. Pantallas en Reclamaciones: elegir cliente y PO, recopilar en segundo plano,
+   revisar y guardar el texto por PO (incluye mover pedidos de PO con
+   `pedidos_extra` y elegir carpetas generales del buzón), botón «Generar».
+4. `INFORME COMPLETO\`: resumen general, un Word por PO y anexo (hechos, citas,
+   reuniones).
+5. Borrador IA de la situación y el contexto con `ia.redactar`.
+
+Además, al terminar: README, ayuda F1 y CHANGELOG de cada fase.
+
+**Mejoras menores aplazadas** (de la revisión de la fase 1; ninguna cambia las
+cifras del caso real):
+
+- `k["pos"]` de los contactos se calcula por subcadena (`ana@` casa con `juana@`):
+  comparar con las direcciones de `getaddresses`.
+- `clientes()` cuenta facturas sin cobrar de hace años: aplicarle la ventana
+  `ANIOS_FACTURAS` y los abonos, para no ofrecer clientes con expediente vacío.
+- Un correo sin Message-ID se vuelve a descargar en cada pasada.
+- La caché no se aprovecha si falla una carpeta o el buzón entero (se podría
+  montar el expediente sin conexión); un fallo de disco al guardar la caché sale
+  como «Sin buzón».
+- `_fecha_texto` no lee fechas numéricas («27/11/2099 15:53»), meses abreviados
+  («3 Sep 2099») ni «setiembre».
+- El historial de revisiones ignora fechas ISO y de un dígito: envíos y primer
+  envío salen por debajo.
+- IVA ilegible («21%») queda en 0 sin aviso.
+- Un abono parcial anula la factura entera.
+- Una factura con base 0 cuenta como pendiente.
+- Facturas con `our_ref` mal escrito («P-99/48») no casan: usar `orders_in`.
+- Una referencia de PO con forma de fecha crea un PO falso.
+- `sent_at` del registro de reclamaciones se pasa a fecha en UTC.
+- «Lo esencial» solo muestra el vencimiento del primer aval y dice «Material
+  entregado» aunque la entrega sea parcial.
+- Limpieza: atributo privado `ws._filtro` en el Excel; `try/except ImportError`
+  muerto en `cargar()`.
