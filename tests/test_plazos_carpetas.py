@@ -188,5 +188,13 @@ c = sc.leer_correos_pedido(["P-99/011-S00"], base_dir=tmp, cache_file=cache_c)
 ok(c["P-99/011-S00"]["activacion"] is None and c["P-99/011-S00"]["oc"] == a["P-99/011-S00"]["oc"],
    f"la carpeta cambiada se vuelve a leer: {c}")
 
+# ── Regularizaciones: el ERP sin «R», la carpeta con ella ─────────────────────
+for nombre in ("P-99-050 - S00 - CLIENTE", "P-99-050 - S01R - CLIENTE", "P-99-050-S02 - CLIENTE",
+               "P-99-050-S02R - CLIENTE"):
+    (año / nombre).mkdir(parents=True, exist_ok=True)
+reg = sc.regularizaciones(["P-99/050-S00", "P-99/050-S01", "P-99/050-S01R", "P-99/050-S02", "P-99/050-S03"],
+                          base_dir=tmp)
+ok(reg == {"P-99/050-S01"}, f"solo la que únicamente tiene carpeta con R: {reg}")
+
 print("FALLOS:", fallos)
 sys.exit(1 if fallos else 0)

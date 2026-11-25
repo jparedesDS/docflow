@@ -225,6 +225,12 @@ ok(apertura.sufijos_de_carpeta("P-26-001 - S00 - S01 - TR-OMEGA") == {"S00", "S0
    "una carpeta puede agrupar varios")
 ok(apertura.sufijos_de_carpeta("P-26-001-S08-S09R - TR-OMEGA") == {"S08", "S09R"},
    "y llevarlos pegados, con letra")
+ok(apertura.sufijos_de_carpeta("P-24-080 - S00 - TR - QATAR EPC4 - MIRILLAS (P-23-048-S02)") == {"S00"},
+   "el suministro de otro pedido citado en el nombre no cuenta")
+ok(apertura.sufijos_de_carpeta("P-24-080-S02 -S03R-S04R - TR - QATAR EPC4 - NIVEL (P-23-048-S04)")
+   == {"S02", "S03R", "S04R"}, "agrupada, con R y con otro pedido citado")
+ok(apertura.sufijos_de_carpeta("P-26-001 - S01 - TR - ver P-25-010 S02-S03") == {"S01"},
+   "otro pedido citado sin paréntesis")
 ok(apertura.parse_pedido("P-26/001-S09R") == ("P-26-001", "S09R"), "el sufijo con letra se lee")
 
 # ── Revisiones en letra: «rev C» sin número por ninguna parte ───────────────

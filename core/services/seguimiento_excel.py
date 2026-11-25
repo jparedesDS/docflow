@@ -9,7 +9,12 @@ Cuatro hojas, letra grande y solo lo importante:
 
 Nada de medianas, cuartiles, horquillas, horas ni de dónde sale cada fecha:
 eso se queda en la sección Plazos de la app. Lo pinta a partir de
-`seguimiento.cargar()`; no calcula nada.
+`seguimiento.cargar()`.
+
+Como el Excel «a fábrica» (`plazos_fabrica_excel`): sin regularizaciones
+(«R») ni anulados, con los días laborables al lado de los naturales (sin fines
+de semana, festivos ni agosto) y, en los pedidos que esperan planos, cuántos
+días laborables llevan o, si pasan de lo normal, el retraso, en rojo.
 """
 
 from __future__ import annotations
@@ -196,11 +201,14 @@ def _hoja(wb, titulo: str, frase: str, cabecera: list[str], filas: list[list], a
     return ws
 
 
-def _resumen(wb, datos: dict) -> None:
+def _resumen(wb, datos: dict, cerrado, quitados: dict, normal) -> None:
+    from core.services import plazos_dias
+
     ws = wb.create_sheet("Resumen")
     ws.column_dimensions["A"].width = 84
     ws.column_dimensions["B"].width = 14
-    ws.column_dimensions["C"].width = 30
+    ws.column_dimensions["C"].width = 16
+    ws.column_dimensions["D"].width = 30
     generado = datos.get("generado") or datetime.now()
     años = " y ".join(str(a) for a in datos.get("años") or ())
     ws.cell(1, 1, "Plazos: de la oferta a la fábrica").font = Font(size=22, bold=True, color=AZUL)
@@ -212,8 +220,22 @@ def _resumen(wb, datos: dict) -> None:
         fila += 1
         texto = AVISOS.get(aviso, f"{aviso}: puede faltar algún dato.")
         ws.cell(fila, 1, f"⚠ {texto}").font = Font(size=LETRA, bold=True, color="C00000")
+    quitado = quitados.get("R", 0) + quitados.get("anulado", 0)
+    if quitado:
+        fila += 1
+        r, a = quitados["R"], quitados["anulado"]
+        texto = (f"Sin contar {r} {'regularización' if r == 1 else 'regularizaciones'} («R») "
+                 f"ni {a} {'anulado' if a == 1 else 'anulados'}.")
+        ws.cell(fila, 1, texto).font = Font(size=LETRA, italic=True, color="7F7F7F")
     fila += 2
     ws.cell(fila, 1, "Lo normal:").font = Font(size=16, bold=True)
+    for col, texto in ((2, "Naturales"), (3, "Laborables")):
+        c = ws.cell(fila, col, texto)
+        c.font = Font(size=LETRA, bold=True, color="7F7F7F")
+        c.alignment = Alignment(horizontal="right")
+    filas = datos["filas"]
+    con_compras = [f for f in filas if f["hitos"]["material"]["fuente"] != "sin_compras"]
+    sin_compras = [f for f in filas if f["hitos"]["material"]["fuente"] == "sin_compras"]
     tramos = datos["resumen"]["tramos"]
     for tramo, texto, nota, sangria in RESUMEN:
         fila += 1
@@ -236,8 +258,16 @@ def _resumen(wb, datos: dict) -> None:
         c = ws.cell(fila, 2, _dias(stats["mediana"]))
         c.font = Font(size=16, bold=True, color=AZUL)
         c.alignment = Alignment(horizontal="right")
+        if listo:
+            grupo = con_compras if tramo == "listo:con_compras" else sin_compras
+            lab = plazos_dias.mediana_laborables(grupo, "listo", cerrado)
+        else:
+            lab = plazos_dias.mediana_laborables(filas, tramo, cerrado)
+        c = ws.cell(fila, 3, _dias(lab))
+        c.font = Font(size=16, bold=True, color=AZUL)
+        c.alignment = Alignment(horizontal="right")
         if nota:
-            ws.cell(fila, 3, f"({nota})").font = Font(size=LETRA, italic=True, color="7F7F7F")
+            ws.cell(fila, 4, f"({nota})").font = Font(size=LETRA, italic=True, color="7F7F7F")
         if tramo == "listo:sin_compras" and frase_retraso(datos["resumen"].get("cuello") or {}):
             fila += 1
             c = ws.cell(fila, 1, frase_retraso(datos["resumen"]["cuello"]))
@@ -248,36 +278,50 @@ def _resumen(wb, datos: dict) -> None:
     hoy = generado.date()
     esperan = sum(1 for c in cola if c["falta"] == "planos")
     urgentes = sum(1 for c in cola if prioridad(c, hoy)[0] == "URGENTE")
+    retrasos = sum(1 for f in filas if (plazos_dias.espera(f, hoy, cerrado, normal) or (0, False))[1])
     fila += 2
     ws.cell(fila, 1, "Ahora mismo:").font = Font(size=16, bold=True)
     for texto in (f"{esperan} pedidos tienen el material y esperan los planos.",
                   f"{urgentes} pedidos son urgentes.",
+                  (f"{retrasos} pedido lleva" if retrasos == 1 else f"{retrasos} pedidos llevan")
+                  + " más de lo normal sin pasar los planos a fábrica (en rojo).",
                   "Ver la hoja «Qué hacer primero»."):
         fila += 1
         ws.cell(fila, 1, texto).font = Font(size=16)
         ws.row_dimensions[fila].height = 26
+    fila += 2
+    c = ws.cell(fila, 1, "Laborables: sin sábados, domingos, festivos (nacionales y de Madrid) ni agosto, "
+                         "que la empresa cierra.")
+    c.font = Font(size=LETRA, italic=True, color="7F7F7F")
     _imprimir(ws)
 
 
-def _que_hacer(wb, datos: dict) -> None:
+def _que_hacer(wb, datos: dict, cerrado, normal) -> None:
+    from core.services import plazos_dias
+
     hoy = (datos.get("generado") or datetime.now()).date()
     filas, colores = [], []
     for i, c in enumerate(datos["cola"], start=1):
         texto, color = prioridad(c, hoy)
         entrega = c["hitos"]["entrega"]["fecha"]
+        e = plazos_dias.espera(c, hoy, cerrado, normal)
         filas.append([i, texto, c["pedido"], c["cliente"] or "—", FALTA.get(c["falta"], c["falta"]),
-                      entrega or "—", quedan(entrega, hoy)])
+                      entrega or "—", quedan(entrega, hoy), plazos_dias.texto_espera(*e, normal) if e else "—"])
         colores.append(color)
     if not filas:
-        filas, colores = [["", "No hay pedidos esperando planos ni material.", "", "", "", "", ""]], [None]
+        filas, colores = [["", "No hay pedidos esperando planos ni material.", "", "", "", "", "", ""]], [None]
     _hoja(wb, "Qué hacer primero",
           "Los pedidos que esperan planos o material. Arriba, los que hay que sacar antes.",
-          ["#", "Prioridad", "Pedido", "Cliente", "Qué falta", "Entrega", "Quedan"],
-          filas, [6, 24, 18, 30, 36, 15, 26], colores)
+          ["#", "Prioridad", "Pedido", "Cliente", "Qué falta", "Entrega", "Quedan",
+           "Esperando planos (días laborables)"],
+          filas, [6, 24, 18, 30, 36, 15, 26, 40], colores)
 
 
-def _pedidos(wb, datos: dict) -> None:
-    filas = []
+def _pedidos(wb, datos: dict, cerrado, normal) -> None:
+    from core.services import plazos_dias
+
+    hoy = (datos.get("generado") or datetime.now()).date()
+    filas, rojas = [], []
     orden = sorted(datos["filas"], key=lambda f: (_dia(f["hitos"]["pedido"]["fecha"]) or date.min, f["pedido"]),
                    reverse=True)
     for f in orden:
@@ -288,39 +332,55 @@ def _pedidos(wb, datos: dict) -> None:
             material = "Sin compras"
         else:
             material = "Pendiente"
+        act, pl = _dia(h["activacion"]["fecha"]), _dia(h["planos"]["fecha"])
+        lab = plazos_dias.laborables(act, pl, cerrado) if act and pl and pl >= act else "—"
+        e = plazos_dias.espera(f, hoy, cerrado, normal)
+        if e and e[1]:
+            rojas.append(len(filas))
         filas.append([f["pedido"], f["cliente"] or "—", h["rfq"]["fecha"] or "—", h["contestada"]["fecha"] or "—",
                       _entero(t["comercial"]), h["activacion"]["fecha"] or "—", h["oc"]["fecha"] or "—", material,
-                      h["planos"]["fecha"] or "—", _entero(t["tecnico"]), RETRASO.get(f.get("retraso_por"), "—"),
-                      _entero(t["total"])])
-    _hoja(wb, "Pedidos",
-          "Un pedido por línea, el más reciente arriba. Días: los que pasan entre una fecha y la siguiente.",
-          ["Pedido", "Cliente", "Llega la oferta", "Contestada", "Días en contestar", "Activado",
-           "Orden de compra", "Material recibido", "Planos a fábrica", "Días hasta planos",
-           "Lo que retrasó", "Días en total"],
-          filas, [18, 30, 15, 15, 13, 15, 20, 16, 15, 13, 14, 13])
+                      h["planos"]["fecha"] or "—", _entero(t["tecnico"]), lab,
+                      plazos_dias.texto_espera(*e, normal) if e else "—",
+                      RETRASO.get(f.get("retraso_por"), "—"), _entero(t["total"])])
+    ws = _hoja(wb, "Pedidos",
+               "Un pedido por línea, el más reciente arriba. Días: los que pasan entre una fecha y la siguiente. "
+               "En rojo, los que llevan más de lo normal sin pasar los planos a fábrica.",
+               ["Pedido", "Cliente", "Llega la oferta", "Contestada", "Días en contestar", "Activado",
+                "Orden de compra", "Material recibido", "Planos a fábrica", "Días hasta planos",
+                "Días laborables hasta planos", "Esperando planos (días laborables)",
+                "Lo que retrasó", "Días en total"],
+               filas, [18, 30, 15, 15, 13, 15, 20, 16, 15, 13, 15, 40, 14, 13])
+    for i in rojas:
+        for c in ws[4 + i]:
+            c.fill = PatternFill("solid", fgColor=ROJO)
+            c.font = Font(size=LETRA, bold=True, color="9C0006")
 
 
-def _personas(wb, datos: dict) -> None:
-    filas = []
-    por_persona = datos["resumen"]["por_persona"]
-    for paso, que in PERSONAS:
-        for p in sorted((p for p in por_persona if p["paso"] == paso), key=lambda p: -p["n"]):
-            filas.append([nombre(p["persona"]), que, _dias(p["mediana"]), p["n"]])
+def _personas(wb, datos: dict, cerrado) -> None:
+    from core.services import plazos_dias
+
+    filas = [[nombre(p["persona"]), p["que"], _dias(p["naturales"]), _dias(p["laborables"]), p["n"]]
+             for p in plazos_dias.por_persona(datos, cerrado, PERSONAS)]
     if not filas:
-        filas = [["Sin datos todavía.", "", "", ""]]
+        filas = [["Sin datos todavía.", "", "", "", ""]]
     _hoja(wb, "Personas",
           "Lo que tarda normalmente cada uno, y en cuántos pedidos.",
-          ["Quién", "Qué hace", "Lo normal", "Pedidos"], filas, [28, 42, 16, 14])
+          ["Quién", "Qué hace", "Lo normal", "Lo normal (laborables)", "Pedidos"], filas, [28, 42, 16, 18, 14])
 
 
 def exportar(datos: dict, ruta) -> str:
-    """Escribe el Excel y devuelve su ruta."""
+    """Escribe el Excel y devuelve su ruta. Sin regularizaciones ni anulados."""
+    from core.services import plazos_dias
+
+    datos, quitados = plazos_dias.quitar(datos)
+    cerrado = plazos_dias.calendario(datos)
+    normal = plazos_dias.mediana_laborables(datos["filas"], "tecnico", cerrado)
     wb = Workbook()
     wb.remove(wb.active)
-    _resumen(wb, datos)
-    _que_hacer(wb, datos)
-    _pedidos(wb, datos)
-    _personas(wb, datos)
+    _resumen(wb, datos, cerrado, quitados, normal)
+    _que_hacer(wb, datos, cerrado, normal)
+    _pedidos(wb, datos, cerrado, normal)
+    _personas(wb, datos, cerrado)
     ruta = Path(ruta)
     wb.save(ruta)
     return str(ruta)

@@ -406,13 +406,16 @@ def cargar(años: tuple[int, ...] = (2025, 2026), hoy: date | None = None, corre
     ots = leer(lambda: seguimiento_erp.ots(desde), "Sin ERP", {}) if pedidos else {}
     if not base_dir.exists():
         avisos.append("Sin acceso a M:")
-        planos, carpetas = {}, {}
+        planos, carpetas, regularizan = {}, {}, set()
     else:
         planos = leer(lambda: seguimiento_carpetas.leer_planos([p["pedido"] for p in pedidos], base_dir=base_dir),
                       "Sin acceso a M:", {})
         carpetas = leer(lambda: seguimiento_carpetas.leer_correos_pedido([p["pedido"] for p in pedidos],
                                                                           base_dir=base_dir),
                         "Sin acceso a M:", {})
+        regularizan = leer(lambda: seguimiento_carpetas.regularizaciones([p["pedido"] for p in pedidos],
+                                                                         base_dir=base_dir),
+                           "Sin acceso a M:", set())
     if correo:
         correos = leer(seguimiento_correos.actualizar, "Sin correo", None)
         if correos is None:
@@ -422,6 +425,8 @@ def cargar(años: tuple[int, ...] = (2025, 2026), hoy: date | None = None, corre
     activaciones = leer(seguimiento_correos.activaciones_por_pedido, "Sin correo", {})
 
     historico = construir_filas(pedidos, compras, ots, planos, correos, activaciones, carpetas)
+    for f in historico:     # el ERP no lleva la «R», la carpeta sí
+        f["regularizacion"] = f["pedido"].upper().endswith("R") or f["pedido"] in regularizan
     filas = [f for f in historico
              if (_dia(f["hitos"]["pedido"]["fecha"]) or date.min).year in años]
     return {"filas": filas, "resumen": resumen(filas), "cola": cola(filas, historico, hoy),

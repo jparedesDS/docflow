@@ -309,6 +309,10 @@ fila = {cab[i]: c.value for i, c in enumerate(ws[4])}
 ok(fila["Llega la oferta"] == datetime(2099, 1, 1) and ws.cell(4, 3).number_format == "dd/mm/yyyy",
    f"fecha sin hora: {fila['Llega la oferta']}")
 ok(fila["Días hasta planos"] == 7 and fila["Días en contestar"] == 5, f"días: {fila}")
+ok(fila["Días laborables hasta planos"] == 5 and fila["Esperando planos (días laborables)"] == "—",
+   f"laborables y espera: {fila}")
+ok(cab[-2:] == ["Lo que retrasó", "Días en total"] and "Esperando planos (días laborables)" in cab,
+   f"se mantienen las columnas de siempre: {cab}")
 ok(fila["Material recibido"] == datetime(2099, 3, 20), f"material: {fila['Material recibido']}")
 ok("Orden de compra" in cab and fila["Orden de compra"] == datetime(2099, 2, 27),
    f"columna de la orden de compra: {fila.get('Orden de compra')}")
@@ -332,6 +336,7 @@ ok(not malos, f"nada de None, p25, medianas ni decimales: {malos[:5]}")
 resumen_txt = " ".join(str(v) for h, v in textos(wb) if h == "Resumen")
 ok("Contestar una oferta" in resumen_txt and "5 días" in resumen_txt, f"resumen: {resumen_txt[:300]}")
 ok("no depende de nosotros" in resumen_txt, "el tiempo del cliente, explicado")
+ok("Laborables" in resumen_txt and "agosto" in resumen_txt, "el resumen lleva los laborables")
 ok("Desde que se activa el pedido" in resumen_txt and "Material:" in resumen_txt and "Planos:" in resumen_txt
    and "Técnico: pasa la orden de compra a Compras" in resumen_txt
    and "Compras: pide el material al proveedor" in resumen_txt
@@ -346,8 +351,19 @@ ok(fila["Lo que retrasó"] == "Material" and fila["Días en total"] == 78, f"por
 cola_txt = " ".join(str(v) for h, v in textos(wb) if h == "Qué hacer primero")
 ok("No hay pedidos esperando" in cola_txt, f"cola vacía: {cola_txt[:200]}")
 personas = [[c.value for c in r] for r in wb["Personas"].iter_rows(min_row=4)]
-ok(["Tecnico Uno", "Mandar planos a fábrica", "7 días", 1] in personas, f"personas: {personas}")
+ok(["Tecnico Uno", "Mandar planos a fábrica", "7 días", "5 días", 1] in personas, f"personas: {personas}")
 ok(not any("Activar" in str(r) for r in personas), "sin el paso «activar»")
+# Sin regularizaciones («R», también si solo la lleva la carpeta) ni anulados
+import copy  # noqa: E402
+d3 = copy.deepcopy(d)
+d3["filas"] += [{**copy.deepcopy(d["filas"][0]), "pedido": "P-99/001-S01R"},
+                {**copy.deepcopy(d["filas"][0]), "pedido": "P-99/001-S02", "regularizacion": True},
+                {**copy.deepcopy(d["filas"][0]), "pedido": "P-99/001-S03", "anulado": True}]
+wb3 = load_workbook(seguimiento_excel.exportar(d3, tmp / "plazos3.xlsx"))
+ped3 = [r[0].value for r in wb3["Pedidos"].iter_rows(min_row=4)]
+ok(ped3 == ["P-99/001-S00"], f"fuera regularizaciones y anulados: {ped3}")
+ok("Sin contar 2 regularizaciones" in " ".join(str(v) for h, v in textos(wb3) if h == "Resumen"),
+   "el resumen dice cuántos se quitaron")
 wb2 = load_workbook(seguimiento_excel.exportar({**d, "avisos": ["Sin ERP", "Sin acceso a M:", "Sin correo"]},
                                                tmp / "plazos2.xlsx"))
 aviso_txt = " ".join(str(v) for h, v in textos(wb2) if h == "Resumen")

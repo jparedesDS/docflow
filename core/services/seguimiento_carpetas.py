@@ -195,6 +195,27 @@ def _carpeta_pedido(pedido: str, base_dir: Path, memo: dict) -> Path | None:
     return None
 
 
+def regularizaciones(pedidos: list[str], base_dir: Path = apertura.DEFAULT_BASE_DIR) -> set[str]:
+    """Los suministros que el ERP escribe sin «R» pero cuya carpeta la lleva
+    («P-26-032-S05R - …» para P-26/032-S05): son regularizaciones. Solo si no
+    hay también una carpeta del suministro sin R."""
+    memo: dict = {}
+    out = set()
+    for pedido in pedidos:
+        p = _partes(pedido)
+        if not p or p[1].endswith("R"):
+            continue
+        folder_id, suf, año = p
+        sufijos = set()
+        for e in _listado(Path(base_dir), año, memo):
+            meta = apertura.parse_folder_meta(e.name)
+            if meta and meta["folder_id"].upper() == folder_id.upper():
+                sufijos |= apertura.sufijos_de_carpeta(e.name)
+        if f"{suf}R" in sufijos and suf not in sufijos:
+            out.add(pedido)
+    return out
+
+
 def _hija(carpeta: Path, regex) -> Path | None:
     try:
         for e in sorted(carpeta.iterdir(), key=lambda e: e.name):

@@ -490,6 +490,11 @@ def parse_folder_meta(folder_name: str) -> dict | None:
 
 # Un suministro suelto dentro del nombre de la carpeta: S00, S09R…
 _SUFIJO_RE = re.compile(r"(?<![A-Z0-9])S\d{2}[A-Z]?(?![A-Z0-9])", re.I)
+# El nº de pedido al principio del nombre, y otro pedido citado más adelante
+# con sus suministros: «… NIVEL (P-23-048-S04)», «… P-23-048 S02-S03»
+_CABEZA_RE = re.compile(r"^\s*PA?\s*-?\s*\d{2}\s*[-/]\s*\d{1,3}", re.I)
+_OTRO_PEDIDO_RE = re.compile(
+    r"(?<![A-Z0-9])PA?\s*-?\s*\d{2}\s*[-/]\s*\d{1,3}(?:\s*[-/ ]?\s*S\d{2}[A-Z]?(?![A-Z0-9]))*", re.I)
 
 
 def sufijos_de_carpeta(folder_name: str) -> set[str]:
@@ -498,8 +503,15 @@ def sufijos_de_carpeta(folder_name: str) -> set[str]:
     Un pedido con varios suministros puede tener una carpeta por cada uno
     («P-26-001-S10 - …») o una que agrupa varios, escrita de mil maneras:
     «P-26-001 - S00 - S01 - …», «P-26-001-S08-S09R - …».
+
+    Los suministros de otro pedido citado en el nombre no cuentan:
+    «P-24-080 - S00 - … (P-23-048-S02)» es solo el S00, no el S02.
     """
-    return {s.upper() for s in _SUFIJO_RE.findall(str(folder_name or ""))}
+    nombre = str(folder_name or "")
+    m = _CABEZA_RE.match(nombre)
+    cabeza, resto = (nombre[:m.end()], nombre[m.end():]) if m else ("", nombre)
+    resto = _OTRO_PEDIDO_RE.sub(" ", resto)
+    return {s.upper() for s in _SUFIJO_RE.findall(cabeza + resto)}
 
 
 def find_existing_pedido_dir(
