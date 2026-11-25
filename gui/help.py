@@ -92,6 +92,9 @@ HELP: dict[str, dict] = {
             "tipo. Es una horquilla: «−5 a 30 d» significa que puede ir 5 días tarde o sobrar 30.",
             "«Por persona»: el típico de cada uno con cuántos pedidos lo dicen; con pocos pedidos, la cifra dice poco.",
             "Doble clic abre la carpeta Envíos del pedido (o el pedido, si no la hay).",
+            "«Excel a fábrica»: solo de la activación a los planos en fábrica, en días naturales y laborables "
+            "(sin fines de semana, festivos ni agosto). Quita los suministros «R» y los anulados; en verde, los "
+            "que faltan por pasar a fábrica.",
         ],
         "atajos": [
             "↻ vuelve a leer también los buzones de Ofertas",

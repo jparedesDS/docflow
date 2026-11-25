@@ -19,7 +19,7 @@ from core.services.erp_common import as_date, clean, query, who
 _SQL_PEDIDOS = """
     SELECT o.num_order, o.num_offer, f.client, f.final_client, f.material, f.responsible,
            f.recep_date, f.presentation_date, o.order_date, o.expected_date,
-           o.last_date_deliveries, o.porc_workshop, o.closed
+           o.last_date_deliveries, o.porc_workshop, o.closed, o.notes, o.obs_deliveries
     FROM public.orders o
     LEFT JOIN public.offers f ON f.num_offer = o.num_offer
     WHERE o.order_year = ANY(%s) AND o.num_order LIKE 'P-%%'
@@ -80,6 +80,14 @@ def _int(v) -> int | None:
         return None
 
 
+_RE_ANULADO = re.compile(r"\banulad[oa]\b", re.IGNORECASE)
+
+
+def anulado(*textos) -> bool:
+    """Las notas o la observación de entregas dicen que el pedido está anulado."""
+    return any(_RE_ANULADO.search(clean(t)) for t in textos if t)
+
+
 def pedidos(años: list[int]) -> list[dict]:
     """Los pedidos P de esos años, en el formato que espera `seguimiento.construir_filas`."""
     out = []
@@ -100,6 +108,7 @@ def pedidos(años: list[int]) -> list[dict]:
             "envio": as_date(r.get("last_date_deliveries")),
             "porc_taller": _int(r.get("porc_workshop")),
             "cerrado": clean(r.get("closed")).upper() == "OK",
+            "anulado": anulado(r.get("notes"), r.get("obs_deliveries")),
         })
     return out
 

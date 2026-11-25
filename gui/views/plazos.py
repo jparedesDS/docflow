@@ -115,6 +115,9 @@ class PlazosView(ctk.CTkFrame):
         self.btn_export = ui.button(header.actions, "⤓  Excel", "outline", size="sm", width=90,
                                     text_color=theme.TEXT_SUB, command=self._export)
         self.btn_export.pack(side="right", padx=(theme.SPACE_2, 0))
+        self.btn_fabrica = ui.button(header.actions, "⤓  Excel a fábrica", "outline", size="sm", width=140,
+                                     text_color=theme.TEXT_SUB, command=self._export_fabrica)
+        self.btn_fabrica.pack(side="right", padx=(theme.SPACE_2, 0))
         self.btn_reload = ui.button(header.actions, "↻", "outline", size="sm", width=36,
                                     text_color=theme.TEXT_SUB, command=lambda: self._reload(con_correo=True))
         self.btn_reload.pack(side="right")
@@ -281,6 +284,23 @@ class PlazosView(ctk.CTkFrame):
             from core.services import seguimiento_excel
             seguimiento_excel.exportar(self._datos, path)
             ui.toast(self, "Exportado", f"{len(self._datos['filas'])} pedidos a Excel.", kind="success")
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror("Exportar", f"No se pudo exportar:\n{exc}", parent=self)
+
+    def _export_fabrica(self) -> None:
+        """El Excel escueto: activación → planos a fábrica, en días naturales y laborables."""
+        if not self._datos:
+            ui.toast(self, "Plazos", "Todavía no hay datos.", kind="info")
+            return
+        path = filedialog.asksaveasfilename(
+            parent=self, title="Exportar plazos a fábrica", defaultextension=".xlsx",
+            initialfile=f"Plazos a fábrica {datetime.now():%Y-%m-%d}.xlsx", filetypes=[("Excel", "*.xlsx")])
+        if not path:
+            return
+        try:
+            from core.services import plazos_fabrica_excel
+            plazos_fabrica_excel.exportar(self._datos, path)
+            ui.toast(self, "Exportado", "Plazos a fábrica en Excel.", kind="success")
         except Exception as exc:  # noqa: BLE001
             messagebox.showerror("Exportar", f"No se pudo exportar:\n{exc}", parent=self)
 

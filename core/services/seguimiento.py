@@ -203,6 +203,7 @@ def construir_filas(pedidos: list[dict], compras: dict[str, dict], ots: dict[str
             "compartido": cp_compartido or ot_compartido, "retraso_por": retraso_por,
             "ruta": (pl or {}).get("ruta") or "", "envios": (pl or {}).get("envios") or 0,
             "porc_taller": p.get("porc_taller"), "cerrado": bool(p.get("cerrado")),
+            "anulado": bool(p.get("anulado")),
         })
     return filas
 
